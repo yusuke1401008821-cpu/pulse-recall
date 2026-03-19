@@ -360,6 +360,9 @@ const shareGuideList = document.getElementById("shareGuideList");
 const onboardingModal = document.getElementById("onboardingModal");
 const dismissOnboardingButton = document.getElementById("dismissOnboardingButton");
 const completeOnboardingButton = document.getElementById("completeOnboardingButton");
+const settingsOpenGuideButton = document.getElementById("settingsOpenGuideButton");
+const settingsOverviewSummary = document.getElementById("settingsOverviewSummary");
+const settingsSnapshotList = document.getElementById("settingsSnapshotList");
 const shareJoinModal = document.getElementById("shareJoinModal");
 const shareJoinTitle = document.getElementById("shareJoinTitle");
 const shareJoinStatus = document.getElementById("shareJoinStatus");
@@ -402,6 +405,9 @@ function bindEvents() {
   demoResetConfirmInput.addEventListener("input", renderDemoRestorePanel);
   seedDemoButton.addEventListener("click", restoreDemoData);
   openOnboardingButton.addEventListener("click", () => {
+    onboardingModal.hidden = false;
+  });
+  settingsOpenGuideButton.addEventListener("click", () => {
     onboardingModal.hidden = false;
   });
   dismissOnboardingButton.addEventListener("click", () => {
@@ -512,6 +518,10 @@ function switchSection(sectionId) {
     renderCreatePanels();
     renderSharePanel();
   }
+
+  if (sectionId === "settings") {
+    renderSettingsPanel();
+  }
 }
 
 function render() {
@@ -528,6 +538,7 @@ function render() {
   renderCreatePanels();
   renderSharePanel();
   renderHomePanels();
+  renderSettingsPanel();
 }
 
 function renderStats() {
@@ -710,6 +721,11 @@ function runUiShortcut(action, { focus = "", mode = "" } = {}) {
 
   if (action === "library") {
     switchSection("assistant");
+    return;
+  }
+
+  if (action === "settings") {
+    switchSection("settings");
   }
 }
 
@@ -951,7 +967,7 @@ function buildCreateGuideModel() {
       ],
       actions: [
         { label: "カード作成へ", action: "create-mode", mode: "card" },
-        { label: "共有へ", action: "share", kind: "ghost" },
+        { label: "設定へ", action: "settings", kind: "ghost" },
       ],
     };
   }
@@ -970,7 +986,7 @@ function buildCreateGuideModel() {
         { title: "共同編集ならクラウド共有", text: "magic link でログインすると、viewer / editor を分けて運用できます。" },
       ],
       actions: [
-        { label: "デッキ作成へ", action: "create-mode", mode: "deck" },
+        { label: "設定へ", action: "settings" },
         { label: "使い方を見る", action: "onboarding", kind: "ghost" },
       ],
     };
@@ -1003,13 +1019,56 @@ function buildCurrentDataSummary() {
   return `${state.decks.length}デッキ / ${state.cards.length}枚 / 学習履歴${state.reviewLog.length}件`;
 }
 
+function renderSettingsPanel() {
+  const sharedDeckCount = state.decks.filter((deck) => deck.storageMode === "shared").length;
+  const localDeckCount = state.decks.length - sharedDeckCount;
+  const latestDeck = [...state.decks].sort((left, right) => right.updatedAt - left.updatedAt)[0] || null;
+
+  settingsOverviewSummary.textContent =
+    "バックアップ、ガイドの再表示、初期化のような誤操作に注意したい項目をここへまとめています。初期化は必ず確認を挟む安全な導線にしています。";
+  settingsSnapshotList.innerHTML = [
+    {
+      title: "データ量",
+      text: `${state.decks.length}デッキ / ${state.cards.length}枚 / 学習履歴${state.reviewLog.length}件を保存中です。`,
+    },
+    {
+      title: "保存先の内訳",
+      text:
+        sharedDeckCount > 0
+          ? `ローカル ${localDeckCount}件、共有 ${sharedDeckCount}件です。共有内容を守りたいときは先に JSON バックアップを取ると安全です。`
+          : `現在はローカル ${localDeckCount}件です。端末変更や初期化に備えて、JSON バックアップを取っておくと安心です。`,
+    },
+    {
+      title: "最近更新したデッキ",
+      text: latestDeck
+        ? `${latestDeck.name} を最後に更新しました。必要ならこのタイミングでバックアップを残せます。`
+        : "まだデッキがありません。スターター追加やデッキ作成から始められます。",
+    },
+    {
+      title: "ガイドの状態",
+      text: state.settings?.onboardingCompleted
+        ? "初回ガイドは完了済みです。必要になったらこの設定画面からいつでも開き直せます。"
+        : "初回ガイドはまだ未完了です。使い方があいまいなら先に見ておくと安心です。",
+    },
+  ]
+    .map(
+      (item) => `
+        <article class="library-card">
+          <h4>${escapeHtml(item.title)}</h4>
+          <p class="muted">${escapeHtml(item.text)}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
 function renderDemoRestorePanel() {
   const typed = String(demoResetConfirmInput.value || "").trim();
   const hasMeaningfulData = state.cards.length > 0 || state.reviewLog.length > 0 || state.decks.length > 0;
 
   demoResetStatus.textContent = hasMeaningfulData
-    ? `現在の ${buildCurrentDataSummary()} をサンプルデータで置き換えます。必要なら先に JSON を書き出してください。`
-    : "使い方を試すためのサンプルデータを読み込めます。すでに入力がある場合は上書きされます。";
+    ? `現在の ${buildCurrentDataSummary()} をサンプルデータで初期化します。この操作は元に戻せないため、必要なら先に JSON を書き出してください。`
+    : "使い方を試すためのサンプルデータで初期化できます。すでに入力がある場合は上書きされます。";
   seedDemoButton.disabled = typed !== DEMO_RESET_CONFIRM_TEXT;
 }
 
@@ -1021,7 +1080,7 @@ function restoreDemoData() {
   }
 
   const approved = window.confirm(
-    `現在の ${buildCurrentDataSummary()} をサンプルデータで置き換えます。必要なら先に JSON を書き出してください。続けますか？`,
+    `本当に初期化するんですか？\n現在の ${buildCurrentDataSummary()} をサンプルデータで置き換えます。\nこの操作は元に戻せません。必要なら先に JSON を書き出してください。`,
   );
   if (!approved) {
     return;
@@ -1048,7 +1107,7 @@ function restoreDemoData() {
   persist();
   render();
   switchSection("dashboard");
-  showToast("サンプルデータを読み込みました");
+  showToast("サンプルデータで初期化しました");
 }
 
 function completeOnboarding() {
@@ -1332,6 +1391,10 @@ function renderShareGuidePanel(deck) {
     <article class="library-card">
       <h4>3. 学習進捗は人ごとに分離</h4>
       <p class="muted">共有されるのはカード内容だけです。復習間隔や学習履歴は各ユーザーで別々に保持します。</p>
+    </article>
+    <article class="library-card">
+      <h4>4. バックアップや初期化は設定へ</h4>
+      <p class="muted">JSON バックアップやサンプル読み込みは、誤操作を避けるため設定タブへ分離しています。</p>
     </article>
   `;
 }

@@ -68,6 +68,7 @@
           <button class="tab" data-section="study" type="button">学習</button>
           <button class="tab" data-section="manage" type="button">作成</button>
           <button class="tab" data-section="assistant" type="button">ライブラリ</button>
+          <button class="tab" data-section="settings" type="button">設定</button>
         </nav>
 
         <section class="content is-active" id="dashboard">
@@ -214,7 +215,7 @@
               <button class="chip-button is-active" data-create-mode="deck" type="button">デッキ</button>
               <button class="chip-button" data-create-mode="card" type="button">カード</button>
               <button class="chip-button" data-create-mode="import" type="button">PDF取り込み</button>
-              <button class="chip-button" data-create-mode="share" type="button">共有/バックアップ</button>
+              <button class="chip-button" data-create-mode="share" type="button">共有</button>
             </div>
           </div>
 
@@ -401,8 +402,8 @@
           <section class="panel create-panel" id="createSharePanel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">共有とバックアップ</p>
-                <h3>共有とバックアップ</h3>
+                <p class="eyebrow">共有</p>
+                <h3>共有の管理</h3>
               </div>
               <button class="ghost-button" id="refreshCloudButton" type="button">共有情報を更新</button>
             </div>
@@ -450,36 +451,6 @@
                 <h4>共有の使い分け</h4>
                 <p class="muted" id="shareGuideSummary">ローカル複製と共同編集の違いを、ここでいつでも確認できます。</p>
                 <div class="stack-list" id="shareGuideList"></div>
-              </section>
-
-              <section class="subpanel">
-                <p class="eyebrow">バックアップ</p>
-                <h4>JSON エクスポート / インポート</h4>
-                <div class="form-actions">
-                  <button class="primary-button" id="exportJsonButton" type="button">JSONを書き出す</button>
-                  <label class="ghost-button file-button">
-                    JSONを読み込む
-                    <input id="importJsonFileInput" type="file" accept=".json,application/json" hidden />
-                  </label>
-                </div>
-                <p class="muted">ローカル専用でも、バックアップして別端末へ移せます。</p>
-              </section>
-
-              <section class="subpanel danger-panel">
-                <p class="eyebrow">危険操作</p>
-                <h4>サンプルデータを読み込む</h4>
-                <p class="muted" id="demoResetStatus">
-                  現在のデータをサンプルで置き換えます。必要なら先に JSON を書き出してください。
-                </p>
-                <label class="inline-select">
-                  <span>確認のため <code>サンプルを読み込む</code> と入力</span>
-                  <input id="demoResetConfirmInput" type="text" placeholder="サンプルを読み込む" autocomplete="off" />
-                </label>
-                <div class="form-actions">
-                  <button class="ghost-button danger-button" id="seedDemoButton" type="button" disabled>
-                    現在のデータを置き換える
-                  </button>
-                </div>
               </section>
             </div>
           </section>
@@ -598,6 +569,82 @@
               <div id="deckDetailContent" class="stack-list"></div>
             </section>
           </div>
+        </section>
+
+        <section class="content" id="settings">
+          <div class="panel section-heading">
+            <div>
+              <p class="eyebrow">設定</p>
+              <h3>アプリ設定とデータ管理</h3>
+            </div>
+          </div>
+
+          <div class="home-grid">
+            <section class="panel tip-card">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">案内</p>
+                  <h3>使い方と確認</h3>
+                </div>
+              </div>
+              <p class="muted" id="settingsOverviewSummary">
+                アプリの使い方確認、データ保護、初期化など、日常学習とは分けて扱いたい項目をまとめています。
+              </p>
+              <div class="button-row">
+                <button class="primary-button" id="settingsOpenGuideButton" type="button">使い方ガイドを開く</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">現在の状態</p>
+                  <h3>保存データの概要</h3>
+                </div>
+              </div>
+              <div class="stack-list" id="settingsSnapshotList"></div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">バックアップ</p>
+                <h3>JSON エクスポート / インポート</h3>
+              </div>
+            </div>
+            <p class="muted">
+              端末変更や誤操作に備えて、まずは JSON を書き出しておくと安全です。
+            </p>
+            <div class="form-actions">
+              <button class="primary-button" id="exportJsonButton" type="button">JSONを書き出す</button>
+              <label class="ghost-button file-button">
+                JSONを読み込む
+                <input id="importJsonFileInput" type="file" accept=".json,application/json" hidden />
+              </label>
+            </div>
+          </section>
+
+          <section class="panel danger-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">初期化</p>
+                <h3>サンプルで初期化する</h3>
+              </div>
+            </div>
+            <p class="muted" id="demoResetStatus">
+              現在のデータをサンプルで置き換えます。必要なら先に JSON を書き出してください。
+            </p>
+            <label class="inline-select">
+              <span>確認のため <code>サンプルを読み込む</code> と入力し、その後の確認画面でも承認してください</span>
+              <input id="demoResetConfirmInput" type="text" placeholder="サンプルを読み込む" autocomplete="off" />
+            </label>
+            <div class="form-actions">
+              <button class="ghost-button danger-button" id="seedDemoButton" type="button" disabled>
+                初期化を実行する
+              </button>
+            </div>
+          </section>
         </section>
       </main>
     </div>
