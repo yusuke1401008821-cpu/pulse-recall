@@ -7,6 +7,8 @@ const learningStepsMinutes = [10, 180];
 const relearningStepsMinutes = [10, 360];
 const PDFJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/legacy/build/pdf.mjs";
 const PDFJS_WORKER_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/legacy/build/pdf.worker.mjs";
+const SUPABASE_MODULE_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+const CLOUD_CONFIG_ENDPOINT = "/api/client-config";
 const TRACKS = [
   {
     id: "medical",
@@ -202,14 +204,38 @@ let importDraft = null;
 let pdfjsModulePromise = null;
 let isAssistantLoading = false;
 let assistantErrorMessage = "";
+let createMode = "deck";
+let selectedDeckDetailId = "";
+let deckDetailTab = "overview";
+let shareLinkCache = "";
+let importSelection = new Set();
+let cloudState = {
+  status: "idle",
+  config: null,
+  client: null,
+  module: null,
+  session: null,
+  profile: null,
+  shareToken: "",
+  pendingRequests: [],
+  lastSharePreview: null,
+};
 
 const tabs = [...document.querySelectorAll(".tab")];
 const sections = [...document.querySelectorAll(".content")];
+const createModeButtons = [...document.querySelectorAll("[data-create-mode]")];
+const templateButtons = [...document.querySelectorAll("[data-template]")];
+const deckDetailTabButtons = [...document.querySelectorAll("[data-deck-detail-tab]")];
 const statsGrid = document.getElementById("statsGrid");
 const dueCount = document.getElementById("dueCount");
 const heroTitle = document.getElementById("heroTitle");
 const heroText = document.getElementById("heroText");
 const quickSummary = document.getElementById("quickSummary");
+const homeQuickActions = document.getElementById("homeQuickActions");
+const pendingShareLabel = document.getElementById("pendingShareLabel");
+const pendingShareList = document.getElementById("pendingShareList");
+const recentDeckList = document.getElementById("recentDeckList");
+const openOnboardingButton = document.getElementById("openOnboardingButton");
 const trackGrid = document.getElementById("trackGrid");
 const deckCountLabel = document.getElementById("deckCountLabel");
 const deckList = document.getElementById("deckList");
@@ -219,7 +245,13 @@ const historyBreakdown = document.getElementById("historyBreakdown");
 const studyDeckFilter = document.getElementById("studyDeckFilter");
 const assistantDeckFilter = document.getElementById("assistantDeckFilter");
 const libraryDeckFilter = document.getElementById("libraryDeckFilter");
+const libraryTagFilter = document.getElementById("libraryTagFilter");
+const librarySubjectFilter = document.getElementById("librarySubjectFilter");
+const libraryStorageFilter = document.getElementById("libraryStorageFilter");
+const libraryStudyStateFilter = document.getElementById("libraryStudyStateFilter");
+const libraryTextFilter = document.getElementById("libraryTextFilter");
 const cardDeckId = document.getElementById("cardDeckId");
+const searchCardifyTarget = document.getElementById("searchCardifyTarget");
 const emptyState = document.getElementById("emptyState");
 const flashcard = document.getElementById("flashcard");
 const cardFront = document.getElementById("cardFront");
@@ -273,24 +305,74 @@ const importStatus = document.getElementById("importStatus");
 const importPreview = document.getElementById("importPreview");
 const saveImportButton = document.getElementById("saveImportButton");
 const clearImportDraftButton = document.getElementById("clearImportDraftButton");
+const selectAllImportButton = document.getElementById("selectAllImportButton");
+const clearImportSelectionButton = document.getElementById("clearImportSelectionButton");
+const removeSelectedImportButton = document.getElementById("removeSelectedImportButton");
+const dedupeImportButton = document.getElementById("dedupeImportButton");
+const bulkImportTagsInput = document.getElementById("bulkImportTagsInput");
+const applyImportTagsButton = document.getElementById("applyImportTagsButton");
 const assistantMessages = document.getElementById("assistantMessages");
 const assistantStatus = document.getElementById("assistantStatus");
 const assistantForm = document.getElementById("assistantForm");
 const assistantInput = document.getElementById("assistantInput");
 const assistantSubmitButton = document.getElementById("assistantSubmitButton");
 const clearAssistantButton = document.getElementById("clearAssistantButton");
+const deckDetailTitle = document.getElementById("deckDetailTitle");
+const deckDetailContent = document.getElementById("deckDetailContent");
+const createPanels = {
+  deck: document.getElementById("createDeckPanel"),
+  card: document.getElementById("createCardPanel"),
+  import: document.getElementById("createImportPanel"),
+  share: document.getElementById("createSharePanel"),
+};
+const authStatus = document.getElementById("authStatus");
+const authEmailInput = document.getElementById("authEmailInput");
+const signInMagicLinkButton = document.getElementById("signInMagicLinkButton");
+const signOutButton = document.getElementById("signOutButton");
+const shareDeckSelect = document.getElementById("shareDeckSelect");
+const shareDeckButton = document.getElementById("shareDeckButton");
+const copyShareLinkButton = document.getElementById("copyShareLinkButton");
+const syncSharedDeckButton = document.getElementById("syncSharedDeckButton");
+const duplicateSharedDeckButton = document.getElementById("duplicateSharedDeckButton");
+const exportJsonButton = document.getElementById("exportJsonButton");
+const importJsonFileInput = document.getElementById("importJsonFileInput");
+const refreshCloudButton = document.getElementById("refreshCloudButton");
+const shareStatus = document.getElementById("shareStatus");
+const shareRequestList = document.getElementById("shareRequestList");
+const onboardingModal = document.getElementById("onboardingModal");
+const dismissOnboardingButton = document.getElementById("dismissOnboardingButton");
+const completeOnboardingButton = document.getElementById("completeOnboardingButton");
+const shareJoinModal = document.getElementById("shareJoinModal");
+const shareJoinTitle = document.getElementById("shareJoinTitle");
+const shareJoinStatus = document.getElementById("shareJoinStatus");
+const requestShareAccessButton = document.getElementById("requestShareAccessButton");
+const closeShareJoinButton = document.getElementById("closeShareJoinButton");
 
 bootstrap();
 
 function bootstrap() {
   render();
   bindEvents();
+  initializeCloud();
+  maybeOpenOnboarding();
   registerServiceWorker();
 }
 
 function bindEvents() {
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => switchSection(tab.dataset.section));
+  });
+  createModeButtons.forEach((button) => {
+    button.addEventListener("click", () => setCreateMode(button.dataset.createMode));
+  });
+  templateButtons.forEach((button) => {
+    button.addEventListener("click", () => applyTemplate(button.dataset.template));
+  });
+  deckDetailTabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      deckDetailTab = button.dataset.deckDetailTab;
+      renderDeckDetail();
+    });
   });
 
   toggleAnswerButton.addEventListener("click", toggleAnswer);
@@ -305,6 +387,17 @@ function bindEvents() {
     render();
     showToast("サンプルデータを復元しました");
   });
+  openOnboardingButton.addEventListener("click", () => {
+    onboardingModal.hidden = false;
+  });
+  dismissOnboardingButton.addEventListener("click", () => {
+    onboardingModal.hidden = true;
+  });
+  completeOnboardingButton.addEventListener("click", completeOnboarding);
+  closeShareJoinButton.addEventListener("click", () => {
+    shareJoinModal.hidden = true;
+  });
+  requestShareAccessButton.addEventListener("click", requestShareAccess);
 
   deckForm.addEventListener("submit", handleDeckSubmit);
   cardForm.addEventListener("submit", handleCardSubmit);
@@ -327,14 +420,39 @@ function bindEvents() {
     renderStudy();
   });
   libraryDeckFilter.addEventListener("change", renderLibrary);
+  libraryTagFilter.addEventListener("change", renderLibrary);
+  librarySubjectFilter.addEventListener("change", renderLibrary);
+  libraryStorageFilter.addEventListener("change", renderLibrary);
+  libraryStudyStateFilter.addEventListener("change", renderLibrary);
+  libraryTextFilter.addEventListener("input", renderLibrary);
   cardDeckId.addEventListener("change", applyCardContextPlaceholders);
   deckFocusInput.addEventListener("change", applyDeckFocusPreset);
   importFocusInput.addEventListener("change", applyImportFocusPreset);
   importFileInput.addEventListener("change", syncImportDeckNameFromFile);
   saveImportButton.addEventListener("click", saveImportDraftAsDeck);
   clearImportDraftButton.addEventListener("click", clearImportDraft);
+  selectAllImportButton.addEventListener("click", selectAllImportCandidates);
+  clearImportSelectionButton.addEventListener("click", clearImportSelection);
+  removeSelectedImportButton.addEventListener("click", removeSelectedImportCandidates);
+  dedupeImportButton.addEventListener("click", dedupeImportCandidates);
+  applyImportTagsButton.addEventListener("click", applyBulkImportTags);
   assistantDeckFilter.addEventListener("change", handleAssistantSettingsChange);
   clearAssistantButton.addEventListener("click", clearAssistantHistory);
+  shareDeckSelect.addEventListener("change", () => {
+    selectedDeckDetailId = shareDeckSelect.value || selectedDeckDetailId;
+    renderSharePanel();
+    renderDeckDetail();
+  });
+  authEmailInput.addEventListener("input", renderSharePanel);
+  signInMagicLinkButton.addEventListener("click", sendMagicLink);
+  signOutButton.addEventListener("click", signOutCloud);
+  shareDeckButton.addEventListener("click", shareDeck);
+  copyShareLinkButton.addEventListener("click", copyShareLink);
+  syncSharedDeckButton.addEventListener("click", syncSelectedSharedDeck);
+  duplicateSharedDeckButton.addEventListener("click", duplicateSelectedDeck);
+  exportJsonButton.addEventListener("click", exportJsonBackup);
+  importJsonFileInput.addEventListener("change", importJsonBackup);
+  refreshCloudButton.addEventListener("click", refreshCloudData);
 
   document.querySelectorAll("[data-rating]").forEach((button) => {
     button.addEventListener("click", () => reviewCurrentCard(button.dataset.rating));
@@ -342,6 +460,9 @@ function bindEvents() {
 
   deckList.addEventListener("click", handleDeckActions);
   libraryList.addEventListener("click", handleLibraryActions);
+  recentDeckList.addEventListener("click", handleLibraryActions);
+  shareRequestList.addEventListener("click", handleDeckDetailActions);
+  deckDetailContent.addEventListener("click", handleDeckDetailActions);
   trackGrid.addEventListener("click", handleTrackActions);
   importPreview.addEventListener("click", handleImportPreviewActions);
   assistantMessages.addEventListener("click", handleAssistantActions);
@@ -364,6 +485,13 @@ function switchSection(sectionId) {
 
   if (sectionId === "assistant") {
     renderAssistant();
+    renderLibrary();
+    renderDeckDetail();
+  }
+
+  if (sectionId === "manage") {
+    renderCreatePanels();
+    renderSharePanel();
   }
 }
 
@@ -376,6 +504,10 @@ function render() {
   renderStudy();
   renderAssistant();
   renderLibrary();
+  renderDeckDetail();
+  renderCreatePanels();
+  renderSharePanel();
+  renderHomePanels();
 }
 
 function renderStats() {
@@ -438,6 +570,8 @@ function renderDeckSelectors() {
   const previousAssistant = assistantDeckFilter.value || state.assistant.deckFilter || "all";
   const previousLibrary = libraryDeckFilter.value || "all";
   const previousCardDeck = cardDeckId.value;
+  const previousShareDeck = shareDeckSelect.value || selectedDeckDetailId || "";
+  const previousSearchCardifyTarget = searchCardifyTarget.value || "new";
   const allOption = '<option value="all">すべてのデッキ</option>';
   const focusOptions = TRACKS.map(
     (track) => `<option value="focus:${track.id}">${escapeHtml(track.title)}</option>`,
@@ -450,6 +584,9 @@ function renderDeckSelectors() {
   assistantDeckFilter.innerHTML = allOption + focusOptions + deckOptions;
   libraryDeckFilter.innerHTML = allOption + focusOptions + deckOptions;
   cardDeckId.innerHTML = deckOptions;
+  shareDeckSelect.innerHTML = deckOptions || '<option value="">デッキがありません</option>';
+  searchCardifyTarget.innerHTML =
+    '<option value="new">新規デッキを作る</option>' + deckOptions;
 
   if (optionExists(studyDeckFilter, previousStudy)) {
     studyDeckFilter.value = previousStudy;
@@ -468,6 +605,22 @@ function renderDeckSelectors() {
   } else if (state.decks[0]) {
     cardDeckId.value = state.decks[0].id;
   }
+
+  if (optionExists(shareDeckSelect, previousShareDeck)) {
+    shareDeckSelect.value = previousShareDeck;
+  } else if (state.decks[0]) {
+    shareDeckSelect.value = state.decks[0].id;
+  }
+
+  if (optionExists(searchCardifyTarget, previousSearchCardifyTarget)) {
+    searchCardifyTarget.value = previousSearchCardifyTarget;
+  }
+
+  if (!selectedDeckDetailId || !getDeckById(selectedDeckDetailId)) {
+    selectedDeckDetailId = state.decks[0]?.id || "";
+  }
+
+  renderLibraryFilterControls();
 }
 
 function renderForms() {
@@ -475,6 +628,213 @@ function renderForms() {
   syncCardForm();
   renderImportPanel();
   syncAssistantControls();
+}
+
+function renderCreatePanels() {
+  Object.entries(createPanels).forEach(([mode, panel]) => {
+    if (!panel) {
+      return;
+    }
+    panel.classList.toggle("is-active", mode === createMode);
+  });
+
+  createModeButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.createMode === createMode);
+  });
+}
+
+function setCreateMode(mode) {
+  if (!createPanels[mode]) {
+    return;
+  }
+
+  createMode = mode;
+  renderCreatePanels();
+  if (mode === "share") {
+    renderSharePanel();
+  }
+}
+
+function applyTemplate(templateId) {
+  if (templateId === "medical-diff") {
+    setCreateMode("card");
+    deckFocusInput.value = "medical";
+    applyDeckFocusPreset();
+    cardTopicInput.value = "症候 / 鑑別";
+    cardTagsInput.value = "医学, 鑑別, 必修";
+    cardHintInput.value = "症候から病態へつなぐ一言ヒント";
+    cardNoteInput.value = "鑑別の軸、除外所見、まず疑う病態";
+    cardExampleInput.value = "例: 胸痛 + 冷汗 + ST上昇 → STEMI をまず疑う";
+    switchSection("manage");
+    showToast("症候→鑑別テンプレートをカード作成に反映しました");
+    return;
+  }
+
+  if (templateId === "english-vocab") {
+    setCreateMode("card");
+    deckFocusInput.value = "english";
+    applyDeckFocusPreset();
+    cardTopicInput.value = "医学英語 / 語彙";
+    cardTagsInput.value = "english, vocabulary, medical english";
+    cardHintInput.value = "語源、品詞、似た表現";
+    cardNoteInput.value = "使い分けやコロケーション";
+    cardExampleInput.value = "例文を英文のまま残す";
+    switchSection("manage");
+    showToast("英単語→例文テンプレートをカード作成に反映しました");
+    return;
+  }
+
+  if (templateId === "english-reading") {
+    setCreateMode("import");
+    importFocusInput.value = "english";
+    importSubjectInput.value = "読解 / 要点";
+    importInstructionsInput.value = "長文の要点、構文、重要語彙をバランスよく抽出する";
+    applyImportFocusPreset();
+    switchSection("manage");
+    showToast("長文→要点テンプレートを PDF 取り込みに反映しました");
+  }
+}
+
+function maybeOpenOnboarding() {
+  onboardingModal.hidden = Boolean(state.settings?.onboardingCompleted);
+}
+
+function completeOnboarding() {
+  state.settings.onboardingCompleted = true;
+  onboardingModal.hidden = true;
+  persist();
+  showToast("使い方ガイドを閉じました。必要なときはホームから開き直せます");
+}
+
+function formatStorageMode(mode) {
+  return mode === "shared" ? "共有" : "ローカル";
+}
+
+function formatSyncState(syncState) {
+  if (syncState === "synced") {
+    return "同期済み";
+  }
+  if (syncState === "dirty") {
+    return "未同期";
+  }
+  if (syncState === "syncing") {
+    return "同期中";
+  }
+  if (syncState === "offline") {
+    return "オフライン";
+  }
+  return "未共有";
+}
+
+function formatRoleLabel(role) {
+  if (role === "owner") {
+    return "オーナー";
+  }
+  if (role === "editor") {
+    return "編集者";
+  }
+  if (role === "viewer") {
+    return "閲覧のみ";
+  }
+  if (role === "pending_request") {
+    return "申請中";
+  }
+  return "ローカル";
+}
+
+function getSelectedShareDeck() {
+  return getDeckById(shareDeckSelect.value || selectedDeckDetailId || "");
+}
+
+function canEditDeckContent(deck) {
+  if (!deck) {
+    return false;
+  }
+  if (deck.storageMode !== "shared") {
+    return true;
+  }
+  return deck.role === "owner" || deck.role === "editor";
+}
+
+function canManageDeckShare(deck) {
+  return Boolean(deck && deck.storageMode === "shared" && deck.role === "owner");
+}
+
+function markDeckDirty(deckId) {
+  const deck = getDeckById(deckId);
+  if (!deck || deck.storageMode !== "shared") {
+    return;
+  }
+  deck.syncState = "dirty";
+}
+
+function renderSharePanel() {
+  const deck = getSelectedShareDeck();
+  const hasClientConfig = Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
+  const isSignedIn = Boolean(cloudState.session?.user);
+
+  authStatus.textContent = !hasClientConfig
+    ? "Supabase 未設定ならローカル専用のまま使えます。共有を使う時だけ接続してください。"
+    : isSignedIn
+      ? `${cloudState.session.user.email || "ログイン中"} で共有機能を使えます。`
+      : "共有リンクを使う時だけログインします。普段の学習はログイン不要です。";
+  signOutButton.disabled = !isSignedIn;
+  signInMagicLinkButton.disabled = !hasClientConfig || !String(authEmailInput.value || "").trim();
+  refreshCloudButton.disabled = !hasClientConfig;
+
+  if (!deck) {
+    shareDeckButton.disabled = true;
+    copyShareLinkButton.disabled = true;
+    syncSharedDeckButton.disabled = true;
+    duplicateSharedDeckButton.disabled = true;
+    shareStatus.textContent = "対象デッキがありません。先にデッキを作成してください。";
+    shareRequestList.innerHTML = `
+      <article class="library-card">
+        <h4>共有対象がありません</h4>
+        <p class="muted">デッキを作ると、ここから共有リンクを作れます。</p>
+      </article>
+    `;
+    return;
+  }
+
+  const shareUrl = deck.shareToken ? `${window.location.origin}${window.location.pathname}?share=${deck.shareToken}` : "";
+  const pendingRequests = cloudState.pendingRequests.filter((request) => request.deckId === deck.sharedDeckId);
+  const canEdit = canEditDeckContent(deck);
+  const canManage = canManageDeckShare(deck);
+
+  shareDeckButton.disabled = !hasClientConfig || !isSignedIn || !canEdit;
+  copyShareLinkButton.disabled = !shareUrl;
+  syncSharedDeckButton.disabled = !hasClientConfig || !isSignedIn || deck.storageMode !== "shared";
+  duplicateSharedDeckButton.disabled = false;
+
+  shareStatus.textContent =
+    deck.storageMode === "shared"
+      ? `このデッキは共有中です。権限: ${formatRoleLabel(deck.role)} / 状態: ${formatSyncState(deck.syncState)}${
+          shareUrl ? ` / リンク: ${shareUrl}` : ""
+        }`
+      : "まだローカルデッキです。共有リンクを作るとクラウドに複製されます。";
+
+  shareRequestList.innerHTML = pendingRequests.length
+    ? pendingRequests
+        .map(
+          (request) => `
+            <article class="library-card">
+              <h4>${escapeHtml(request.requesterEmail || "参加申請")}</h4>
+              <p class="muted">希望ロール: ${escapeHtml(formatRoleLabel(request.requestedRole || "viewer"))}</p>
+              <div class="button-row">
+                <button class="primary-button" data-approve-request="${request.id}" type="button" ${canManage ? "" : "disabled"}>承認</button>
+                <button class="ghost-button danger-button" data-reject-request="${request.id}" type="button" ${canManage ? "" : "disabled"}>拒否</button>
+              </div>
+            </article>
+          `,
+        )
+        .join("")
+    : `
+        <article class="library-card">
+          <h4>承認待ちはありません</h4>
+          <p class="muted">共有リンクを配ると、ここに参加申請が表示されます。</p>
+        </article>
+      `;
 }
 
 function syncDeckForm() {
@@ -515,10 +875,16 @@ function renderImportPanel() {
   applyImportFocusPreset();
   clearImportDraftButton.hidden = !importDraft;
   saveImportButton.hidden = !importDraft;
+  selectAllImportButton.disabled = !importDraft;
+  clearImportSelectionButton.disabled = !importDraft;
+  removeSelectedImportButton.disabled = !importDraft;
+  dedupeImportButton.disabled = !importDraft;
+  applyImportTagsButton.disabled = !importDraft;
 
   if (!importDraft) {
     importStatus.textContent =
       "PDF または本文を入れると、自動でカード候補を作成します。スキャンPDFは文字抽出できないことがあります。";
+    saveImportButton.textContent = "この候補でデッキ作成";
     importPreview.innerHTML = `
       <article class="library-card">
         <h4>まだ自動生成の候補はありません</h4>
@@ -528,13 +894,25 @@ function renderImportPanel() {
     return;
   }
 
-  importStatus.textContent = `${importDraft.sourceName} から ${importDraft.cards.length} 枚の候補を作成しました。内容を確認してから保存できます。`;
+  const cardIds = new Set(importDraft.cards.map((card) => card.id));
+  importSelection = new Set([...importSelection].filter((id) => cardIds.has(id)));
+  const selectedCount = importSelection.size;
+  const selectedDeck = getDeckById(importDraft.targetDeckId);
+
+  saveImportButton.textContent = selectedDeck ? "既存デッキへ追加" : "この候補でデッキ作成";
+  importStatus.textContent = `${importDraft.sourceName} から ${importDraft.cards.length} 枚の候補を作成しました。内容を確認してから保存できます。${
+    selectedCount ? ` 現在 ${selectedCount} 枚を選択中です。` : ""
+  }`;
   importPreview.innerHTML = importDraft.cards
     .map(
       (card, index) => `
         <article class="library-card">
           <div class="card-row-header">
             <div>
+              <label class="selection-row">
+                <input type="checkbox" data-toggle-import-card="${card.id}" ${importSelection.has(card.id) ? "checked" : ""} />
+                <span class="muted">候補を選択</span>
+              </label>
               <h4>${index + 1}. ${escapeHtml(card.front)}</h4>
               <p class="muted">${escapeHtml(card.back)}</p>
             </div>
@@ -649,6 +1027,7 @@ function renderDashboard() {
     .map((deck) => {
       const cardCount = state.cards.filter((card) => card.deckId === deck.id).length;
       const due = dueCounts.get(deck.id) || 0;
+      const canEdit = canEditDeckContent(deck);
 
       return `
         <article class="deck-card">
@@ -659,8 +1038,9 @@ function renderDashboard() {
             </div>
             <div class="button-row">
               <button class="chip-button" data-start-deck="${deck.id}" type="button">このデッキを学習</button>
-              <button class="ghost-button" data-edit-deck="${deck.id}" type="button">編集</button>
-              <button class="ghost-button danger-button" data-delete-deck="${deck.id}" type="button" ${canDeleteDeck ? "" : "disabled"}>
+              <button class="ghost-button" data-open-deck-detail="${deck.id}" type="button">詳細</button>
+              <button class="ghost-button" data-edit-deck="${deck.id}" type="button" ${canEdit ? "" : "disabled"}>編集</button>
+              <button class="ghost-button danger-button" data-delete-deck="${deck.id}" type="button" ${canDeleteDeck && canEdit && deck.storageMode !== "shared" ? "" : "disabled"}>
                 削除
               </button>
             </div>
@@ -668,6 +1048,7 @@ function renderDashboard() {
           <div class="deck-card-meta">
             <span class="meta-pill ${escapeHtml(deck.focus)}">${escapeHtml(formatDeckFocus(deck.focus))}</span>
             ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
+            <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
             <span class="meta-pill">${cardCount} cards</span>
             <span class="meta-pill">${due} due</span>
           </div>
@@ -677,6 +1058,141 @@ function renderDashboard() {
     .join("");
 
   renderHistoryPanel();
+}
+
+function renderHomePanels() {
+  const pendingCount = cloudState.pendingRequests.length;
+  pendingShareLabel.textContent = pendingCount ? `${pendingCount}件` : "共有なし";
+  pendingShareList.innerHTML = pendingCount
+    ? cloudState.pendingRequests
+        .slice(0, 4)
+        .map(
+          (request) => `
+            <article class="library-card">
+              <h4>${escapeHtml(request.deckName || "共有デッキ")}</h4>
+              <p class="muted">${escapeHtml(request.requesterEmail || "参加申請")} / 承認待ち</p>
+            </article>
+          `,
+        )
+        .join("")
+    : `
+        <article class="library-card">
+          <h4>いま承認待ちはありません</h4>
+          <p class="muted">共有デッキを作ると、ここに参加申請が表示されます。</p>
+        </article>
+      `;
+
+  recentDeckList.innerHTML = state.decks.length
+    ? [...state.decks]
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 4)
+        .map(
+          (deck) => `
+            <article class="library-card">
+              <div class="card-row-header">
+                <div>
+                  <h4>${escapeHtml(deck.name)}</h4>
+                  <p class="muted">${escapeHtml(deck.description || "説明はまだありません")}</p>
+                </div>
+                <button class="ghost-button" data-open-deck-detail="${deck.id}" type="button">詳細</button>
+              </div>
+              <div class="card-row-meta">
+                <span class="meta-pill ${escapeHtml(deck.focus)}">${escapeHtml(formatDeckFocus(deck.focus))}</span>
+                ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
+                <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
+              </div>
+            </article>
+          `,
+        )
+        .join("")
+    : `
+        <article class="library-card">
+          <h4>デッキがまだありません</h4>
+          <p class="muted">「作成」タブで最初のデッキを作るか、スターターを追加すると始めやすいです。</p>
+        </article>
+      `;
+
+  homeQuickActions.innerHTML = [
+    {
+      title: "まずは学習を始める",
+      text: "期限が来たカードから回して、今日の復習を片づけます。",
+      buttonId: "homeActionStudy",
+      buttonLabel: "学習へ",
+    },
+    {
+      title: "PDFから一気に作る",
+      text: "講義資料や配布ノートからカード候補を自動で作ります。",
+      buttonId: "homeActionImport",
+      buttonLabel: "PDF取り込みへ",
+    },
+    {
+      title: "仲間と共有する",
+      text: "デッキを共有デッキ化して、リンクでメンバーを集められます。",
+      buttonId: "homeActionShare",
+      buttonLabel: "共有へ",
+    },
+  ]
+    .map(
+      (item) => `
+        <article class="library-card">
+          <h4>${escapeHtml(item.title)}</h4>
+          <p class="muted">${escapeHtml(item.text)}</p>
+          <button class="primary-button" id="${escapeHtml(item.buttonId)}" type="button">${escapeHtml(item.buttonLabel)}</button>
+        </article>
+      `,
+    )
+    .join("");
+
+  document.getElementById("homeActionStudy")?.addEventListener("click", () => switchSection("study"));
+  document.getElementById("homeActionImport")?.addEventListener("click", () => {
+    setCreateMode("import");
+    switchSection("manage");
+  });
+  document.getElementById("homeActionShare")?.addEventListener("click", () => {
+    setCreateMode("share");
+    switchSection("manage");
+  });
+}
+
+function renderLibraryFilterControls() {
+  const previousTag = libraryTagFilter.value || "all";
+  const previousSubject = librarySubjectFilter.value || "all";
+  const previousStorage = libraryStorageFilter.value || "all";
+  const previousStudyState = libraryStudyStateFilter.value || "all";
+  const tags = [...new Set(state.cards.flatMap((card) => card.tags || []))].sort();
+  const subjects = [...new Set(state.decks.map((deck) => deck.subject).filter(Boolean))].sort();
+
+  libraryTagFilter.innerHTML =
+    '<option value="all">すべてのタグ</option>' +
+    tags.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`).join("");
+  librarySubjectFilter.innerHTML =
+    '<option value="all">すべての分野</option>' +
+    subjects.map((subject) => `<option value="${escapeHtml(subject)}">${escapeHtml(subject)}</option>`).join("");
+  libraryStorageFilter.innerHTML = `
+    <option value="all">ローカル / 共有 すべて</option>
+    <option value="local">ローカルのみ</option>
+    <option value="shared">共有のみ</option>
+  `;
+  libraryStudyStateFilter.innerHTML = `
+    <option value="all">すべての学習状態</option>
+    <option value="new">新規</option>
+    <option value="learning">学習中</option>
+    <option value="review">定着レビュー</option>
+    <option value="relearning">再学習</option>
+  `;
+
+  if (optionExists(libraryTagFilter, previousTag)) {
+    libraryTagFilter.value = previousTag;
+  }
+  if (optionExists(librarySubjectFilter, previousSubject)) {
+    librarySubjectFilter.value = previousSubject;
+  }
+  if (optionExists(libraryStorageFilter, previousStorage)) {
+    libraryStorageFilter.value = previousStorage;
+  }
+  if (optionExists(libraryStudyStateFilter, previousStudyState)) {
+    libraryStudyStateFilter.value = previousStudyState;
+  }
 }
 
 function renderTrackGrid() {
@@ -747,7 +1263,7 @@ function renderStudy() {
   flashcard.classList.toggle("is-hidden", !currentCard);
 
   if (!currentCard) {
-    studyProgress.textContent = "復習待ちはありません。管理タブからカードを追加できます。";
+    studyProgress.textContent = "復習待ちはありません。「作成」タブからカードを追加できます。";
     toggleAnswerButton.disabled = true;
     renderRatingHints(null);
     return;
@@ -794,7 +1310,31 @@ function pickCurrentCard(queue) {
 
 function renderLibrary() {
   const filter = libraryDeckFilter.value || "all";
-  const items = state.cards.filter((card) => matchesCardFilter(card, filter));
+  const tagFilter = libraryTagFilter.value || "all";
+  const subjectFilter = librarySubjectFilter.value || "all";
+  const storageFilter = libraryStorageFilter.value || "all";
+  const studyStateFilter = libraryStudyStateFilter.value || "all";
+  const textFilter = String(libraryTextFilter.value || "").trim().toLowerCase();
+  const items = state.cards
+    .filter((card) => matchesCardFilter(card, filter))
+    .filter((card) => (tagFilter === "all" ? true : (card.tags || []).includes(tagFilter)))
+    .filter((card) => (subjectFilter === "all" ? true : (getDeckById(card.deckId)?.subject || "") === subjectFilter))
+    .filter((card) => {
+      if (storageFilter === "all") {
+        return true;
+      }
+      return (getDeckById(card.deckId)?.storageMode || "local") === storageFilter;
+    })
+    .filter((card) => (studyStateFilter === "all" ? true : card.study.mode === studyStateFilter))
+    .filter((card) => {
+      if (!textFilter) {
+        return true;
+      }
+      return [card.front, card.back, card.topic, card.note, card.example, ...(card.tags || []), getDeckName(card.deckId)]
+        .join(" ")
+        .toLowerCase()
+        .includes(textFilter);
+    });
 
   if (!items.length) {
     libraryList.innerHTML = `
@@ -811,6 +1351,7 @@ function renderLibrary() {
     .map((card) => {
       const nextReview = formatDueLabel(card.study.dueAt);
       const deck = getDeckById(card.deckId);
+      const canEdit = canEditDeckContent(deck);
 
       return `
         <article class="library-card">
@@ -820,8 +1361,9 @@ function renderLibrary() {
               <p class="muted">${escapeHtml(card.back)}</p>
             </div>
             <div class="button-row">
-              <button class="ghost-button" data-edit-card="${card.id}" type="button">編集</button>
-              <button class="ghost-button danger-button" data-delete-card="${card.id}" type="button">削除</button>
+              <button class="ghost-button" data-open-deck-detail="${card.deckId}" type="button">デッキ詳細</button>
+              <button class="ghost-button" data-edit-card="${card.id}" type="button" ${canEdit ? "" : "disabled"}>編集</button>
+              <button class="ghost-button danger-button" data-delete-card="${card.id}" type="button" ${canEdit ? "" : "disabled"}>削除</button>
             </div>
           </div>
           ${card.note ? `<p class="flashcard-note">${escapeHtml(card.note)}</p>` : ""}
@@ -841,6 +1383,140 @@ function renderLibrary() {
       `;
     })
     .join("");
+}
+
+function renderDeckDetail() {
+  const deck = getDeckById(selectedDeckDetailId);
+  deckDetailTitle.textContent = deck?.name || "デッキ詳細";
+  deckDetailTabButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.deckDetailTab === deckDetailTab);
+  });
+
+  if (!deck) {
+    deckDetailContent.innerHTML = `
+      <article class="library-card">
+        <h4>デッキを選ぶと詳細が見られます</h4>
+        <p class="muted">一覧の「デッキ詳細」から、概要・カード・共有・学習状況を切り替えられます。</p>
+      </article>
+    `;
+    return;
+  }
+
+  const deckCards = state.cards.filter((card) => card.deckId === deck.id);
+  const dueCount = deckCards.filter((card) => card.study.dueAt <= Date.now()).length;
+  const pendingRequests = cloudState.pendingRequests.filter((request) => request.deckId === deck.sharedDeckId);
+
+  if (deckDetailTab === "cards") {
+    deckDetailContent.innerHTML = deckCards.length
+      ? deckCards
+          .slice()
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .slice(0, 8)
+          .map(
+            (card) => `
+              <article class="library-card">
+                <div class="card-row-header">
+                  <div>
+                    <h4>${escapeHtml(card.front)}</h4>
+                    <p class="muted">${escapeHtml(card.back)}</p>
+                  </div>
+                  <button class="ghost-button" data-edit-card="${card.id}" type="button" ${canEditDeckContent(deck) ? "" : "disabled"}>編集</button>
+                </div>
+                <div class="card-row-meta">
+                  ${card.topic ? `<span class="meta-pill">${escapeHtml(card.topic)}</span>` : ""}
+                  ${(card.tags || []).slice(0, 4).map((tag) => `<span class="meta-pill">${escapeHtml(tag)}</span>`).join("")}
+                </div>
+              </article>
+            `,
+          )
+          .join("")
+      : `
+          <article class="library-card">
+            <h4>カードはまだありません</h4>
+            <p class="muted">「作成」タブからカード追加や PDF 取り込みを行えます。</p>
+          </article>
+        `;
+    return;
+  }
+
+  if (deckDetailTab === "share") {
+    const canEdit = canEditDeckContent(deck);
+    const canManage = canManageDeckShare(deck);
+    deckDetailContent.innerHTML = `
+      <article class="library-card">
+        <h4>${escapeHtml(deck.storageMode === "shared" ? "共有デッキ" : "ローカルデッキ")}</h4>
+        <p class="muted">${escapeHtml(deck.storageMode === "shared" ? "共有リンクで他メンバーと共同編集できます。" : "必要なときだけ共有デッキ化できます。")}</p>
+        <div class="card-row-meta">
+          <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
+          ${deck.role ? `<span class="meta-pill">${escapeHtml(formatRoleLabel(deck.role))}</span>` : ""}
+          <span class="meta-pill">${escapeHtml(formatSyncState(deck.syncState))}</span>
+        </div>
+        <div class="button-row">
+          <button class="primary-button" data-share-deck="${deck.id}" type="button" ${canEdit ? "" : "disabled"}>共有する</button>
+          <button class="ghost-button" data-sync-deck="${deck.id}" type="button" ${deck.storageMode === "shared" ? "" : "disabled"}>同期</button>
+          <button class="ghost-button" data-duplicate-deck="${deck.id}" type="button">自分用に複製</button>
+        </div>
+      </article>
+      ${
+        pendingRequests.length
+          ? pendingRequests
+              .map(
+                (request) => `
+                  <article class="library-card">
+                    <h4>${escapeHtml(request.requesterEmail || "参加申請")}</h4>
+                    <p class="muted">この共有デッキへの参加を希望しています。</p>
+                    <div class="button-row">
+                      <button class="primary-button" data-approve-request="${request.id}" type="button" ${canManage ? "" : "disabled"}>承認</button>
+                      <button class="ghost-button danger-button" data-reject-request="${request.id}" type="button" ${canManage ? "" : "disabled"}>拒否</button>
+                    </div>
+                  </article>
+                `,
+              )
+              .join("")
+          : `
+              <article class="library-card">
+                <h4>承認待ちはありません</h4>
+                <p class="muted">共有リンクを配ると、参加申請がここに出ます。</p>
+              </article>
+            `
+      }
+    `;
+    return;
+  }
+
+  if (deckDetailTab === "status") {
+    deckDetailContent.innerHTML = `
+      <article class="library-card">
+        <h4>学習状況</h4>
+        <div class="card-row-meta">
+          <span class="meta-pill">${deckCards.length} cards</span>
+          <span class="meta-pill">${dueCount} due</span>
+          <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
+        </div>
+        <p class="muted">共有デッキでも、学習進捗はユーザーごとに分離して保持します。</p>
+      </article>
+    `;
+    return;
+  }
+
+  deckDetailContent.innerHTML = `
+    <article class="library-card">
+      <h4>${escapeHtml(deck.name)}</h4>
+      <p class="muted">${escapeHtml(deck.description || "説明はまだありません")}</p>
+      <div class="card-row-meta">
+        <span class="meta-pill ${escapeHtml(deck.focus)}">${escapeHtml(formatDeckFocus(deck.focus))}</span>
+        ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
+        <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
+      </div>
+    </article>
+    <article class="library-card">
+      <h4>このデッキでできること</h4>
+      <div class="button-row">
+        <button class="primary-button" data-start-deck="${deck.id}" type="button">このデッキを学習</button>
+        <button class="ghost-button" data-edit-deck="${deck.id}" type="button" ${canEditDeckContent(deck) ? "" : "disabled"}>編集</button>
+      </div>
+    </article>
+  `;
 }
 
 function handleDeckSubmit(event) {
@@ -866,10 +1542,17 @@ function handleDeckSubmit(event) {
       return;
     }
 
+    if (!canEditDeckContent(deck)) {
+      showToast("この共有デッキは編集できません");
+      return;
+    }
+
     deck.name = name;
     deck.focus = normalizeDeckFocus(focus);
     deck.subject = subject;
     deck.description = description;
+    deck.updatedAt = Date.now();
+    markDeckDirty(deck.id);
     clearDeckEditing();
     persist();
     render();
@@ -884,6 +1567,10 @@ function handleDeckSubmit(event) {
     subject,
     description,
     createdAt: Date.now(),
+    updatedAt: Date.now(),
+    storageMode: "local",
+    role: "owner",
+    syncState: "local-only",
   };
 
   state.decks.unshift(deck);
@@ -912,6 +1599,17 @@ function handleCardSubmit(event) {
     return;
   }
 
+  const targetDeck = getDeckById(deckId);
+  if (!targetDeck) {
+    showToast("保存先デッキが見つかりません");
+    return;
+  }
+
+  if (!canEditDeckContent(targetDeck)) {
+    showToast("この共有デッキにはカードを追加できません");
+    return;
+  }
+
   const now = Date.now();
 
   if (cardId) {
@@ -923,6 +1621,12 @@ function handleCardSubmit(event) {
       return;
     }
 
+    if (!canEditDeckContent(getDeckById(card.deckId))) {
+      showToast("この共有デッキのカードは編集できません");
+      return;
+    }
+
+    const previousDeckId = card.deckId;
     card.deckId = deckId;
     card.front = front;
     card.back = back;
@@ -932,6 +1636,8 @@ function handleCardSubmit(event) {
     card.note = note;
     card.example = example;
     card.updatedAt = now;
+    markDeckDirty(previousDeckId);
+    markDeckDirty(deckId);
     clearCardEditing();
     persist();
     render();
@@ -962,8 +1668,11 @@ function handleCardSubmit(event) {
       stepIndex: -1,
       recoveryDays: 1,
     },
+    sharedCardId: "",
   });
 
+  targetDeck.updatedAt = now;
+  markDeckDirty(deckId);
   clearCardEditing();
   persist();
   render();
@@ -1057,6 +1766,14 @@ async function handleAssistantSubmit(event) {
 }
 
 function handleDeckActions(event) {
+  const detailButton = event.target.closest("[data-open-deck-detail]");
+  if (detailButton) {
+    selectedDeckDetailId = detailButton.dataset.openDeckDetail;
+    deckDetailTab = "overview";
+    switchSection("assistant");
+    return;
+  }
+
   const startButton = event.target.closest("[data-start-deck]");
   if (startButton) {
     studyDeckFilter.value = startButton.dataset.startDeck;
@@ -1095,6 +1812,14 @@ function handleTrackActions(event) {
 }
 
 function handleLibraryActions(event) {
+  const detailButton = event.target.closest("[data-open-deck-detail]");
+  if (detailButton) {
+    selectedDeckDetailId = detailButton.dataset.openDeckDetail;
+    deckDetailTab = "overview";
+    renderDeckDetail();
+    return;
+  }
+
   const editButton = event.target.closest("[data-edit-card]");
   if (editButton) {
     startCardEditing(editButton.dataset.editCard);
@@ -1107,13 +1832,80 @@ function handleLibraryActions(event) {
   }
 }
 
+function handleDeckDetailActions(event) {
+  const startButton = event.target.closest("[data-start-deck]");
+  if (startButton) {
+    studyDeckFilter.value = startButton.dataset.startDeck;
+    currentCardId = null;
+    isAnswerVisible = false;
+    switchSection("study");
+    return;
+  }
+
+  const editDeckButton = event.target.closest("[data-edit-deck]");
+  if (editDeckButton) {
+    startDeckEditing(editDeckButton.dataset.editDeck);
+    return;
+  }
+
+  const editCardButton = event.target.closest("[data-edit-card]");
+  if (editCardButton) {
+    startCardEditing(editCardButton.dataset.editCard);
+    return;
+  }
+
+  const shareButton = event.target.closest("[data-share-deck]");
+  if (shareButton) {
+    shareDeckSelect.value = shareButton.dataset.shareDeck;
+    shareDeck();
+    return;
+  }
+
+  const syncButton = event.target.closest("[data-sync-deck]");
+  if (syncButton) {
+    shareDeckSelect.value = syncButton.dataset.syncDeck;
+    syncSelectedSharedDeck();
+    return;
+  }
+
+  const duplicateButton = event.target.closest("[data-duplicate-deck]");
+  if (duplicateButton) {
+    shareDeckSelect.value = duplicateButton.dataset.duplicateDeck;
+    duplicateSelectedDeck();
+    return;
+  }
+
+  const approveButton = event.target.closest("[data-approve-request]");
+  if (approveButton) {
+    approveShareRequest(approveButton.dataset.approveRequest);
+    return;
+  }
+
+  const rejectButton = event.target.closest("[data-reject-request]");
+  if (rejectButton) {
+    rejectShareRequest(rejectButton.dataset.rejectRequest);
+  }
+}
+
 function handleImportPreviewActions(event) {
+  const toggleButton = event.target.closest("[data-toggle-import-card]");
+  if (toggleButton && importDraft) {
+    if (toggleButton.checked) {
+      importSelection.add(toggleButton.dataset.toggleImportCard);
+    } else {
+      importSelection.delete(toggleButton.dataset.toggleImportCard);
+    }
+    renderImportPanel();
+    return;
+  }
+
   const removeButton = event.target.closest("[data-remove-import-card]");
   if (!removeButton || !importDraft) {
     return;
   }
 
   importDraft.cards = importDraft.cards.filter((card) => card.id !== removeButton.dataset.removeImportCard);
+  importSelection.delete(removeButton.dataset.removeImportCard);
 
   if (!importDraft.cards.length) {
     clearImportDraft();
@@ -1123,6 +1915,80 @@ function handleImportPreviewActions(event) {
 
   renderImportPanel();
   showToast("候補を1枚外しました");
+}
+
+function selectAllImportCandidates() {
+  if (!importDraft) {
+    return;
+  }
+
+  importSelection = new Set(importDraft.cards.map((card) => card.id));
+  renderImportPanel();
+  showToast("候補をすべて選択しました");
+}
+
+function clearImportSelection() {
+  importSelection.clear();
+  renderImportPanel();
+  if (importDraft) {
+    showToast("候補の選択を解除しました");
+  }
+}
+
+function removeSelectedImportCandidates() {
+  if (!importDraft || !importSelection.size) {
+    showToast("削除する候補を選択してください");
+    return;
+  }
+
+  importDraft.cards = importDraft.cards.filter((card) => !importSelection.has(card.id));
+  const removedCount = importSelection.size;
+  importSelection.clear();
+
+  if (!importDraft.cards.length) {
+    clearImportDraft();
+    showToast("選択した候補を削除した結果、下書きが空になりました");
+    return;
+  }
+
+  renderImportPanel();
+  showToast(`${removedCount}枚の候補を削除しました`);
+}
+
+function dedupeImportCandidates() {
+  if (!importDraft) {
+    return;
+  }
+
+  const before = importDraft.cards.length;
+  importDraft.cards = dedupeImportCards(importDraft.cards);
+  importSelection = new Set(importDraft.cards.map((card) => card.id).filter((id) => importSelection.has(id)));
+  renderImportPanel();
+  showToast(before === importDraft.cards.length ? "重複候補は見つかりませんでした" : `${before - importDraft.cards.length}件の重複候補を統合しました`);
+}
+
+function applyBulkImportTags() {
+  if (!importDraft) {
+    return;
+  }
+
+  const targetIds = importSelection.size ? importSelection : new Set(importDraft.cards.map((card) => card.id));
+  const tags = parseTags(bulkImportTagsInput.value);
+  if (!tags.length) {
+    showToast("追加するタグを入力してください");
+    return;
+  }
+
+  importDraft.cards = importDraft.cards.map((card) =>
+    targetIds.has(card.id)
+      ? {
+          ...card,
+          tags: dedupeTags([...(card.tags || []), ...tags]),
+        }
+      : card,
+  );
+  renderImportPanel();
+  showToast(`${targetIds.size}枚の候補にタグを追加しました`);
 }
 
 function handleAssistantSettingsChange() {
@@ -1154,7 +2020,9 @@ function handleAssistantActions(event) {
 
   try {
     const focus = inferAssistantFocus(state.assistant.deckFilter);
-    const deckName = buildDeckNameFromSource(`ローカル検索 ${formatDateKey(new Date())}`);
+    const selectedTarget = searchCardifyTarget.value || "new";
+    const targetDeck = selectedTarget === "new" ? null : getDeckById(selectedTarget);
+    const deckName = targetDeck ? targetDeck.name : buildDeckNameFromSource(`ローカル検索 ${formatDateKey(new Date())}`);
     importDraft = buildImportDraft({
       text: message.text,
       sourceName: "ローカル検索結果",
@@ -1164,11 +2032,18 @@ function handleAssistantActions(event) {
       instructions: "ローカル検索の結果からカード候補化",
       limit: 12,
     });
+    importDraft.targetDeckId = targetDeck?.id || "";
     importFocusInput.value = focus;
     importDeckNameInput.value = deckName;
+    if (targetDeck && optionExists(cardDeckId, targetDeck.id)) {
+      cardDeckId.value = targetDeck.id;
+    }
+    if (targetDeck && optionExists(shareDeckSelect, targetDeck.id)) {
+      shareDeckSelect.value = targetDeck.id;
+    }
     switchSection("manage");
     render();
-    showToast("ローカル検索結果からカード候補を作成しました");
+    showToast(targetDeck ? "ローカル検索結果を既存デッキへ追加する候補にしました" : "ローカル検索結果からカード候補を作成しました");
   } catch (error) {
     showToast(error.message || "カード候補化に失敗しました");
   }
@@ -1181,18 +2056,35 @@ function saveImportDraftAsDeck() {
   }
 
   const now = Date.now();
-  const deckId = crypto.randomUUID();
-  const deckName = createUniqueDeckName(importDraft.deckName);
+  const targetDeck = getDeckById(importDraft.targetDeckId);
+  const deckId = targetDeck?.id || crypto.randomUUID();
+  const deckName = targetDeck ? targetDeck.name : createUniqueDeckName(importDraft.deckName);
   const descriptionBase = importDraft.sourceName ? `${importDraft.sourceName} から自動生成` : "資料から自動生成";
 
-  state.decks.unshift({
-    id: deckId,
-    name: deckName,
-    focus: importDraft.focus,
-    subject: importDraft.subject,
-    description: importDraft.instructions ? `${descriptionBase} / ${importDraft.instructions}` : descriptionBase,
-    createdAt: now,
-  });
+  if (targetDeck && !canEditDeckContent(targetDeck)) {
+    showToast("この共有デッキにはカードを追加できません");
+    return;
+  }
+
+  if (!targetDeck) {
+    state.decks.unshift({
+      id: deckId,
+      name: deckName,
+      focus: importDraft.focus,
+      subject: importDraft.subject,
+      description: importDraft.instructions ? `${descriptionBase} / ${importDraft.instructions}` : descriptionBase,
+      createdAt: now,
+      storageMode: "local",
+      role: "owner",
+      syncState: "local-only",
+    });
+  } else {
+    targetDeck.updatedAt = now;
+    targetDeck.subject = targetDeck.subject || importDraft.subject;
+    if (!targetDeck.description) {
+      targetDeck.description = importDraft.instructions ? `${descriptionBase} / ${importDraft.instructions}` : descriptionBase;
+    }
+  }
 
   importDraft.cards
     .slice()
@@ -1212,19 +2104,22 @@ function saveImportDraftAsDeck() {
           createdAt: now + index,
           dueAt: now,
           intervalDays: 0,
+          sharedCardId: "",
         }),
       );
     });
 
   const cardCount = importDraft.cards.length;
+  markDeckDirty(deckId);
   clearImportDraft();
   persist();
   render();
   studyDeckFilter.value = deckId;
   libraryDeckFilter.value = deckId;
   cardDeckId.value = deckId;
+  shareDeckSelect.value = deckId;
   applyCardContextPlaceholders();
-  showToast(`${deckName} を作成しました（${cardCount} cards）`);
+  showToast(targetDeck ? `${deckName} に ${cardCount} 枚追加しました` : `${deckName} を作成しました（${cardCount} cards）`);
 }
 
 async function requestAssistantAnswer(question) {
@@ -1354,8 +2249,14 @@ function startDeckEditing(deckId) {
     return;
   }
 
+  if (!canEditDeckContent(deck)) {
+    showToast("この共有デッキは編集できません");
+    return;
+  }
+
   clearCardEditing();
   editingDeckId = deck.id;
+  setCreateMode("deck");
   switchSection("manage");
   renderForms();
 }
@@ -1367,8 +2268,14 @@ function startCardEditing(cardId) {
     return;
   }
 
+  if (!canEditDeckContent(getDeckById(card.deckId))) {
+    showToast("この共有デッキのカードは編集できません");
+    return;
+  }
+
   clearDeckEditing();
   editingCardId = card.id;
+  setCreateMode("card");
   switchSection("manage");
   renderForms();
 }
@@ -1385,12 +2292,22 @@ function deleteDeck(deckId) {
     return;
   }
 
+  if (deck.storageMode === "shared") {
+    showToast("共有デッキの削除は未対応です。必要なら自分用に複製して管理してください");
+    return;
+  }
+
   const cardIds = state.cards.filter((card) => card.deckId === deckId).map((card) => card.id);
   const approved = window.confirm(
     `「${deck.name}」を削除します。関連する${cardIds.length}枚のカードも削除されます。続けますか？`,
   );
 
   if (!approved) {
+    return;
+  }
+
+  if (!canEditDeckContent(deck)) {
+    showToast("この共有デッキは削除できません");
     return;
   }
 
@@ -1428,8 +2345,14 @@ function deleteCard(cardId) {
     return;
   }
 
+  if (!canEditDeckContent(getDeckById(card.deckId))) {
+    showToast("この共有デッキのカードは削除できません");
+    return;
+  }
+
   state.cards = state.cards.filter((item) => item.id !== cardId);
   state.reviewLog = state.reviewLog.filter((entry) => entry.cardId !== cardId);
+  markDeckDirty(card.deckId);
 
   if (editingCardId === cardId) {
     clearCardEditing();
@@ -1477,6 +2400,9 @@ function reviewCurrentCard(rating) {
   isAnswerVisible = false;
   persist();
   render();
+  syncSharedProgressForCard(card, rating).catch((error) => {
+    console.warn("Failed to sync shared progress:", error);
+  });
   showToast(outcome.toast);
 }
 
@@ -1508,6 +2434,7 @@ function clearCardEditing() {
 
 function clearImportDraft() {
   importDraft = null;
+  importSelection.clear();
   importForm.reset();
   importLimitInput.value = "12";
   importFocusInput.value = "medical";
@@ -1821,6 +2748,7 @@ function buildImportDraft({ text, sourceName, deckName, focus, subject, instruct
     id: crypto.randomUUID(),
     sourceName,
     deckName,
+    targetDeckId: "",
     focus,
     subject,
     instructions,
@@ -2028,6 +2956,887 @@ function loadState() {
   }
 }
 
+async function fetchCloudConfig() {
+  if (cloudState.config) {
+    return cloudState.config;
+  }
+
+  try {
+    const response = await fetch(CLOUD_CONFIG_ENDPOINT, { cache: "no-store" });
+    if (!response.ok) {
+      cloudState.config = {};
+      return cloudState.config;
+    }
+
+    const config = await response.json();
+    cloudState.config =
+      config && config.supabaseUrl && config.supabaseAnonKey
+        ? {
+            supabaseUrl: String(config.supabaseUrl),
+            supabaseAnonKey: String(config.supabaseAnonKey),
+          }
+        : {};
+    return cloudState.config;
+  } catch (error) {
+    console.warn("Failed to load cloud config:", error);
+    cloudState.config = {};
+    return cloudState.config;
+  }
+}
+
+async function getSupabaseClient() {
+  if (cloudState.client) {
+    return cloudState.client;
+  }
+
+  const config = await fetchCloudConfig();
+  if (!config.supabaseUrl || !config.supabaseAnonKey) {
+    return null;
+  }
+
+  if (!cloudState.module) {
+    cloudState.module = import(SUPABASE_MODULE_URL);
+  }
+
+  const { createClient } = await cloudState.module;
+  cloudState.client = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
+
+  cloudState.client.auth.onAuthStateChange((_event, session) => {
+    cloudState.session = session;
+    if (session?.user) {
+      ensureCloudProfile().catch((error) => {
+        console.warn("Failed to ensure profile:", error);
+      });
+    }
+    refreshCloudData({ silent: true }).catch((error) => {
+      console.warn("Failed to refresh cloud data:", error);
+    });
+    renderSharePanel();
+  });
+
+  return cloudState.client;
+}
+
+async function initializeCloud() {
+  const url = new URL(window.location.href);
+  cloudState.shareToken = String(url.searchParams.get("share") || "").trim();
+  renderSharePanel();
+
+  const client = await getSupabaseClient();
+  if (!client) {
+    cloudState.status = "local-only";
+    if (cloudState.shareToken) {
+      shareJoinTitle.textContent = "共有デッキに参加";
+      shareJoinStatus.textContent =
+        "この共有リンクを使うには、Supabase を接続してから共有タブでログインしてください。";
+      requestShareAccessButton.disabled = true;
+      shareJoinModal.hidden = false;
+    }
+    renderSharePanel();
+    return;
+  }
+
+  const {
+    data: { session },
+  } = await client.auth.getSession();
+  cloudState.session = session;
+  if (session?.user) {
+    await ensureCloudProfile();
+  }
+
+  await refreshCloudData({ silent: true });
+  cleanupAuthUrl();
+}
+
+function cleanupAuthUrl() {
+  const url = new URL(window.location.href);
+  let changed = false;
+
+  ["code", "type"].forEach((key) => {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  });
+
+  if (window.location.hash.includes("access_token") || window.location.hash.includes("refresh_token")) {
+    changed = true;
+  }
+
+  if (changed) {
+    history.replaceState({}, "", `${url.pathname}${url.search}`);
+  }
+}
+
+async function ensureCloudProfile() {
+  const client = cloudState.client || (await getSupabaseClient());
+  const user = cloudState.session?.user;
+
+  if (!client || !user) {
+    return null;
+  }
+
+  const payload = {
+    id: user.id,
+    email: String(user.email || "").trim(),
+    display_name: String(user.user_metadata?.full_name || user.user_metadata?.name || "").trim(),
+  };
+
+  const { data, error } = await client.from("profiles").upsert(payload).select("*").single();
+  if (error) {
+    console.warn("Failed to upsert profile:", error);
+    cloudState.profile = payload;
+    return payload;
+  }
+
+  cloudState.profile = data;
+  return data;
+}
+
+async function refreshCloudData({ silent = false } = {}) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client) {
+    cloudState.status = "local-only";
+    cloudState.pendingRequests = [];
+    renderSharePanel();
+    return;
+  }
+
+  if (!cloudState.session?.user) {
+    cloudState.status = "signed-out";
+    cloudState.pendingRequests = [];
+    cloudState.profile = null;
+    render();
+    if (cloudState.shareToken) {
+      await refreshShareJoinPreview();
+    }
+    return;
+  }
+
+  if (!silent) {
+    shareStatus.textContent = "共有データを読み込んでいます。";
+  }
+
+  try {
+    await ensureCloudProfile();
+    const userId = cloudState.session.user.id;
+    const membershipResponse = await client
+      .from("deck_members")
+      .select("role, deck_id, shared_decks(id, name, focus, subject, description, share_token, owner_id, created_at, updated_at)")
+      .eq("user_id", userId);
+
+    if (membershipResponse.error) {
+      throw membershipResponse.error;
+    }
+
+    const memberships = (membershipResponse.data || [])
+      .map((row) =>
+        row.shared_decks
+          ? {
+              ...row.shared_decks,
+              role: row.role,
+            }
+          : null,
+      )
+      .filter(Boolean);
+    const sharedDeckIds = memberships.map((deck) => deck.id);
+    const ownerDeckIds = memberships.filter((deck) => deck.role === "owner").map((deck) => deck.id);
+
+    const cardsResponse = sharedDeckIds.length
+      ? await client.from("shared_cards").select("*").in("deck_id", sharedDeckIds).order("order_index", { ascending: true })
+      : { data: [], error: null };
+    if (cardsResponse.error) {
+      throw cardsResponse.error;
+    }
+
+    const progressResponse = sharedDeckIds.length
+      ? await client.from("user_card_progress").select("*").eq("user_id", userId).in("deck_id", sharedDeckIds)
+      : { data: [], error: null };
+    if (progressResponse.error) {
+      throw progressResponse.error;
+    }
+
+    const requestResponse = ownerDeckIds.length
+      ? await client.from("deck_access_requests").select("*").eq("status", "pending").in("deck_id", ownerDeckIds)
+      : { data: [], error: null };
+    if (requestResponse.error) {
+      throw requestResponse.error;
+    }
+
+    mergeCloudDecks(memberships, cardsResponse.data || [], progressResponse.data || []);
+    cloudState.pendingRequests = (requestResponse.data || []).map((request) => ({
+      ...request,
+      deckName: memberships.find((deck) => deck.id === request.deck_id)?.name || "共有デッキ",
+      deckId: request.deck_id,
+      requesterEmail: request.requester_email,
+      requestedRole: request.requested_role,
+    }));
+    cloudState.status = "ready";
+    persist();
+    render();
+    if (cloudState.shareToken) {
+      await refreshShareJoinPreview();
+    }
+  } catch (error) {
+    console.warn("Failed to refresh cloud data:", error);
+    cloudState.status = "offline";
+    renderSharePanel();
+    if (!silent) {
+      showToast("共有情報の読み込みに失敗しました");
+    }
+  }
+}
+
+function mergeCloudDecks(sharedDecks, sharedCards, progressRows) {
+  sharedDecks.forEach((sharedDeck) => {
+    const existingDeck = state.decks.find((deck) => deck.sharedDeckId === sharedDeck.id) || null;
+    const localDeckId = existingDeck?.id || crypto.randomUUID();
+    const mergedDeck = normalizeDeck({
+      ...existingDeck,
+      id: localDeckId,
+      name: sharedDeck.name,
+      focus: sharedDeck.focus,
+      subject: sharedDeck.subject,
+      description: sharedDeck.description,
+      createdAt: existingDeck?.createdAt || parseCloudTimestamp(sharedDeck.created_at),
+      updatedAt: parseCloudTimestamp(sharedDeck.updated_at) || Date.now(),
+      storageMode: "shared",
+      sharedDeckId: sharedDeck.id,
+      shareToken: sharedDeck.share_token || existingDeck?.shareToken || "",
+      role: sharedDeck.role || existingDeck?.role || "viewer",
+      syncState: "synced",
+    });
+
+    if (existingDeck?.syncState === "dirty" && canEditDeckContent(existingDeck)) {
+      mergedDeck.syncState = "dirty";
+      upsertDeck(mergedDeck);
+      return;
+    }
+
+    upsertDeck(mergedDeck);
+
+    const currentCards = state.cards.filter((card) => card.deckId === localDeckId);
+    const existingCardsBySharedId = new Map(currentCards.map((card) => [card.sharedCardId, card]));
+    const deckCards = sharedCards.filter((card) => card.deck_id === sharedDeck.id);
+    const nextCards = deckCards.map((cardRow, index) => {
+      const existing = existingCardsBySharedId.get(cardRow.id);
+      const progressRow = progressRows.find((row) => row.shared_card_id === cardRow.id);
+      return normalizeCard({
+        id: existing?.id || crypto.randomUUID(),
+        deckId: localDeckId,
+        front: cardRow.front,
+        back: cardRow.back,
+        hint: cardRow.hint || "",
+        topic: cardRow.topic || "",
+        tags: Array.isArray(cardRow.tags) ? cardRow.tags : parseTags(cardRow.tags),
+        note: cardRow.note || "",
+        example: cardRow.example || "",
+        createdAt: existing?.createdAt || parseCloudTimestamp(cardRow.created_at) || Date.now() + index,
+        updatedAt: parseCloudTimestamp(cardRow.updated_at) || existing?.updatedAt || Date.now(),
+        sharedCardId: cardRow.id,
+        study: progressRow ? progressRowToStudy(progressRow, existing?.study) : existing?.study,
+      });
+    });
+
+    state.cards = state.cards.filter((card) => card.deckId !== localDeckId).concat(nextCards);
+  });
+}
+
+function upsertDeck(nextDeck) {
+  const index = state.decks.findIndex((deck) => deck.id === nextDeck.id);
+  if (index >= 0) {
+    state.decks[index] = nextDeck;
+    return;
+  }
+
+  state.decks.unshift(nextDeck);
+}
+
+function parseCloudTimestamp(value) {
+  const timestamp = Date.parse(String(value || ""));
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function progressRowToStudy(progressRow, fallbackStudy) {
+  return normalizeStudy(
+    progressRow
+      ? {
+          dueAt: Number(progressRow.due_at || Date.now()),
+          intervalDays: Number(progressRow.interval_days || 0),
+          ease: Number(progressRow.ease || 2.3),
+          reps: Number(progressRow.reps || 0),
+          lapses: Number(progressRow.lapses || 0),
+          lastReviewedAt: Number(progressRow.last_reviewed_at || 0) || null,
+          mode: String(progressRow.mode || "new"),
+          stepIndex: Number(progressRow.step_index || 0),
+          recoveryDays: Number(progressRow.recovery_days || 1),
+        }
+      : fallbackStudy,
+    Date.now(),
+  );
+}
+
+function buildProgressPayload(deck, card) {
+  return {
+    user_id: cloudState.session.user.id,
+    deck_id: deck.sharedDeckId,
+    shared_card_id: card.sharedCardId,
+    due_at: Math.round(card.study.dueAt),
+    interval_days: Number(card.study.intervalDays || 0),
+    ease: Number(card.study.ease || 2.3),
+    reps: Number(card.study.reps || 0),
+    lapses: Number(card.study.lapses || 0),
+    last_reviewed_at: card.study.lastReviewedAt ? Math.round(card.study.lastReviewedAt) : null,
+    mode: String(card.study.mode || "new"),
+    step_index: Number(card.study.stepIndex || 0),
+    recovery_days: Number(card.study.recoveryDays || 1),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function syncDeckToCloud(deck) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    throw new Error("共有機能を使うにはログインが必要です");
+  }
+  if (!deck.sharedDeckId) {
+    throw new Error("共有デッキIDがありません");
+  }
+  if (!canEditDeckContent(deck)) {
+    throw new Error("この共有デッキは編集できません");
+  }
+
+  deck.syncState = "syncing";
+  renderSharePanel();
+
+  const deckPayload = {
+    name: deck.name,
+    focus: deck.focus,
+    subject: deck.subject,
+    description: deck.description,
+    share_token: deck.shareToken,
+    updated_at: new Date().toISOString(),
+  };
+  if (deck.role === "owner") {
+    deckPayload.owner_id = cloudState.session.user.id;
+  }
+
+  const { error: deckError } = await client.from("shared_decks").update(deckPayload).eq("id", deck.sharedDeckId);
+  if (deckError) {
+    deck.syncState = "dirty";
+    throw deckError;
+  }
+
+  const localCards = state.cards
+    .filter((card) => card.deckId === deck.id)
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((card, index) => {
+      if (!card.sharedCardId) {
+        card.sharedCardId = crypto.randomUUID();
+      }
+      return {
+        id: card.sharedCardId,
+        deck_id: deck.sharedDeckId,
+        front: card.front,
+        back: card.back,
+        hint: card.hint || "",
+        topic: card.topic || "",
+        tags: card.tags || [],
+        note: card.note || "",
+        example: card.example || "",
+        order_index: index,
+        updated_at: new Date(card.updatedAt || Date.now()).toISOString(),
+      };
+    });
+
+  const existingCardsResponse = await client.from("shared_cards").select("id").eq("deck_id", deck.sharedDeckId);
+  if (existingCardsResponse.error) {
+    deck.syncState = "dirty";
+    throw existingCardsResponse.error;
+  }
+
+  const localSharedIds = new Set(localCards.map((card) => card.id));
+  const staleIds = (existingCardsResponse.data || []).map((card) => card.id).filter((id) => !localSharedIds.has(id));
+  if (staleIds.length) {
+    const { error: deleteError } = await client.from("shared_cards").delete().in("id", staleIds);
+    if (deleteError) {
+      deck.syncState = "dirty";
+      throw deleteError;
+    }
+  }
+
+  if (localCards.length) {
+    const { error: upsertError } = await client.from("shared_cards").upsert(localCards);
+    if (upsertError) {
+      deck.syncState = "dirty";
+      throw upsertError;
+    }
+  }
+
+  deck.syncState = "synced";
+  await syncSharedDeckProgress(deck.id);
+  persist();
+}
+
+async function syncSharedDeckProgress(deckId) {
+  const deck = getDeckById(deckId);
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!deck || deck.storageMode !== "shared" || !deck.sharedDeckId || !client || !cloudState.session?.user) {
+    return;
+  }
+
+  const progressRows = state.cards
+    .filter((card) => card.deckId === deck.id && card.sharedCardId)
+    .map((card) => buildProgressPayload(deck, card));
+
+  if (!progressRows.length) {
+    return;
+  }
+
+  const { error } = await client.from("user_card_progress").upsert(progressRows, { onConflict: "user_id,shared_card_id" });
+  if (error) {
+    console.warn("Failed to sync deck progress:", error);
+  }
+}
+
+async function syncSharedProgressForCard(card, rating = "") {
+  const deck = getDeckById(card.deckId);
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!deck || deck.storageMode !== "shared" || !deck.sharedDeckId || !card.sharedCardId || !client || !cloudState.session?.user) {
+    return;
+  }
+
+  const { error: progressError } = await client
+    .from("user_card_progress")
+    .upsert(buildProgressPayload(deck, card), { onConflict: "user_id,shared_card_id" });
+  if (progressError) {
+    throw progressError;
+  }
+
+  if (rating) {
+    const latestReview = [...state.reviewLog].reverse().find((entry) => entry.cardId === card.id);
+    const { error: logError } = await client.from("user_review_log").insert({
+      user_id: cloudState.session.user.id,
+      deck_id: deck.sharedDeckId,
+      shared_card_id: card.sharedCardId,
+      rating,
+      timestamp_ms: Math.round(latestReview?.timestamp || Date.now()),
+      date_key: latestReview?.dateKey || formatDateKey(new Date()),
+      mode: String(card.study.mode || "new"),
+      interval_days: Number(card.study.intervalDays || 0),
+    });
+    if (logError) {
+      console.warn("Failed to append review log:", logError);
+    }
+  }
+}
+
+function buildShareUrl(token) {
+  return `${window.location.origin}${window.location.pathname}?share=${encodeURIComponent(token)}`;
+}
+
+async function sendMagicLink() {
+  const email = String(authEmailInput.value || "").trim();
+  const client = cloudState.client || (await getSupabaseClient());
+
+  if (!client) {
+    showToast("先に Supabase の設定を追加してください");
+    return;
+  }
+  if (!email) {
+    showToast("メールアドレスを入力してください");
+    return;
+  }
+
+  const redirectUrl = cloudState.shareToken ? buildShareUrl(cloudState.shareToken) : `${window.location.origin}${window.location.pathname}`;
+  const { error } = await client.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: redirectUrl,
+    },
+  });
+
+  if (error) {
+    showToast(error.message || "マジックリンク送信に失敗しました");
+    return;
+  }
+
+  showToast("マジックリンクを送信しました。メールから戻ってください");
+}
+
+async function signOutCloud() {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client) {
+    return;
+  }
+
+  await client.auth.signOut();
+  cloudState.session = null;
+  cloudState.profile = null;
+  cloudState.pendingRequests = [];
+  render();
+  showToast("共有アカウントからログアウトしました");
+}
+
+async function shareDeck() {
+  const deck = getSelectedShareDeck();
+  const client = cloudState.client || (await getSupabaseClient());
+
+  if (!deck) {
+    showToast("共有するデッキを選んでください");
+    return;
+  }
+  if (!client || !cloudState.session?.user) {
+    showToast("共有を使うにはログインしてください");
+    return;
+  }
+  if (!canEditDeckContent(deck)) {
+    showToast("この共有デッキは編集できません");
+    return;
+  }
+
+  try {
+    await ensureCloudProfile();
+
+    if (!deck.sharedDeckId) {
+      const payload = {
+        owner_id: cloudState.session.user.id,
+        name: deck.name,
+        focus: deck.focus,
+        subject: deck.subject,
+        description: deck.description,
+        share_token: deck.shareToken || crypto.randomUUID(),
+      };
+      const { data, error } = await client.from("shared_decks").insert(payload).select("*").single();
+      if (error) {
+        throw error;
+      }
+
+      const { error: memberError } = await client.from("deck_members").upsert(
+        {
+          deck_id: data.id,
+          user_id: cloudState.session.user.id,
+          role: "owner",
+        },
+        { onConflict: "deck_id,user_id" },
+      );
+      if (memberError) {
+        throw memberError;
+      }
+
+      deck.storageMode = "shared";
+      deck.sharedDeckId = data.id;
+      deck.shareToken = data.share_token;
+      deck.role = "owner";
+      deck.syncState = "dirty";
+    }
+
+    await syncDeckToCloud(deck);
+    shareLinkCache = buildShareUrl(deck.shareToken);
+    render();
+    showToast("共有リンクを作成しました");
+  } catch (error) {
+    console.warn("Failed to share deck:", error);
+    showToast(error.message || "共有リンクの作成に失敗しました");
+  }
+}
+
+async function copyShareLink() {
+  const deck = getSelectedShareDeck();
+  const link = deck?.shareToken ? buildShareUrl(deck.shareToken) : shareLinkCache;
+
+  if (!link) {
+    showToast("先に共有リンクを作成してください");
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(link);
+    showToast("共有リンクをコピーしました");
+  } catch (error) {
+    window.prompt("このリンクをコピーしてください", link);
+  }
+}
+
+async function syncSelectedSharedDeck() {
+  const deck = getSelectedShareDeck();
+  if (!deck) {
+    showToast("同期するデッキを選んでください");
+    return;
+  }
+
+  if (deck.storageMode !== "shared") {
+    await shareDeck();
+    return;
+  }
+
+  try {
+    if (canEditDeckContent(deck)) {
+      await syncDeckToCloud(deck);
+    }
+    await refreshCloudData({ silent: true });
+    showToast(canEditDeckContent(deck) ? "共有デッキを同期しました" : "共有デッキの最新内容を取得しました");
+  } catch (error) {
+    console.warn("Failed to sync shared deck:", error);
+    deck.syncState = "dirty";
+    renderSharePanel();
+    showToast(error.message || "同期に失敗しました");
+  }
+}
+
+function duplicateSelectedDeck() {
+  const sourceDeck = getSelectedShareDeck();
+  if (!sourceDeck) {
+    showToast("複製するデッキを選んでください");
+    return;
+  }
+
+  const sourceCards = state.cards.filter((card) => card.deckId === sourceDeck.id);
+  const now = Date.now();
+  const newDeckId = crypto.randomUUID();
+  const duplicateDeck = normalizeDeck({
+    id: newDeckId,
+    name: createUniqueDeckName(`${sourceDeck.name} 自分用`),
+    focus: sourceDeck.focus,
+    subject: sourceDeck.subject,
+    description: sourceDeck.description || "共有デッキから複製",
+    createdAt: now,
+    updatedAt: now,
+    storageMode: "local",
+    role: "owner",
+    syncState: "local-only",
+  });
+
+  state.decks.unshift(duplicateDeck);
+  sourceCards
+    .slice()
+    .reverse()
+    .forEach((card, index) => {
+      state.cards.unshift(
+        normalizeCard({
+          ...clone(card),
+          id: crypto.randomUUID(),
+          deckId: newDeckId,
+          createdAt: now + index,
+          updatedAt: now + index,
+          sharedCardId: "",
+        }),
+      );
+    });
+
+  persist();
+  render();
+  shareDeckSelect.value = newDeckId;
+  selectedDeckDetailId = newDeckId;
+  showToast("自分用のローカルデッキを複製しました");
+}
+
+async function refreshShareJoinPreview() {
+  if (!cloudState.shareToken) {
+    shareJoinModal.hidden = true;
+    return;
+  }
+
+  if (!cloudState.config?.supabaseUrl) {
+    shareJoinTitle.textContent = "共有デッキに参加";
+    shareJoinStatus.textContent =
+      "このリンクを使うには Supabase の共有設定が必要です。接続後に共有タブからログインしてください。";
+    requestShareAccessButton.disabled = true;
+    shareJoinModal.hidden = false;
+    return;
+  }
+
+  if (!cloudState.session?.user) {
+    shareJoinTitle.textContent = "共有デッキに参加";
+    shareJoinStatus.textContent = "ログインすると、この共有リンクへの参加申請を送れます。";
+    requestShareAccessButton.disabled = true;
+    shareJoinModal.hidden = false;
+    return;
+  }
+
+  const client = cloudState.client || (await getSupabaseClient());
+  const { data, error } = await client.rpc("get_share_preview", {
+    target_token: cloudState.shareToken,
+  });
+
+  if (error) {
+    console.warn("Failed to load share preview:", error);
+    shareJoinTitle.textContent = "共有リンクを確認できませんでした";
+    shareJoinStatus.textContent = "リンクが無効か、共有設定がまだ完了していない可能性があります。";
+    requestShareAccessButton.disabled = true;
+    shareJoinModal.hidden = false;
+    return;
+  }
+
+  const preview = Array.isArray(data) ? data[0] : data;
+  cloudState.lastSharePreview = preview || null;
+
+  if (!preview?.deck_id) {
+    shareJoinTitle.textContent = "共有リンクが見つかりません";
+    shareJoinStatus.textContent = "管理者に新しい共有リンクを発行してもらってください。";
+    requestShareAccessButton.disabled = true;
+    shareJoinModal.hidden = false;
+    return;
+  }
+
+  shareJoinTitle.textContent = `${preview.deck_name} に参加`;
+
+  if (preview.membership_role) {
+    const localDeck = state.decks.find((deck) => deck.sharedDeckId === preview.deck_id);
+    if (localDeck) {
+      selectedDeckDetailId = localDeck.id;
+    }
+    shareJoinStatus.textContent = "この共有デッキには既に参加済みです。ライブラリで内容を確認できます。";
+    requestShareAccessButton.disabled = true;
+    shareJoinModal.hidden = false;
+    return;
+  }
+
+  if (preview.request_status === "pending") {
+    shareJoinStatus.textContent = "参加申請は送信済みです。承認されるまでお待ちください。";
+    requestShareAccessButton.disabled = true;
+    shareJoinModal.hidden = false;
+    return;
+  }
+
+  if (preview.request_status === "rejected") {
+    shareJoinStatus.textContent = "前回の申請は拒否されました。必要ならもう一度申請できます。";
+  } else {
+    shareJoinStatus.textContent = `${preview.subject || formatDeckFocus(preview.focus)} の共有デッキです。承認制で参加できます。`;
+  }
+
+  requestShareAccessButton.disabled = false;
+  shareJoinModal.hidden = false;
+}
+
+async function requestShareAccess() {
+  if (!cloudState.shareToken) {
+    showToast("共有リンクが見つかりません");
+    return;
+  }
+
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    showToast("参加申請にはログインが必要です");
+    return;
+  }
+
+  const { error } = await client.rpc("request_deck_access", {
+    target_token: cloudState.shareToken,
+    requested_role: "viewer",
+  });
+
+  if (error) {
+    showToast(error.message || "参加申請に失敗しました");
+    return;
+  }
+
+  await refreshShareJoinPreview();
+  await refreshCloudData({ silent: true });
+  showToast("参加申請を送りました");
+}
+
+async function approveShareRequest(requestId) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client) {
+    return;
+  }
+
+  const { error } = await client.rpc("approve_deck_access", {
+    target_request_id: requestId,
+  });
+
+  if (error) {
+    showToast(error.message || "申請の承認に失敗しました");
+    return;
+  }
+
+  await refreshCloudData({ silent: true });
+  renderSharePanel();
+  showToast("参加申請を承認しました");
+}
+
+async function rejectShareRequest(requestId) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client) {
+    return;
+  }
+
+  const { error } = await client.rpc("reject_deck_access", {
+    target_request_id: requestId,
+  });
+
+  if (error) {
+    showToast(error.message || "申請の拒否に失敗しました");
+    return;
+  }
+
+  await refreshCloudData({ silent: true });
+  renderSharePanel();
+  showToast("参加申請を拒否しました");
+}
+
+function exportJsonBackup() {
+  const snapshot = {
+    exportedAt: new Date().toISOString(),
+    version: 2,
+    state,
+  };
+  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `pulse-recall-backup-${formatDateKey(new Date())}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("JSON バックアップを書き出しました");
+}
+
+async function importJsonBackup(event) {
+  const file = event.target.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const nextState = normalizeState(parsed.state || parsed);
+    if (!Array.isArray(nextState.decks) || !Array.isArray(nextState.cards)) {
+      throw new Error("バックアップ形式が正しくありません");
+    }
+
+    const approved = window.confirm("現在のローカルデータを、この JSON バックアップで置き換えます。続けますか？");
+    if (!approved) {
+      importJsonFileInput.value = "";
+      return;
+    }
+
+    state = nextState;
+    clearDeckEditing();
+    clearCardEditing();
+    currentCardId = null;
+    isAnswerVisible = false;
+    importDraft = null;
+    importSelection.clear();
+    persist();
+    render();
+    showToast("JSON バックアップを読み込みました");
+  } catch (error) {
+    showToast(error.message || "JSON の読み込みに失敗しました");
+  } finally {
+    importJsonFileInput.value = "";
+  }
+}
+
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
@@ -2144,10 +3953,27 @@ function createDemoState() {
       messages: [],
       deckFilter: "all",
     },
+    settings: {
+      onboardingCompleted: false,
+    },
   };
 }
 
-function makeCard({ id, deckId, front, back, hint, topic = "", tags = [], note = "", example = "", createdAt, dueAt, intervalDays }) {
+function makeCard({
+  id,
+  deckId,
+  front,
+  back,
+  hint,
+  topic = "",
+  tags = [],
+  note = "",
+  example = "",
+  createdAt,
+  dueAt,
+  intervalDays,
+  sharedCardId = "",
+}) {
   return {
     id,
     deckId,
@@ -2160,6 +3986,7 @@ function makeCard({ id, deckId, front, back, hint, topic = "", tags = [], note =
     example,
     createdAt,
     updatedAt: createdAt,
+    sharedCardId,
     study: {
       dueAt,
       intervalDays,
@@ -2477,6 +4304,14 @@ function normalizeState(rawState) {
     cards: Array.isArray(rawState.cards) ? rawState.cards.map((card) => normalizeCard(card)) : [],
     reviewLog: Array.isArray(rawState.reviewLog) ? rawState.reviewLog : [],
     assistant: normalizeAssistantState(rawState.assistant),
+    settings: normalizeSettingsState(rawState.settings),
+  };
+}
+
+function normalizeSettingsState(settings) {
+  const safeSettings = settings || {};
+  return {
+    onboardingCompleted: Boolean(safeSettings.onboardingCompleted),
   };
 }
 
@@ -2518,6 +4353,18 @@ function normalizeDeck(deck) {
     subject: String(safeDeck.subject || "").trim(),
     description: String(safeDeck.description || "").trim(),
     createdAt: Number.isFinite(safeDeck.createdAt) ? safeDeck.createdAt : Date.now(),
+    updatedAt: Number.isFinite(safeDeck.updatedAt) ? safeDeck.updatedAt : Number.isFinite(safeDeck.createdAt) ? safeDeck.createdAt : Date.now(),
+    storageMode: safeDeck.storageMode === "shared" ? "shared" : "local",
+    sharedDeckId: String(safeDeck.sharedDeckId || "").trim(),
+    shareToken: String(safeDeck.shareToken || "").trim(),
+    role: ["owner", "editor", "viewer", "pending_request"].includes(String(safeDeck.role || ""))
+      ? String(safeDeck.role)
+      : "owner",
+    syncState: ["local-only", "synced", "dirty", "syncing", "offline"].includes(String(safeDeck.syncState || ""))
+      ? String(safeDeck.syncState)
+      : safeDeck.storageMode === "shared"
+        ? "dirty"
+        : "local-only",
   };
 }
 
@@ -2530,6 +4377,7 @@ function normalizeCard(card) {
     example: String(card.example || "").trim(),
     createdAt: Number.isFinite(card.createdAt) ? card.createdAt : Date.now(),
     updatedAt: Number.isFinite(card.updatedAt) ? card.updatedAt : Number.isFinite(card.createdAt) ? card.createdAt : Date.now(),
+    sharedCardId: String(card.sharedCardId || "").trim(),
     study: normalizeStudy(card.study, Date.now()),
   };
 }

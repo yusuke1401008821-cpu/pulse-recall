@@ -67,8 +67,8 @@
         <nav class="tabbar" aria-label="メインナビゲーション">
           <button class="tab is-active" data-section="dashboard" type="button">ホーム</button>
           <button class="tab" data-section="study" type="button">学習</button>
-          <button class="tab" data-section="assistant" type="button">ローカル検索</button>
-          <button class="tab" data-section="manage" type="button">管理</button>
+          <button class="tab" data-section="manage" type="button">作成</button>
+          <button class="tab" data-section="assistant" type="button">ライブラリ</button>
         </nav>
 
         <section class="content is-active" id="dashboard">
@@ -83,7 +83,41 @@
             <button class="primary-button" id="startReviewButton" type="button">復習を始める</button>
           </div>
 
+          <div class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">First Steps</p>
+                <h3>初心者向けガイド</h3>
+              </div>
+              <button class="ghost-button" id="openOnboardingButton" type="button">使い方を見る</button>
+            </div>
+            <div class="action-grid" id="homeQuickActions"></div>
+          </div>
+
           <section class="track-grid" id="trackGrid" aria-label="医学と英語の学習トラック"></section>
+
+          <div class="home-grid">
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Pending Shares</p>
+                  <h3>共有待ち</h3>
+                </div>
+                <span class="muted" id="pendingShareLabel">共有なし</span>
+              </div>
+              <div class="stack-list" id="pendingShareList"></div>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Recent Decks</p>
+                  <h3>最近のデッキ</h3>
+                </div>
+              </div>
+              <div class="stack-list" id="recentDeckList"></div>
+            </section>
+          </div>
 
           <div class="panel">
             <div class="section-heading">
@@ -171,128 +205,111 @@
           </div>
         </section>
 
-        <section class="content" id="assistant">
+        <section class="content" id="manage">
           <div class="panel section-heading">
             <div>
-              <p class="eyebrow">Local Search</p>
-              <h3>安全モード検索</h3>
+              <p class="eyebrow">Create</p>
+              <h3>作成と共有</h3>
             </div>
-            <button class="ghost-button" id="clearAssistantButton" type="button">履歴を消す</button>
+            <div class="button-row" id="createNav">
+              <button class="chip-button is-active" data-create-mode="deck" type="button">デッキ</button>
+              <button class="chip-button" data-create-mode="card" type="button">カード</button>
+              <button class="chip-button" data-create-mode="import" type="button">PDF取り込み</button>
+              <button class="chip-button" data-create-mode="share" type="button">共有/バックアップ</button>
+            </div>
           </div>
 
           <section class="panel">
-            <div class="assistant-toolbar">
-              <label class="inline-select">
-                <span>参照範囲</span>
-                <select id="assistantDeckFilter"></select>
-              </label>
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Templates</p>
+                <h3>おすすめの作成プリセット</h3>
+              </div>
             </div>
+            <div class="button-row">
+              <button class="ghost-button" data-template="medical-diff" type="button">症候→鑑別</button>
+              <button class="ghost-button" data-template="english-vocab" type="button">英単語→例文</button>
+              <button class="ghost-button" data-template="english-reading" type="button">長文→要点</button>
+            </div>
+          </section>
 
-            <p class="muted" id="assistantStatus">
-              医学や英語の質問をすると、保存済みカードだけを参照して要点を返します。外部AIや課金APIは使いません。
-            </p>
-
-            <div id="assistantMessages" class="assistant-messages"></div>
-
-            <form id="assistantForm" class="stack-form">
+          <section class="panel create-panel is-active" id="createDeckPanel">
+            <p class="eyebrow">Create Deck</p>
+            <h3 id="deckFormTitle">デッキを作る</h3>
+            <form id="deckForm" class="stack-form">
+              <input id="deckIdInput" name="deckId" type="hidden" />
               <label>
-                <span>質問</span>
-                <textarea
-                  id="assistantInput"
-                  name="assistantInput"
-                  rows="4"
-                  maxlength="1600"
-                  placeholder="例: ネフローゼ症候群の4徴 / administer と prescribe の違い / 腎前性AKIのポイント"
-                  required
-                ></textarea>
+                <span>デッキ名</span>
+                <input id="deckName" name="deckName" maxlength="40" placeholder="解剖・生理 / Medical English / 読解" required />
+              </label>
+              <label>
+                <span>学習トラック</span>
+                <select id="deckFocus" name="deckFocus">
+                  <option value="medical">医学</option>
+                  <option value="english">英語</option>
+                  <option value="general">汎用</option>
+                </select>
+              </label>
+              <label>
+                <span>分野</span>
+                <input id="deckSubject" name="deckSubject" maxlength="60" placeholder="解剖 / 生理 / 医学英語 / 読解" />
+              </label>
+              <label>
+                <span>説明</span>
+                <textarea id="deckDescription" name="deckDescription" rows="3" maxlength="120" placeholder="用途やテーマを短く書く"></textarea>
               </label>
               <div class="form-actions">
-                <button class="primary-button" id="assistantSubmitButton" type="submit">保存済みカードを検索</button>
+                <button class="primary-button" id="deckSubmitButton" type="submit">デッキを追加</button>
+                <button class="ghost-button" id="cancelDeckEditButton" type="button" hidden>編集をやめる</button>
               </div>
             </form>
           </section>
-        </section>
 
-        <section class="content" id="manage">
-          <div class="forms-grid">
-            <section class="panel">
-              <p class="eyebrow">Create Deck</p>
-              <h3 id="deckFormTitle">デッキを作る</h3>
-              <form id="deckForm" class="stack-form">
-                <input id="deckIdInput" name="deckId" type="hidden" />
-                <label>
-                  <span>デッキ名</span>
-                  <input id="deckName" name="deckName" maxlength="40" placeholder="解剖・生理 / Medical English / 読解" required />
-                </label>
-                <label>
-                  <span>学習トラック</span>
-                  <select id="deckFocus" name="deckFocus">
-                    <option value="medical">医学</option>
-                    <option value="english">英語</option>
-                    <option value="general">汎用</option>
-                  </select>
-                </label>
-                <label>
-                  <span>分野</span>
-                  <input id="deckSubject" name="deckSubject" maxlength="60" placeholder="解剖 / 生理 / 医学英語 / 読解" />
-                </label>
-                <label>
-                  <span>説明</span>
-                  <textarea id="deckDescription" name="deckDescription" rows="3" maxlength="120" placeholder="用途やテーマを短く書く"></textarea>
-                </label>
-                <div class="form-actions">
-                  <button class="primary-button" id="deckSubmitButton" type="submit">デッキを追加</button>
-                  <button class="ghost-button" id="cancelDeckEditButton" type="button" hidden>編集をやめる</button>
-                </div>
-              </form>
-            </section>
+          <section class="panel create-panel" id="createCardPanel">
+            <p class="eyebrow">Create Card</p>
+            <h3 id="cardFormTitle">カードを追加</h3>
+            <form id="cardForm" class="stack-form">
+              <input id="cardIdInput" name="cardId" type="hidden" />
+              <label>
+                <span>デッキ</span>
+                <select id="cardDeckId" name="cardDeckId" required></select>
+              </label>
+              <label>
+                <span>問題</span>
+                <textarea id="cardFrontInput" name="cardFront" rows="2" maxlength="160" placeholder="表に出す内容" required></textarea>
+              </label>
+              <label>
+                <span>答え</span>
+                <textarea id="cardBackInput" name="cardBack" rows="3" maxlength="240" placeholder="裏面の内容" required></textarea>
+              </label>
+              <label>
+                <span>補足</span>
+                <input id="cardHintInput" name="cardHint" maxlength="80" placeholder="例文や覚え方のヒント" />
+              </label>
+              <label>
+                <span>分野 / テーマ</span>
+                <input id="cardTopicInput" name="cardTopic" maxlength="60" placeholder="解剖 / 病理 / 語彙 / 読解" />
+              </label>
+              <label>
+                <span>タグ</span>
+                <input id="cardTagsInput" name="cardTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+              </label>
+              <label>
+                <span>臨床ポイント / 語法メモ</span>
+                <textarea id="cardNoteInput" name="cardNote" rows="3" maxlength="220" placeholder="重要な関連知識や使い分けを記録"></textarea>
+              </label>
+              <label>
+                <span>例文 / 症例メモ</span>
+                <textarea id="cardExampleInput" name="cardExample" rows="3" maxlength="220" placeholder="例文や症例ベースの覚え方"></textarea>
+              </label>
+              <div class="form-actions">
+                <button class="primary-button" id="cardSubmitButton" type="submit">カードを保存</button>
+                <button class="ghost-button" id="cancelCardEditButton" type="button" hidden>編集をやめる</button>
+              </div>
+            </form>
+          </section>
 
-            <section class="panel">
-              <p class="eyebrow">Create Card</p>
-              <h3 id="cardFormTitle">カードを追加</h3>
-              <form id="cardForm" class="stack-form">
-                <input id="cardIdInput" name="cardId" type="hidden" />
-                <label>
-                  <span>デッキ</span>
-                  <select id="cardDeckId" name="cardDeckId" required></select>
-                </label>
-                <label>
-                  <span>問題</span>
-                  <textarea id="cardFrontInput" name="cardFront" rows="2" maxlength="160" placeholder="表に出す内容" required></textarea>
-                </label>
-                <label>
-                  <span>答え</span>
-                  <textarea id="cardBackInput" name="cardBack" rows="3" maxlength="240" placeholder="裏面の内容" required></textarea>
-                </label>
-                <label>
-                  <span>補足</span>
-                  <input id="cardHintInput" name="cardHint" maxlength="80" placeholder="例文や覚え方のヒント" />
-                </label>
-                <label>
-                  <span>分野 / テーマ</span>
-                  <input id="cardTopicInput" name="cardTopic" maxlength="60" placeholder="解剖 / 病理 / 語彙 / 読解" />
-                </label>
-                <label>
-                  <span>タグ</span>
-                  <input id="cardTagsInput" name="cardTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
-                </label>
-                <label>
-                  <span>臨床ポイント / 語法メモ</span>
-                  <textarea id="cardNoteInput" name="cardNote" rows="3" maxlength="220" placeholder="重要な関連知識や使い分けを記録"></textarea>
-                </label>
-                <label>
-                  <span>例文 / 症例メモ</span>
-                  <textarea id="cardExampleInput" name="cardExample" rows="3" maxlength="220" placeholder="例文や症例ベースの覚え方"></textarea>
-                </label>
-                <div class="form-actions">
-                  <button class="primary-button" id="cardSubmitButton" type="submit">カードを保存</button>
-                  <button class="ghost-button" id="cancelCardEditButton" type="button" hidden>編集をやめる</button>
-                </div>
-              </form>
-            </section>
-          </div>
-
-          <section class="panel import-panel">
+          <section class="panel import-panel create-panel" id="createImportPanel">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Auto Import</p>
@@ -353,27 +370,235 @@
                 <button class="secondary-button" id="saveImportButton" type="button" hidden>この候補でデッキ作成</button>
               </div>
             </form>
+            <div class="bulk-toolbar">
+              <button class="ghost-button" id="selectAllImportButton" type="button">すべて選択</button>
+              <button class="ghost-button" id="clearImportSelectionButton" type="button">選択解除</button>
+              <button class="ghost-button danger-button" id="removeSelectedImportButton" type="button">選択を削除</button>
+              <button class="ghost-button" id="dedupeImportButton" type="button">重複を統合</button>
+              <label class="inline-input">
+                <span>一括タグ</span>
+                <input id="bulkImportTagsInput" type="text" maxlength="120" placeholder="必修, 循環, exam" />
+              </label>
+              <button class="ghost-button" id="applyImportTagsButton" type="button">タグ適用</button>
+            </div>
             <p class="muted import-help" id="importStatus">
               PDF または本文を入れると、自動でカード候補を作成します。スキャンPDFは文字抽出できないことがあります。
             </p>
             <div id="importPreview" class="library-list"></div>
           </section>
 
+          <section class="panel create-panel" id="createSharePanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Share & Backup</p>
+                <h3>共有とバックアップ</h3>
+              </div>
+              <button class="ghost-button" id="refreshCloudButton" type="button">共有情報を更新</button>
+            </div>
+            <div class="share-grid">
+              <section class="subpanel">
+                <p class="eyebrow">Auth</p>
+                <h4>共有するときだけログイン</h4>
+                <p class="muted" id="authStatus">Supabase 未設定ならローカル専用のまま使えます。</p>
+                <div class="stack-form">
+                  <label>
+                    <span>メールアドレス</span>
+                    <input id="authEmailInput" type="email" placeholder="you@example.com" />
+                  </label>
+                  <div class="form-actions">
+                    <button class="primary-button" id="signInMagicLinkButton" type="button">マジックリンクを送る</button>
+                    <button class="ghost-button" id="signOutButton" type="button">ログアウト</button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="subpanel">
+                <p class="eyebrow">Deck Share</p>
+                <h4>デッキを共有デッキ化</h4>
+                <div class="stack-form">
+                  <label>
+                    <span>対象デッキ</span>
+                    <select id="shareDeckSelect"></select>
+                  </label>
+                  <div class="form-actions">
+                    <button class="primary-button" id="shareDeckButton" type="button">共有リンクを作る</button>
+                    <button class="ghost-button" id="copyShareLinkButton" type="button">リンクをコピー</button>
+                    <button class="ghost-button" id="syncSharedDeckButton" type="button">同期する</button>
+                    <button class="ghost-button" id="duplicateSharedDeckButton" type="button">自分用に複製</button>
+                  </div>
+                </div>
+                <p class="muted" id="shareStatus">共有設定がまだありません。</p>
+                <div class="stack-list" id="shareRequestList"></div>
+              </section>
+
+              <section class="subpanel">
+                <p class="eyebrow">Backup</p>
+                <h4>JSON エクスポート / インポート</h4>
+                <div class="form-actions">
+                  <button class="primary-button" id="exportJsonButton" type="button">JSONを書き出す</button>
+                  <label class="ghost-button file-button">
+                    JSONを読み込む
+                    <input id="importJsonFileInput" type="file" accept=".json,application/json" hidden />
+                  </label>
+                </div>
+                <p class="muted">ローカル専用でも、バックアップして別端末へ移せます。</p>
+              </section>
+            </div>
+          </section>
+        </section>
+
+        <section class="content" id="assistant">
+          <div class="panel section-heading">
+            <div>
+              <p class="eyebrow">Library</p>
+              <h3>ライブラリと検索</h3>
+            </div>
+            <button class="ghost-button" id="clearAssistantButton" type="button">検索履歴を消す</button>
+          </div>
+
           <section class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Library</p>
-                <h3>登録済みカード</h3>
+                <p class="eyebrow">Search</p>
+                <h3>保存済みカードを検索</h3>
               </div>
+            </div>
+            <div class="assistant-toolbar">
               <label class="inline-select">
-                <span>表示</span>
-                <select id="libraryDeckFilter"></select>
+                <span>参照範囲</span>
+                <select id="assistantDeckFilter"></select>
+              </label>
+              <label class="inline-select">
+                <span>結果の保存先</span>
+                <select id="searchCardifyTarget"></select>
               </label>
             </div>
-            <div id="libraryList" class="library-list"></div>
+
+            <p class="muted" id="assistantStatus">
+              医学や英語の質問をすると、保存済みカードだけを参照して要点を返します。外部AIや課金APIは使いません。
+            </p>
+
+            <div id="assistantMessages" class="assistant-messages"></div>
+
+            <form id="assistantForm" class="stack-form">
+              <label>
+                <span>質問</span>
+                <textarea
+                  id="assistantInput"
+                  name="assistantInput"
+                  rows="4"
+                  maxlength="1600"
+                  placeholder="例: ネフローゼ症候群の4徴 / administer と prescribe の違い / 腎前性AKIのポイント"
+                  required
+                ></textarea>
+              </label>
+              <div class="form-actions">
+                <button class="primary-button" id="assistantSubmitButton" type="submit">検索する</button>
+              </div>
+            </form>
           </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Filters</p>
+                <h3>ライブラリを絞り込む</h3>
+              </div>
+            </div>
+            <div class="filter-grid">
+              <label class="inline-select">
+                <span>デッキ</span>
+                <select id="libraryDeckFilter"></select>
+              </label>
+              <label class="inline-select">
+                <span>タグ</span>
+                <select id="libraryTagFilter"></select>
+              </label>
+              <label class="inline-select">
+                <span>分野</span>
+                <select id="librarySubjectFilter"></select>
+              </label>
+              <label class="inline-select">
+                <span>保存先</span>
+                <select id="libraryStorageFilter"></select>
+              </label>
+              <label class="inline-select">
+                <span>学習状態</span>
+                <select id="libraryStudyStateFilter"></select>
+              </label>
+              <label class="inline-select">
+                <span>文字検索</span>
+                <input id="libraryTextFilter" type="search" placeholder="腎、vocabulary、読解..." />
+              </label>
+            </div>
+          </section>
+
+          <div class="library-layout">
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Cards</p>
+                  <h3>登録済みカード</h3>
+                </div>
+              </div>
+              <div id="libraryList" class="library-list"></div>
+            </section>
+
+            <section class="panel deck-detail-card" id="deckDetailCard">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Deck Detail</p>
+                  <h3 id="deckDetailTitle">デッキ詳細</h3>
+                </div>
+                <div class="button-row" id="deckDetailNav">
+                  <button class="chip-button is-active" data-deck-detail-tab="overview" type="button">概要</button>
+                  <button class="chip-button" data-deck-detail-tab="cards" type="button">カード</button>
+                  <button class="chip-button" data-deck-detail-tab="share" type="button">共有</button>
+                  <button class="chip-button" data-deck-detail-tab="status" type="button">学習状況</button>
+                </div>
+              </div>
+              <div id="deckDetailContent" class="stack-list"></div>
+            </section>
+          </div>
         </section>
       </main>
+    </div>
+
+    <div class="modal-shell" id="onboardingModal" hidden>
+      <div class="modal-card">
+        <p class="eyebrow">Welcome</p>
+        <h3>はじめての 3 ステップ</h3>
+        <div class="onboarding-steps">
+          <article>
+            <strong>1. デッキを作る</strong>
+            <p>「作成」タブで、医学用・英語用にデッキを分けると使いやすくなります。</p>
+          </article>
+          <article>
+            <strong>2. カードを追加する</strong>
+            <p>手入力でも PDF 取り込みでもOKです。まずは10枚前後から始めるのが楽です。</p>
+          </article>
+          <article>
+            <strong>3. 学習で回す</strong>
+            <p>「学習」タブで期限が来たカードを回すと、復習間隔が自動で整います。</p>
+          </article>
+        </div>
+        <div class="form-actions">
+          <button class="ghost-button" id="dismissOnboardingButton" type="button">あとで見る</button>
+          <button class="primary-button" id="completeOnboardingButton" type="button">使い始める</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-shell" id="shareJoinModal" hidden>
+      <div class="modal-card">
+        <p class="eyebrow">Shared Deck</p>
+        <h3 id="shareJoinTitle">共有デッキに参加</h3>
+        <p class="muted" id="shareJoinStatus">共有リンクを確認しています。</p>
+        <div class="form-actions">
+          <button class="ghost-button" id="closeShareJoinButton" type="button">閉じる</button>
+          <button class="primary-button" id="requestShareAccessButton" type="button">参加を申請する</button>
+        </div>
+      </div>
     </div>
 
     <div id="toast" class="toast" aria-live="polite"></div>

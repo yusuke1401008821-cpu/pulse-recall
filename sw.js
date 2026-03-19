@@ -1,4 +1,4 @@
-const CACHE_NAME = "pulse-recall-cache-v5";
+const CACHE_NAME = "pulse-recall-cache-v6";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -42,11 +42,12 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
   const isSameOrigin = url.origin === self.location.origin;
+  const shouldCache = isSameOrigin && !url.pathname.startsWith("/api/");
 
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (isSameOrigin && response.ok) {
+        if (shouldCache && response.ok) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
