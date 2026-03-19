@@ -192,6 +192,24 @@
                 <button class="primary-button" id="startStudySessionButton" type="button" hidden>セッションを作る</button>
               </div>
             </div>
+            <section class="subpanel ai-study-panel" id="aiStudyPanel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">AI補助</p>
+                  <h4>AIで高精度な問題案を作る</h4>
+                </div>
+                <button class="ghost-button" id="generateAiStudyButton" type="button">AIで高精度生成</button>
+              </div>
+              <p class="muted" id="aiStudyStatus">
+                小テストや4択クイズのときだけ、選択中のデッキや弱点リストからAIで問題案を作れます。
+              </p>
+              <div class="form-actions" id="aiStudyActions">
+                <button class="primary-button" id="startAiStudyButton" type="button" hidden>この問題で開始</button>
+                <button class="ghost-button" id="saveAiStudyCardsButton" type="button" hidden>カード候補化</button>
+                <button class="ghost-button" id="clearAiStudyButton" type="button" hidden>破棄</button>
+              </div>
+              <div id="aiStudyPreview" class="library-list"></div>
+            </section>
             <div class="action-grid" id="studySmartListGrid"></div>
           </div>
 
@@ -484,6 +502,9 @@
               </label>
               <div class="form-actions">
                 <button class="primary-button" id="analyzeImportButton" type="submit">資料を分析する</button>
+                <button class="secondary-button" id="analyzeImportAiButton" data-import-engine="ai" type="submit">
+                  AIで高精度生成
+                </button>
                 <button class="secondary-button" id="saveImportButton" type="button" hidden>この候補でデッキ作成</button>
               </div>
             </form>
@@ -569,6 +590,14 @@
                 </label>
                 <div class="button-row align-end">
                   <button class="primary-button" id="analyzeQuestionMapButton" type="submit">問題とスライドを対応づける</button>
+                  <button
+                    class="secondary-button"
+                    id="analyzeQuestionMapAiButton"
+                    data-question-map-engine="ai"
+                    type="submit"
+                  >
+                    AIで高精度補強
+                  </button>
                 </div>
               </div>
             </form>

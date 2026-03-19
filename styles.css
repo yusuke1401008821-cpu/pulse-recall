@@ -868,6 +868,15 @@ button:disabled {
   margin-top: 14px;
 }
 
+.ai-study-panel {
+  margin-top: 14px;
+  gap: 14px;
+}
+
+.ai-preview-card {
+  gap: 12px;
+}
+
 .question-map-summary {
   margin-top: 6px;
 }

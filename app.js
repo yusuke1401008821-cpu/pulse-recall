@@ -9,9 +9,20 @@ const PDFJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/legacy/build
 const PDFJS_WORKER_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/legacy/build/pdf.worker.mjs";
 const SUPABASE_MODULE_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 const CLOUD_CONFIG_ENDPOINT = "/api/client-config";
+const AI_GENERATE_ENDPOINT = "/api/ai/generate";
 const LOCAL_SHARE_PARAM = "deckshare";
 const CLOUD_SHARE_PARAM = "share";
 const DEMO_RESET_CONFIRM_TEXT = "サンプルを読み込む";
+const AI_FALLBACK_ERROR_CODES = new Set([
+  "AI_DISABLED",
+  "AI_NOT_CONFIGURED",
+  "AI_RATE_LIMITED",
+  "FREE_TIER_EXCEEDED",
+  "AI_ENDPOINT_UNAVAILABLE",
+  "AI_FILE_TOO_LARGE",
+  "AI_BAD_RESPONSE",
+  "AI_UNSUPPORTED_PROVIDER",
+]);
 const QUESTION_MAP_STOPWORDS = new Set([
   "こと",
   "もの",
@@ -251,6 +262,7 @@ let editingCardId = null;
 let toastTimer = null;
 let importDraft = null;
 let pdfjsModulePromise = null;
+let isImportLoading = false;
 let isAssistantLoading = false;
 let assistantErrorMessage = "";
 let createMode = "deck";
@@ -261,6 +273,9 @@ let importSelection = new Set();
 let questionMapDraft = null;
 let isQuestionMapLoading = false;
 let questionMapErrorMessage = "";
+let aiStudyDraft = null;
+let isAiStudyLoading = false;
+let aiStudyErrorMessage = "";
 let cloudState = {
   status: "idle",
   config: null,
@@ -312,6 +327,13 @@ const studyDeckFilter = document.getElementById("studyDeckFilter");
 const studyModeSummary = document.getElementById("studyModeSummary");
 const studySessionSizeInput = document.getElementById("studySessionSizeInput");
 const startStudySessionButton = document.getElementById("startStudySessionButton");
+const aiStudyPanel = document.getElementById("aiStudyPanel");
+const generateAiStudyButton = document.getElementById("generateAiStudyButton");
+const startAiStudyButton = document.getElementById("startAiStudyButton");
+const saveAiStudyCardsButton = document.getElementById("saveAiStudyCardsButton");
+const clearAiStudyButton = document.getElementById("clearAiStudyButton");
+const aiStudyStatus = document.getElementById("aiStudyStatus");
+const aiStudyPreview = document.getElementById("aiStudyPreview");
 const studySmartListGrid = document.getElementById("studySmartListGrid");
 const assistantDeckFilter = document.getElementById("assistantDeckFilter");
 const libraryDeckFilter = document.getElementById("libraryDeckFilter");
@@ -400,6 +422,8 @@ const cardTagsInput = document.getElementById("cardTagsInput");
 const cardNoteInput = document.getElementById("cardNoteInput");
 const cardExampleInput = document.getElementById("cardExampleInput");
 const importForm = document.getElementById("importForm");
+const analyzeImportButton = document.getElementById("analyzeImportButton");
+const analyzeImportAiButton = document.getElementById("analyzeImportAiButton");
 const importFileInput = document.getElementById("importFileInput");
 const importTextInput = document.getElementById("importTextInput");
 const importFocusInput = document.getElementById("importFocus");
@@ -428,6 +452,7 @@ const questionMapSummary = document.getElementById("questionMapSummary");
 const questionMapResults = document.getElementById("questionMapResults");
 const clearQuestionMapButton = document.getElementById("clearQuestionMapButton");
 const analyzeQuestionMapButton = document.getElementById("analyzeQuestionMapButton");
+const analyzeQuestionMapAiButton = document.getElementById("analyzeQuestionMapAiButton");
 const assistantMessages = document.getElementById("assistantMessages");
 const assistantStatus = document.getElementById("assistantStatus");
 const assistantForm = document.getElementById("assistantForm");
@@ -562,6 +587,7 @@ function bindEvents() {
 
   studyDeckFilter.addEventListener("change", () => {
     resetStudySession();
+    clearAiStudyDraft({ silent: true });
     currentCardId = null;
     isAnswerVisible = false;
     renderStudy();
@@ -572,6 +598,18 @@ function bindEvents() {
     renderStudy();
   });
   startStudySessionButton.addEventListener("click", startStudySession);
+  if (generateAiStudyButton) {
+    generateAiStudyButton.addEventListener("click", generateAiStudyDraft);
+  }
+  if (startAiStudyButton) {
+    startAiStudyButton.addEventListener("click", startAiStudySession);
+  }
+  if (saveAiStudyCardsButton) {
+    saveAiStudyCardsButton.addEventListener("click", saveAiStudyDraftAsCards);
+  }
+  if (clearAiStudyButton) {
+    clearAiStudyButton.addEventListener("click", () => clearAiStudyDraft({ withToast: true }));
+  }
   shortQuizRevealButton.addEventListener("click", revealShortQuizAnswer);
   shortQuizNextButton.addEventListener("click", advanceStudySession);
   choiceQuizNextButton.addEventListener("click", advanceStudySession);
@@ -989,6 +1027,7 @@ function setStudyMode(mode) {
 
   studyMode = mode;
   resetStudySession();
+  clearAiStudyDraft({ silent: true });
   currentCardId = null;
   isAnswerVisible = false;
   renderStudy();
@@ -1001,6 +1040,7 @@ function setStudySource(key) {
 
   studySourceKey = key;
   resetStudySession();
+  clearAiStudyDraft({ silent: true });
   currentCardId = null;
   isAnswerVisible = false;
   renderStudy();
@@ -1846,17 +1886,32 @@ function renderImportPanel() {
   applyImportFocusPreset();
   clearImportDraftButton.hidden = !importDraft;
   saveImportButton.hidden = !importDraft;
-  selectAllImportButton.disabled = !importDraft;
-  clearImportSelectionButton.disabled = !importDraft;
-  removeSelectedImportButton.disabled = !importDraft;
-  dedupeImportButton.disabled = !importDraft;
-  applyImportTagsButton.disabled = !importDraft;
+  saveImportButton.disabled = !importDraft || isImportLoading;
+  clearImportDraftButton.disabled = isImportLoading;
+  selectAllImportButton.disabled = !importDraft || isImportLoading;
+  clearImportSelectionButton.disabled = !importDraft || isImportLoading;
+  removeSelectedImportButton.disabled = !importDraft || isImportLoading;
+  dedupeImportButton.disabled = !importDraft || isImportLoading;
+  applyImportTagsButton.disabled = !importDraft || isImportLoading;
+  importFileInput.disabled = isImportLoading;
+  importTextInput.disabled = isImportLoading;
+  importFocusInput.disabled = isImportLoading;
+  importDeckNameInput.disabled = isImportLoading;
+  importSubjectInput.disabled = isImportLoading;
+  importInstructionsInput.disabled = isImportLoading;
+  importLimitInput.disabled = isImportLoading;
+  analyzeImportButton.disabled = isImportLoading;
+  analyzeImportAiButton.disabled = isImportLoading;
+  analyzeImportButton.textContent = isImportLoading ? "分析中..." : "資料を分析する";
+  analyzeImportAiButton.textContent = isImportLoading ? "AIで分析中..." : "AIで高精度生成";
 
   if (!importDraft) {
     const contextDeck = getDeckById(importContextDeckId);
-    importStatus.textContent = contextDeck
-      ? `「${contextDeck.name}」へ追加する資料を選ぶと、自動でカード候補を作成します。スキャンPDFは文字抽出できないことがあります。`
-      : "PDF または本文を入れると、自動でカード候補を作成します。スキャンPDFは文字抽出できないことがあります。";
+    if (!isImportLoading) {
+      importStatus.textContent = contextDeck
+        ? `「${contextDeck.name}」へ追加する資料を選ぶと、自動でカード候補を作成します。AIボタンを押すと、Geminiの無料枠で高精度生成を試し、失敗時はローカル解析へ戻ります。`
+        : "PDF または本文を入れると、自動でカード候補を作成します。AIボタンを押すと、Geminiの無料枠で高精度生成を試し、失敗時はローカル解析へ戻ります。";
+    }
     saveImportButton.textContent = "この候補でデッキ作成";
     importPreview.innerHTML = `
       <article class="library-card">
@@ -1902,8 +1957,10 @@ function renderImportPanel() {
           <div class="card-row-meta">
             <span class="meta-pill ${escapeHtml(importDraft.focus)}">${escapeHtml(formatDeckFocus(importDraft.focus))}</span>
             ${card.topic ? `<span class="meta-pill">${escapeHtml(card.topic)}</span>` : ""}
+            ${card.confidence ? `<span class="meta-pill">${escapeHtml(formatAiConfidence(card.confidence))}</span>` : ""}
             ${(card.tags || []).slice(0, 4).map((tag) => `<span class="meta-pill">${escapeHtml(tag)}</span>`).join("")}
           </div>
+          ${card.evidenceSnippet ? `<p class="flashcard-note">${escapeHtml(card.evidenceSnippet)}</p>` : ""}
           <p class="import-source">出典: ${escapeHtml(card.sourceLine || importDraft.sourceName)}</p>
         </article>
       `,
@@ -1915,12 +1972,16 @@ function renderQuestionMapPanel() {
   const topMatches = clampNumber(Number.parseInt(questionMapTopMatchesInput.value, 10), 1, 5, 3);
   questionMapTopMatchesInput.value = String(topMatches);
   clearQuestionMapButton.hidden = !questionMapDraft;
+  clearQuestionMapButton.disabled = isQuestionMapLoading;
   analyzeQuestionMapButton.disabled = isQuestionMapLoading;
+  analyzeQuestionMapAiButton.disabled = isQuestionMapLoading;
   questionMapQuestionFileInput.disabled = isQuestionMapLoading;
   questionMapQuestionTextInput.disabled = isQuestionMapLoading;
   questionMapSlideFileInput.disabled = isQuestionMapLoading;
   questionMapSlideTextInput.disabled = isQuestionMapLoading;
   questionMapTopMatchesInput.disabled = isQuestionMapLoading;
+  analyzeQuestionMapButton.textContent = isQuestionMapLoading ? "解析中..." : "問題とスライドを対応づける";
+  analyzeQuestionMapAiButton.textContent = isQuestionMapLoading ? "AIで補強中..." : "AIで高精度補強";
 
   if (isQuestionMapLoading) {
     questionMapStatus.textContent =
@@ -1933,8 +1994,8 @@ function renderQuestionMapPanel() {
       questionMapStatus.textContent = questionMapErrorMessage;
     } else if (!isQuestionMapLoading) {
       questionMapStatus.textContent = contextDeck
-        ? `「${contextDeck.name}」向けに、過去問と講義スライドを入れると設問ごとの関連候補を表示します。`
-        : "過去問と講義スライドを入れると、設問ごとに関連スライド候補、ページ番号、該当箇所の抜粋を表示します。";
+        ? `「${contextDeck.name}」向けに、過去問と講義スライドを入れると設問ごとの関連候補を表示します。AIボタンを使うと根拠説明も補強できます。`
+        : "過去問と講義スライドを入れると、設問ごとに関連スライド候補、ページ番号、該当箇所の抜粋を表示します。AIボタンを使うと根拠説明も補強できます。";
     }
     questionMapSummary.innerHTML = "";
     questionMapResults.innerHTML = questionMapErrorMessage
@@ -1954,7 +2015,9 @@ function renderQuestionMapPanel() {
   }
 
   questionMapErrorMessage = "";
-  questionMapStatus.textContent = `${questionMapDraft.questionSourceName} と ${questionMapDraft.slideSourceLabel} から、${questionMapDraft.questions.length} 問の対応候補を作成しました。`;
+  questionMapStatus.textContent = `${questionMapDraft.questionSourceName} と ${questionMapDraft.slideSourceLabel} から、${questionMapDraft.questions.length} 問の対応候補を作成しました。${
+    questionMapDraft.aiEnhanced ? " AIで根拠説明を補強済みです。" : ""
+  }`;
   questionMapSummary.innerHTML = [
     { label: "解析した設問", value: `${questionMapDraft.questions.length}問` },
     { label: "使ったスライド", value: `${questionMapDraft.slidePageCount}ページ` },
@@ -2001,13 +2064,19 @@ function renderQuestionMapPanel() {
                               <p class="muted">${escapeHtml(formatQuestionMatchConfidence(match))}</p>
                             </div>
                             <div class="card-row-meta">
-                              <span class="meta-pill">${escapeHtml(match.matchedTokens.length)}語一致</span>
-                              <span class="meta-pill">${escapeHtml(match.coverageLabel)}</span>
+                              ${
+                                match.matchedTokens?.length
+                                  ? `<span class="meta-pill">${escapeHtml(match.matchedTokens.length)}語一致</span>`
+                                  : ""
+                              }
+                              ${match.coverageLabel ? `<span class="meta-pill">${escapeHtml(match.coverageLabel)}</span>` : ""}
+                              ${match.confidence ? `<span class="meta-pill">${escapeHtml(formatAiConfidence(match.confidence))}</span>` : ""}
                             </div>
                           </div>
-                          <p class="flashcard-note">${escapeHtml(match.snippet)}</p>
+                          <p class="flashcard-note">${escapeHtml(match.evidenceSnippet || match.snippet)}</p>
+                          ${match.reason ? `<p class="muted">${escapeHtml(match.reason)}</p>` : ""}
                           ${
-                            match.matchedTokens.length
+                            match.matchedTokens?.length
                               ? `<div class="card-row-meta">${renderPillRow(match.matchedTokens.slice(0, 6))}</div>`
                               : ""
                           }
@@ -2583,6 +2652,121 @@ function scoreStudyWeakness(card, stats = {}) {
   return score;
 }
 
+function renderAiStudyPanel(source, sourceCards, choiceReadyCards) {
+  if (!aiStudyPanel || !generateAiStudyButton || !aiStudyStatus || !aiStudyPreview) {
+    return;
+  }
+
+  const canUseAi = studyMode !== "review";
+  aiStudyPanel.hidden = !canUseAi;
+  if (!canUseAi) {
+    return;
+  }
+
+  const readyCards = studyMode === "choice" ? choiceReadyCards : sourceCards;
+  const currentFilter = studyDeckFilter.value || "all";
+  const displayDraft =
+    aiStudyDraft &&
+    aiStudyDraft.mode === studyMode &&
+    aiStudyDraft.sourceKey === studySourceKey &&
+    aiStudyDraft.filter === currentFilter
+      ? aiStudyDraft
+      : null;
+
+  generateAiStudyButton.disabled = isAiStudyLoading || !readyCards.length;
+  startAiStudyButton.hidden = !displayDraft;
+  startAiStudyButton.disabled = !displayDraft || isAiStudyLoading;
+  saveAiStudyCardsButton.hidden = !displayDraft;
+  saveAiStudyCardsButton.disabled = !displayDraft || isAiStudyLoading;
+  clearAiStudyButton.hidden = !displayDraft;
+  clearAiStudyButton.disabled = !displayDraft || isAiStudyLoading;
+
+  if (isAiStudyLoading) {
+    aiStudyStatus.textContent =
+      studyMode === "choice"
+        ? "AIが4択クイズを作っています。材料カードから問い・選択肢・根拠を整理しています。"
+        : "AIが小テストを作っています。材料カードから問い・答え・解説を整理しています。";
+  } else if (displayDraft) {
+    aiStudyStatus.textContent = `${displayDraft.items.length}問のAI問題案ができました。内容を確認してから開始するか、カード候補として保存できます。`;
+  } else if (aiStudyErrorMessage) {
+    aiStudyStatus.textContent = aiStudyErrorMessage;
+  } else if (!readyCards.length) {
+    aiStudyStatus.textContent =
+      studyMode === "choice"
+        ? "今の出題元ではAIに渡せる材料が足りません。別のリストへ切り替えるか、通常復習でカードを増やしてください。"
+        : "今の出題元にカードがないため、AI問題を作れません。別のリストへ切り替えてください。";
+  } else {
+    aiStudyStatus.textContent = `${source.title} と「${getAssistantFilterLabel(currentFilter)}」の範囲から、AIで ${Math.min(
+      studySessionSize,
+      readyCards.length,
+    )} 問の${studyMode === "choice" ? "4択クイズ" : "小テスト"}案を作れます。`;
+  }
+
+  if (!displayDraft) {
+    aiStudyPreview.innerHTML = `
+      <article class="library-card">
+        <h4>まだAI問題案はありません</h4>
+        <p class="muted">${
+          readyCards.length
+            ? `「AIで高精度生成」を押すと、${source.title} のカードから ${studyMode === "choice" ? "4択クイズ" : "小テスト"}案がここに並びます。`
+            : "まずは別の出題元を選ぶか、カードやPDFを追加して材料を増やしてください。"
+        }</p>
+      </article>
+    `;
+    return;
+  }
+
+  aiStudyPreview.innerHTML = displayDraft.items
+    .map(
+      (item, index) => `
+        <article class="library-card ai-preview-card">
+          <div class="card-row-header">
+            <div>
+              <p class="eyebrow">${escapeHtml(studyMode === "choice" ? "AI 4択" : "AI 小テスト")} ${index + 1}</p>
+              <h4>${escapeHtml(item.prompt)}</h4>
+            </div>
+            <span class="meta-pill">${escapeHtml(formatAiConfidence(item.confidence))}</span>
+          </div>
+          ${
+            item.choiceOptions?.length
+              ? `<div class="card-row-meta">${item.choiceOptions
+                  .map((option) => `<span class="meta-pill">${escapeHtml(option.label)}</span>`)
+                  .join("")}</div>`
+              : ""
+          }
+          <p class="muted">${escapeHtml(item.answer)}</p>
+          ${item.explanation ? `<p class="flashcard-note">${escapeHtml(item.explanation)}</p>` : ""}
+          ${
+            item.evidenceSnippet
+              ? `<p class="import-source">根拠: ${escapeHtml(item.evidenceSnippet)}</p>`
+              : item.sourceLabel
+                ? `<p class="import-source">出典: ${escapeHtml(buildAiSourceLabel(item))}</p>`
+                : ""
+          }
+          <div class="card-row-meta">
+            ${item.topic ? `<span class="meta-pill">${escapeHtml(item.topic)}</span>` : ""}
+            ${item.sourceLabel ? `<span class="meta-pill">${escapeHtml(buildAiSourceLabel(item))}</span>` : ""}
+            ${(item.tags || []).slice(0, 4).map((tag) => `<span class="meta-pill">${escapeHtml(tag)}</span>`).join("")}
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function formatAiConfidence(confidence) {
+  const safeConfidence = clampNumber(Number(confidence || 0), 0, 1, 0);
+  return safeConfidence > 0 ? `AI ${Math.round(safeConfidence * 100)}%` : "AI案";
+}
+
+function buildAiSourceLabel(item) {
+  const label = String(item.sourceLabel || "").trim();
+  if (!label) {
+    return "出典なし";
+  }
+  return item.sourcePage ? `${label} / p.${item.sourcePage}` : label;
+}
+
 function renderStudy() {
   const groups = buildStudySourceGroups();
   const source = groups[studySourceKey] || groups.due;
@@ -2601,6 +2785,7 @@ function renderStudy() {
     studyMode === "review"
       ? `${source.title} を中心に、通常の復習キューとして回します。`
       : `${source.title} から ${Math.min(studySessionSize, studyMode === "choice" ? choiceReadyCards.length : sourceCards.length)} 問を選び、${studyMode === "choice" ? "4択クイズ" : "記述小テスト"}を作ります。`;
+  renderAiStudyPanel(source, sourceCards, choiceReadyCards);
   studySmartListGrid.innerHTML = ["due", "again", "hard", "weak"]
     .map((key) => {
       const item = groups[key];
@@ -2761,38 +2946,44 @@ function renderStudySessionComplete(source) {
 
 function renderShortQuizStudy(source) {
   const item = getCurrentStudySessionItem();
-  const card = item ? getCardById(item.cardId) : null;
-  const deck = card ? getDeckById(card.deckId) : null;
+  const itemData = resolveStudySessionItem(item);
+  const card = itemData?.linkedCard || null;
+  const deck = itemData?.deck || null;
 
   reviewFeedbackPanel.hidden = true;
   shortQuizFeedbackPanel.hidden = false;
   choiceQuizFeedbackPanel.hidden = true;
   flashcard.classList.add("is-hidden");
-  shortQuizCard.classList.toggle("is-hidden", !card);
+  shortQuizCard.classList.toggle("is-hidden", !itemData);
   choiceQuizCard.classList.add("is-hidden");
   toggleAnswerButton.hidden = true;
-  shortQuizRevealButton.hidden = !card || item.revealed;
+  shortQuizRevealButton.hidden = !itemData || item.revealed;
   shortQuizNextButton.hidden = true;
   choiceQuizNextButton.hidden = true;
 
-  if (!card || !item) {
+  if (!itemData || !item) {
     renderStudySessionPending(source, studySessionSize);
     return;
   }
 
   emptyState.classList.add("is-hidden");
-  shortQuizFront.textContent = card.front;
-  setElementCopy(shortQuizMeta, `${getDeckName(card.deckId)} · ${item.index + 1}/${studySession.items.length}`);
-  setElementCopy(shortQuizTopic, card.topic ? `テーマ: ${card.topic}` : deck?.subject ? `テーマ: ${deck.subject}` : "");
-  shortQuizTags.innerHTML = renderPillRow(card.tags || [], deck?.focus || "general");
-  shortQuizTags.hidden = !(card.tags || []).length;
+  shortQuizFront.textContent = itemData.prompt;
+  setElementCopy(
+    shortQuizMeta,
+    `${itemData.isAi ? "AI生成" : getDeckName(card?.deckId)} · ${item.index + 1}/${studySession.items.length}${
+      itemData.sourceLabel ? ` · ${buildAiSourceLabel(itemData)}` : ""
+    }`,
+  );
+  setElementCopy(shortQuizTopic, itemData.topic ? `テーマ: ${itemData.topic}` : deck?.subject ? `テーマ: ${deck.subject}` : "");
+  shortQuizTags.innerHTML = renderPillRow(itemData.tags || [], deck?.focus || "general");
+  shortQuizTags.hidden = !(itemData.tags || []).length;
   shortQuizAnswerInput.value = item.typedAnswer || "";
   shortQuizAnswerInput.disabled = item.revealed;
   shortQuizAnswerArea.classList.toggle("is-hidden", !item.revealed);
-  shortQuizBack.textContent = card.back;
-  setElementCopy(shortQuizHint, card.hint);
-  setElementCopy(shortQuizNote, card.note);
-  setElementCopy(shortQuizExample, card.example ? `例: ${card.example}` : "");
+  shortQuizBack.textContent = itemData.answer;
+  setElementCopy(shortQuizHint, itemData.hint);
+  setElementCopy(shortQuizNote, itemData.note);
+  setElementCopy(shortQuizExample, itemData.example ? `${itemData.isAi ? "根拠" : "例"}: ${itemData.example}` : "");
 
   const summary = buildStudySessionSummary(studySession);
   shortQuizProgress.textContent = item.revealed
@@ -2802,36 +2993,42 @@ function renderShortQuizStudy(source) {
 
 function renderChoiceQuizStudy(source) {
   const item = getCurrentStudySessionItem();
-  const card = item ? getCardById(item.cardId) : null;
-  const deck = card ? getDeckById(card.deckId) : null;
+  const itemData = resolveStudySessionItem(item);
+  const card = itemData?.linkedCard || null;
+  const deck = itemData?.deck || null;
 
   reviewFeedbackPanel.hidden = true;
   shortQuizFeedbackPanel.hidden = true;
   choiceQuizFeedbackPanel.hidden = false;
   flashcard.classList.add("is-hidden");
   shortQuizCard.classList.add("is-hidden");
-  choiceQuizCard.classList.toggle("is-hidden", !card);
+  choiceQuizCard.classList.toggle("is-hidden", !itemData);
   toggleAnswerButton.hidden = true;
   shortQuizRevealButton.hidden = true;
   shortQuizNextButton.hidden = true;
   choiceQuizNextButton.hidden = !item || !item.answered;
 
-  if (!card || !item) {
+  if (!itemData || !item) {
     renderStudySessionPending(source, studySessionSize);
     return;
   }
 
   emptyState.classList.add("is-hidden");
-  choiceQuizFront.textContent = card.front;
-  setElementCopy(choiceQuizMeta, `${getDeckName(card.deckId)} · ${item.index + 1}/${studySession.items.length}`);
-  setElementCopy(choiceQuizTopic, card.topic ? `テーマ: ${card.topic}` : deck?.subject ? `テーマ: ${deck.subject}` : "");
-  choiceQuizTags.innerHTML = renderPillRow(card.tags || [], deck?.focus || "general");
-  choiceQuizTags.hidden = !(card.tags || []).length;
-  choiceQuizOptions.innerHTML = item.choiceOptions
+  choiceQuizFront.textContent = itemData.prompt;
+  setElementCopy(
+    choiceQuizMeta,
+    `${itemData.isAi ? "AI生成" : getDeckName(card?.deckId)} · ${item.index + 1}/${studySession.items.length}${
+      itemData.sourceLabel ? ` · ${buildAiSourceLabel(itemData)}` : ""
+    }`,
+  );
+  setElementCopy(choiceQuizTopic, itemData.topic ? `テーマ: ${itemData.topic}` : deck?.subject ? `テーマ: ${deck.subject}` : "");
+  choiceQuizTags.innerHTML = renderPillRow(itemData.tags || [], deck?.focus || "general");
+  choiceQuizTags.hidden = !(itemData.tags || []).length;
+  choiceQuizOptions.innerHTML = (item.choiceOptions || [])
     .map((option, index) => {
       const isSelected = item.selectedOptionId === option.id;
-      const isCorrect = item.answered && option.id === card.id;
-      const isWrong = item.answered && isSelected && option.id !== card.id;
+      const isCorrect = item.answered && Boolean(option.isCorrect);
+      const isWrong = item.answered && isSelected && !option.isCorrect;
       const className = isCorrect ? "correct" : isWrong ? "wrong" : "";
 
       return `
@@ -2849,13 +3046,13 @@ function renderChoiceQuizStudy(source) {
     .join("");
 
   choiceQuizAnswerArea.classList.toggle("is-hidden", !item.answered);
-  choiceQuizBack.textContent = card.back;
-  setElementCopy(choiceQuizHint, card.hint);
-  setElementCopy(choiceQuizNote, card.note);
-  setElementCopy(choiceQuizExample, card.example ? `例: ${card.example}` : "");
+  choiceQuizBack.textContent = itemData.answer;
+  setElementCopy(choiceQuizHint, itemData.hint);
+  setElementCopy(choiceQuizNote, itemData.note);
+  setElementCopy(choiceQuizExample, itemData.example ? `${itemData.isAi ? "根拠" : "例"}: ${itemData.example}` : "");
   const summary = buildStudySessionSummary(studySession);
   choiceQuizStatus.textContent = item.answered
-    ? item.selectedOptionId === card.id
+    ? item.choiceOptions.some((option) => option.id === item.selectedOptionId && option.isCorrect)
       ? "正解です。解説を確認して次へ進めます。"
       : "不正解です。正解と解説を確認してから次へ進めます。"
     : `第${item.index + 1}問 / ${studySession.items.length}問。1つ選んでください。`;
@@ -2944,6 +3141,62 @@ function getCurrentStudySessionItem() {
   return studySession.items[studySession.index];
 }
 
+function resolveStudySessionItem(item) {
+  if (!item) {
+    return null;
+  }
+
+  if (item.kind === "ai") {
+    const linkedCard = item.linkedCardId ? getCardById(item.linkedCardId) : null;
+    const deck = linkedCard ? getDeckById(linkedCard.deckId) : item.sourceDeckId ? getDeckById(item.sourceDeckId) : null;
+    return {
+      linkedCard,
+      deck,
+      prompt: item.prompt,
+      answer: item.answer,
+      hint: item.sourceLabel ? `出典: ${buildAiSourceLabel(item)}` : linkedCard?.hint || "",
+      topic: item.topic || linkedCard?.topic || deck?.subject || "",
+      tags: (item.tags || []).length ? item.tags : linkedCard?.tags || [],
+      note: item.explanation || linkedCard?.note || "",
+      example: item.evidenceSnippet || linkedCard?.example || "",
+      choiceOptions: item.choiceOptions || [],
+      isAi: true,
+      sourceLabel: item.sourceLabel || "",
+      sourcePage: item.sourcePage || null,
+    };
+  }
+
+  const card = getCardById(item.cardId);
+  if (!card) {
+    return null;
+  }
+  const deck = getDeckById(card.deckId);
+  return {
+    linkedCard: card,
+    deck,
+    prompt: card.front,
+    answer: card.back,
+    hint: card.hint,
+    topic: card.topic || deck?.subject || "",
+    tags: card.tags || [],
+    note: card.note,
+    example: card.example,
+    choiceOptions: item.choiceOptions || [],
+    isAi: false,
+    sourceLabel: "",
+    sourcePage: null,
+  };
+}
+
+function recordStudySessionResult(item, rating, sessionType) {
+  const linkedCard =
+    item?.kind === "ai" ? (item.linkedCardId ? getCardById(item.linkedCardId) : null) : item?.cardId ? getCardById(item.cardId) : null;
+  if (!linkedCard) {
+    return;
+  }
+  recordPracticeResult(linkedCard, rating, sessionType);
+}
+
 function revealShortQuizAnswer() {
   const item = getCurrentStudySessionItem();
   if (!item || studyMode !== "test") {
@@ -2957,8 +3210,8 @@ function revealShortQuizAnswer() {
 
 function gradeShortQuiz(rating) {
   const item = getCurrentStudySessionItem();
-  const card = item ? getCardById(item.cardId) : null;
-  if (!item || !card) {
+  const itemData = resolveStudySessionItem(item);
+  if (!item || !itemData) {
     return;
   }
 
@@ -2970,7 +3223,7 @@ function gradeShortQuiz(rating) {
   item.typedAnswer = String(shortQuizAnswerInput.value || "").trim();
   item.answered = true;
   item.rating = rating;
-  recordPracticeResult(card, rating, "quiz-test");
+  recordStudySessionResult(item, rating, "quiz-test");
   advanceStudySession();
 }
 
@@ -2981,15 +3234,15 @@ function handleChoiceQuizActions(event) {
   }
 
   const item = getCurrentStudySessionItem();
-  const card = item ? getCardById(item.cardId) : null;
-  if (!item || !card || item.answered) {
+  const itemData = resolveStudySessionItem(item);
+  if (!item || !itemData || item.answered) {
     return;
   }
 
   item.selectedOptionId = optionButton.dataset.choiceOptionId;
   item.answered = true;
-  item.rating = item.selectedOptionId === card.id ? "good" : "again";
-  recordPracticeResult(card, item.rating, "quiz-choice");
+  item.rating = item.choiceOptions.some((option) => option.id === item.selectedOptionId && option.isCorrect) ? "good" : "again";
+  recordStudySessionResult(item, item.rating, "quiz-choice");
   render();
 }
 
@@ -3055,8 +3308,8 @@ function buildChoiceOptions(card, sourceCards) {
   const distractorPool = getChoiceDistractorPool(card, sourceCards);
   const distractors = distractorPool.slice(0, 3);
   const options = [
-    { id: card.id, label: correctLabel },
-    ...distractors.map((candidate) => ({ id: candidate.id, label: buildChoiceLabel(candidate.back) })),
+    { id: card.id, label: correctLabel, isCorrect: true },
+    ...distractors.map((candidate) => ({ id: candidate.id, label: buildChoiceLabel(candidate.back), isCorrect: false })),
   ];
 
   return shuffleList(options).slice(0, 4);
@@ -3489,23 +3742,71 @@ function handleCardSubmit(event) {
 
 async function handleImportSubmit(event) {
   event.preventDefault();
-  importStatus.textContent = "資料を分析しています。少し待つと候補が表示されます。";
+  if (isImportLoading) {
+    return;
+  }
+
+  const requestedEngine = event.submitter?.dataset.importEngine === "ai" ? "ai" : "local";
+  isImportLoading = true;
+  importStatus.textContent =
+    requestedEngine === "ai"
+      ? "AIで資料を読んでいます。無料枠を使って高精度生成を試しています。"
+      : "資料を分析しています。少し待つと候補が表示されます。";
+  renderImportPanel();
 
   try {
-    const source = await loadImportSource();
     const focus = normalizeDeckFocus(importFocusInput.value);
     const limit = clampNumber(Number.parseInt(importLimitInput.value, 10), 4, 30, 12);
     importLimitInput.value = String(limit);
-    const deckName = (importDeckNameInput.value || "").trim() || buildDeckNameFromSource(source.sourceName);
+    const subject = String(importSubjectInput.value || "").trim();
+    const instructions = String(importInstructionsInput.value || "").trim();
+    const sourceName =
+      importFileInput.files?.[0]?.name || String(importDeckNameInput.value || "").trim() || "AI資料";
+    const deckName = (importDeckNameInput.value || "").trim() || buildDeckNameFromSource(sourceName);
     importDeckNameInput.value = deckName;
 
+    if (requestedEngine === "ai") {
+      try {
+        importDraft = await generateAiImportDraft({
+          deckName,
+          focus,
+          subject,
+          instructions,
+          limit,
+        });
+        importDraft.targetDeckId = importContextDeckId || "";
+        importStatus.textContent = `AIが ${importDraft.cards.length} 枚の候補を作成しました。内容を確認してから保存できます。`;
+        renderImportPanel();
+        showToast(`${importDraft.cards.length}枚のAI候補を作成しました`);
+        return;
+      } catch (error) {
+        const fallbackLabel = getAiFallbackMessage(error);
+        const source = await loadImportSource();
+        importDraft = buildImportDraft({
+          text: source.text,
+          sourceName: source.sourceName,
+          deckName,
+          focus,
+          subject,
+          instructions,
+          limit,
+        });
+        importDraft.targetDeckId = importContextDeckId || "";
+        importStatus.textContent = `${fallbackLabel} ローカル解析へ切り替えました。`;
+        renderImportPanel();
+        showToast(`${fallbackLabel} ローカル解析へ切り替えました`);
+        return;
+      }
+    }
+
+    const source = await loadImportSource();
     importDraft = buildImportDraft({
       text: source.text,
       sourceName: source.sourceName,
       deckName,
       focus,
-      subject: String(importSubjectInput.value || "").trim(),
-      instructions: String(importInstructionsInput.value || "").trim(),
+      subject,
+      instructions,
       limit,
     });
     importDraft.targetDeckId = importContextDeckId || "";
@@ -3517,6 +3818,9 @@ async function handleImportSubmit(event) {
     renderImportPanel();
     importStatus.textContent = error.message || "資料の分析に失敗しました。";
     showToast(error.message || "資料の分析に失敗しました");
+  } finally {
+    isImportLoading = false;
+    renderImportPanel();
   }
 }
 
@@ -3525,6 +3829,8 @@ async function handleQuestionMapSubmit(event) {
   if (isQuestionMapLoading) {
     return;
   }
+
+  const requestedEngine = event.submitter?.dataset.questionMapEngine === "ai" ? "ai" : "local";
 
   questionMapDraft = null;
   questionMapErrorMessage = "";
@@ -3536,11 +3842,23 @@ async function handleQuestionMapSubmit(event) {
     questionMapTopMatchesInput.value = String(topMatches);
     const sources = await loadQuestionMapSources();
     questionMapErrorMessage = "";
-    questionMapDraft = buildQuestionMapDraft({
+    const localDraft = buildQuestionMapDraft({
       questionSource: sources.questionSource,
       slidePages: sources.slidePages,
       topMatches,
     });
+    questionMapDraft = localDraft;
+    if (requestedEngine === "ai") {
+      renderQuestionMapPanel();
+      questionMapStatus.textContent = "ローカル候補を作成したあと、AIで根拠と一致度を補強しています。";
+      try {
+        const aiRefined = await generateAiQuestionMapDraft(localDraft, sources.slidePages);
+        questionMapDraft = aiRefined;
+      } catch (error) {
+        questionMapDraft = localDraft;
+        showToast(`${getAiFallbackMessage(error)} ローカル候補を表示します`);
+      }
+    }
     renderQuestionMapPanel();
     showToast(
       questionMapDraft.matchedQuestionCount > 0
@@ -3555,6 +3873,586 @@ async function handleQuestionMapSubmit(event) {
     isQuestionMapLoading = false;
     renderQuestionMapPanel();
   }
+}
+
+async function generateAiImportDraft({ deckName, focus, subject, instructions, limit }) {
+  const response = await requestAiGeneration({
+    task: "deck_from_pdf",
+    payload: {
+      deckName,
+      focus,
+      subject,
+      instructions,
+      limit,
+      pastedText: String(importTextInput.value || "").trim(),
+      sourceName: importFileInput.files?.[0]?.name || "貼り付けテキスト",
+    },
+    files: [...(importFileInput.files || [])].slice(0, 1),
+  });
+
+  const cards = normalizeAiImportCards(response.cards, {
+    focus,
+    subject,
+    sourceName: response.sourceLabel || importFileInput.files?.[0]?.name || "AI資料",
+  });
+  if (!cards.length) {
+    throw createAiClientError("AI_IMPORT_EMPTY", "AIがカード候補を返せませんでした。");
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    sourceName: response.sourceLabel || importFileInput.files?.[0]?.name || "AI資料",
+    deckName,
+    targetDeckId: "",
+    focus,
+    subject,
+    instructions,
+    cards,
+  };
+}
+
+async function generateAiQuestionMapDraft(localDraft, slidePages) {
+  const response = await requestAiGeneration({
+    task: "question_slide_refine",
+    payload: buildAiQuestionMapPayload(localDraft, slidePages),
+  });
+
+  return mergeAiQuestionMapDraft(localDraft, response.questionMatches || []);
+}
+
+async function generateAiStudyDraft() {
+  if (studyMode === "review" || isAiStudyLoading) {
+    return;
+  }
+
+  const groups = buildStudySourceGroups();
+  const source = groups[studySourceKey] || groups.due;
+  const sourceCards = studyMode === "choice" ? source.cards.filter((card) => canBuildChoiceOptions(card, source.cards)) : source.cards;
+  const size = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), 3, 20, 8);
+  const filter = studyDeckFilter.value || "all";
+
+  if (!sourceCards.length) {
+    aiStudyErrorMessage =
+      studyMode === "choice"
+        ? "AIに渡せる4択用の材料カードがまだありません。"
+        : "AIに渡せる小テスト用の材料カードがまだありません。";
+    renderStudy();
+    showToast(aiStudyErrorMessage);
+    return;
+  }
+
+  isAiStudyLoading = true;
+  aiStudyErrorMessage = "";
+  aiStudyDraft = null;
+  renderStudy();
+
+  let shouldFallbackToLocal = false;
+
+  try {
+    const payload = buildAiStudyPayload({
+      mode: studyMode,
+      source,
+      sourceCards,
+      filter,
+      size,
+    });
+    const response = await requestAiGeneration({
+      task: "quiz_from_selection",
+      payload,
+    });
+    aiStudyDraft = buildAiStudyDraft(response.quizItems, {
+      mode: studyMode,
+      sourceKey: studySourceKey,
+      filter,
+      sourceTitle: source.title,
+      sourceCards: payload.cards,
+    });
+    aiStudyErrorMessage = "";
+    showToast(`AIが ${aiStudyDraft.items.length} 問の問題案を作成しました`);
+  } catch (error) {
+    aiStudyDraft = null;
+    aiStudyErrorMessage = `${getAiFallbackMessage(error)} ローカルの${studyMode === "choice" ? "4択クイズ" : "小テスト"}へ切り替えます。`;
+    shouldFallbackToLocal = true;
+    showToast(aiStudyErrorMessage);
+  } finally {
+    isAiStudyLoading = false;
+    renderStudy();
+  }
+
+  if (shouldFallbackToLocal) {
+    startStudySession();
+  }
+}
+
+function startAiStudySession() {
+  if (!aiStudyDraft?.items?.length) {
+    showToast("開始できるAI問題案がありません");
+    return;
+  }
+
+  studySession = buildAiStudySession(aiStudyDraft);
+  currentCardId = null;
+  isAnswerVisible = false;
+  renderStudy();
+  showToast(studyMode === "choice" ? "AI 4択クイズを開始しました" : "AI 小テストを開始しました");
+}
+
+function saveAiStudyDraftAsCards() {
+  if (!aiStudyDraft?.items?.length) {
+    showToast("カード候補化できるAI問題案がありません");
+    return;
+  }
+
+  const selectedFilter = studyDeckFilter.value || "all";
+  let targetDeck = selectedFilter.startsWith("focus:") || selectedFilter === "all" ? null : getDeckById(selectedFilter);
+  if (targetDeck && !canEditDeckContent(targetDeck)) {
+    targetDeck = null;
+  }
+
+  const focus = targetDeck ? normalizeDeckFocus(targetDeck.focus) : inferAssistantFocus(selectedFilter);
+  const subject =
+    targetDeck?.subject ||
+    aiStudyDraft.items.find((item) => item.topic)?.topic ||
+    (focus === "medical" ? "AI小テスト" : focus === "english" ? "AI quiz" : "AI notes");
+  const deckName =
+    targetDeck?.name || buildDeckNameFromSource(`AI ${studyMode === "choice" ? "4択" : "小テスト"} ${formatDateKey(new Date())}`);
+
+  importDraft = {
+    id: crypto.randomUUID(),
+    sourceName: `AI ${studyMode === "choice" ? "4択クイズ" : "小テスト"}`,
+    deckName,
+    targetDeckId: targetDeck?.id || "",
+    focus,
+    subject,
+    instructions: `${aiStudyDraft.sourceTitle} から AI で生成した問題案`,
+    cards: aiStudyDraft.items.map((item) => ({
+      id: crypto.randomUUID(),
+      front: item.prompt,
+      back: item.answer,
+      hint: item.sourceLabel ? `出典: ${buildAiSourceLabel(item)}` : "AIで高精度生成",
+      topic: item.topic || subject,
+      tags: dedupeTags([...(item.tags || []), "AI問題"]),
+      note: [item.explanation, item.sourceLabel ? `参照: ${buildAiSourceLabel(item)}` : ""].filter(Boolean).join(" / "),
+      example:
+        item.choiceOptions?.length > 0
+          ? `選択肢: ${item.choiceOptions.map((option) => option.label).join(" / ")}`
+          : item.evidenceSnippet || "",
+      sourceLine: item.evidenceSnippet || buildAiSourceLabel(item),
+      sourceLabel: item.sourceLabel || "",
+      sourcePage: item.sourcePage || null,
+      evidenceSnippet: item.evidenceSnippet || "",
+      confidence: item.confidence || 0,
+    })),
+  };
+  importSelection.clear();
+  importFocusInput.value = focus;
+  importDeckNameInput.value = deckName;
+  importSubjectInput.value = subject;
+  importInstructionsInput.value = importDraft.instructions;
+  switchSection("manage");
+  setCreateMode("import");
+  render();
+  showToast(targetDeck ? "AI問題案を既存デッキへ追加する候補にしました" : "AI問題案をカード候補化しました");
+}
+
+function clearAiStudyDraft({ silent = false, withToast = false } = {}) {
+  aiStudyDraft = null;
+  aiStudyErrorMessage = "";
+  if (!silent) {
+    renderStudy();
+  }
+  if (withToast) {
+    showToast("AI問題案を破棄しました");
+  }
+}
+
+function buildAiStudyPayload({ mode, source, sourceCards, filter, size }) {
+  const maxCards = Math.min(Math.max(size * 3, 12), 36, sourceCards.length);
+  return {
+    mode,
+    size,
+    filter,
+    filterLabel: getAssistantFilterLabel(filter),
+    sourceTitle: source.title,
+    sourceDescription: source.description,
+    focus: inferAssistantFocus(filter),
+    cards: sourceCards.slice(0, maxCards).map((card, index) => {
+      const deck = getDeckById(card.deckId);
+      return {
+        id: card.id,
+        sourceIndex: index + 1,
+        deckId: card.deckId,
+        deckName: deck?.name || "未分類",
+        subject: deck?.subject || "",
+        front: card.front,
+        back: card.back,
+        hint: card.hint || "",
+        topic: card.topic || deck?.subject || "",
+        tags: card.tags || [],
+        note: card.note || "",
+        example: card.example || "",
+      };
+    }),
+  };
+}
+
+function buildAiStudyDraft(items, { mode, sourceKey, filter, sourceTitle, sourceCards }) {
+  const normalizedItems = normalizeAiQuizItems(items, { mode, sourceCards });
+  if (!normalizedItems.length) {
+    throw createAiClientError("AI_QUIZ_EMPTY", "AIが問題案を返せませんでした。");
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    mode,
+    sourceKey,
+    filter,
+    sourceTitle,
+    items: normalizedItems,
+  };
+}
+
+function buildAiStudySession(draft) {
+  return {
+    id: crypto.randomUUID(),
+    mode: draft.mode,
+    sourceKey: draft.sourceKey,
+    engine: "ai",
+    items: draft.items.map((item) => ({
+      ...clone(item),
+      answered: false,
+      revealed: false,
+      rating: "",
+      selectedOptionId: "",
+      typedAnswer: "",
+    })),
+    index: 0,
+  };
+}
+
+function normalizeAiImportCards(cards, { focus, subject, sourceName }) {
+  return (Array.isArray(cards) ? cards : [])
+    .map((card, index) => {
+      const front = cleanImportedSegment(card?.front || card?.question || "");
+      const back = cleanImportedSegment(card?.back || card?.answer || "");
+      if (!isViableCardPair(front, back)) {
+        return null;
+      }
+
+      const sourceLabel = cleanImportedSegment(card?.sourceLabel || sourceName);
+      const sourcePage = Number.isFinite(Number(card?.sourcePage)) ? Number(card.sourcePage) : null;
+      const evidenceSnippet = cleanImportedSegment(card?.evidenceSnippet || card?.evidence || "");
+      const tags = dedupeTags([formatDeckFocus(focus), ...splitSubjectTags(subject), ...parseTags(card?.tags)]);
+
+      return {
+        id: crypto.randomUUID(),
+        front,
+        back,
+        hint: cleanImportedSegment(card?.hint || (focus === "english" ? "AIが資料から生成" : "AIが講義資料から生成")),
+        topic: cleanImportedSegment(card?.topic || subject),
+        tags,
+        note: [cleanImportedSegment(card?.note || ""), sourceLabel ? `参照: ${sourcePage ? `${sourceLabel} p.${sourcePage}` : sourceLabel}` : ""]
+          .filter(Boolean)
+          .join(" / "),
+        example: cleanImportedSegment(card?.example || ""),
+        sourceLine: sourceLabel ? (sourcePage ? `${sourceLabel} / p.${sourcePage}` : sourceLabel) : sourceName,
+        sourceLabel,
+        sourcePage,
+        evidenceSnippet,
+        confidence: clampNumber(Number(card?.confidence || 0), 0, 1, 0),
+        sourceIndex: index + 1,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildAiQuestionMapPayload(localDraft, slidePages) {
+  const pageMap = new Map(
+    slidePages.map((page) => [`${page.sourceName}::${page.pageNumber}`, page]),
+  );
+  const candidatePages = [];
+  const seen = new Set();
+
+  localDraft.questions.forEach((question) => {
+    question.matches.slice(0, 4).forEach((match) => {
+      const key = `${match.sourceName}::${match.pageNumber}`;
+      const page = pageMap.get(key);
+      if (!page || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      candidatePages.push({
+        sourceName: page.sourceName,
+        pageNumber: page.pageNumber,
+        text: cleanImportedSegment(page.text).slice(0, 1200),
+      });
+    });
+  });
+
+  slidePages.slice(0, 12).forEach((page) => {
+    const key = `${page.sourceName}::${page.pageNumber}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    candidatePages.push({
+      sourceName: page.sourceName,
+      pageNumber: page.pageNumber,
+      text: cleanImportedSegment(page.text).slice(0, 1200),
+    });
+  });
+
+  return {
+    questionSourceName: localDraft.questionSourceName,
+    slideSourceLabel: localDraft.slideSourceLabel,
+    topMatches: 3,
+    candidatePages: candidatePages.slice(0, 18),
+    questions: localDraft.questions.slice(0, 24).map((question) => ({
+      label: question.label,
+      prompt: question.prompt,
+      options: question.options || [],
+    })),
+  };
+}
+
+function mergeAiQuestionMapDraft(localDraft, questionMatches) {
+  const matchMap = new Map(
+    (Array.isArray(questionMatches) ? questionMatches : [])
+      .map((entry) => [String(entry.label || entry.questionLabel || "").trim(), entry])
+      .filter(([label]) => label),
+  );
+
+  const questions = localDraft.questions.map((question) => {
+    const next = matchMap.get(question.label);
+    if (!next) {
+      return question;
+    }
+
+    const matches = (Array.isArray(next.matches) ? next.matches : [])
+      .map((match) => ({
+        sourceName: cleanImportedSegment(match.sourceName || match.sourceLabel || "スライド"),
+        pageNumber: Number.isFinite(Number(match.pageNumber || match.sourcePage)) ? Number(match.pageNumber || match.sourcePage) : 1,
+        snippet: cleanImportedSegment(match.evidenceSnippet || match.snippet || ""),
+        evidenceSnippet: cleanImportedSegment(match.evidenceSnippet || match.snippet || ""),
+        matchedTokens: parseTags(match.matchedTokens || []),
+        coverage: clampNumber(Number(match.coverage || match.confidence || 0), 0, 1, 0),
+        coverageLabel: buildAiCoverageLabel(match.confidence || match.coverage || 0),
+        confidence: clampNumber(Number(match.confidence || 0), 0, 1, 0),
+        reason: cleanImportedSegment(match.reason || ""),
+        score: Number(match.score || 0),
+      }))
+      .filter((match) => match.sourceName && match.evidenceSnippet);
+
+    if (!matches.length) {
+      return question;
+    }
+
+    return {
+      ...question,
+      matches,
+      aiEnhanced: true,
+    };
+  });
+
+  return {
+    ...localDraft,
+    questions,
+    matchedQuestionCount: questions.filter((question) => question.matches.length > 0).length,
+    aiEnhanced: true,
+  };
+}
+
+function buildAiCoverageLabel(confidence) {
+  const safeConfidence = clampNumber(Number(confidence || 0), 0, 1, 0);
+  if (safeConfidence >= 0.75) {
+    return "AI一致度 高め";
+  }
+  if (safeConfidence >= 0.45) {
+    return "AI一致度 中くらい";
+  }
+  return "AI一致度 参考";
+}
+
+function normalizeAiQuizItems(items, { mode, sourceCards }) {
+  const safeItems = Array.isArray(items) ? items : [];
+  return safeItems
+    .map((item, index) => normalizeAiQuizItem(item, { mode, sourceCards, index }))
+    .filter(Boolean);
+}
+
+function normalizeAiQuizItem(item, { mode, sourceCards, index }) {
+  const prompt = cleanImportedSegment(item?.prompt || item?.question || "");
+  const answer = cleanImportedSegment(item?.answer || item?.back || "");
+  if (!prompt || !answer) {
+    return null;
+  }
+
+  const sourceIndex = Number.isFinite(Number(item?.sourceIndex)) ? Number(item.sourceIndex) : Number.isFinite(Number(item?.sourceCardIndex)) ? Number(item.sourceCardIndex) : index + 1;
+  const linkedSource = sourceCards.find((card) => card.sourceIndex === sourceIndex) || sourceCards[index] || null;
+  const confidence = clampNumber(Number(item?.confidence || 0), 0, 1, 0);
+  const topic = cleanImportedSegment(item?.topic || linkedSource?.topic || linkedSource?.subject || "");
+  const tags = dedupeTags([...(linkedSource?.tags || []), ...parseTags(item?.tags), "AI問題"]);
+  const sourceLabel = cleanImportedSegment(item?.sourceLabel || linkedSource?.deckName || "");
+  const sourcePage = Number.isFinite(Number(item?.sourcePage)) ? Number(item.sourcePage) : null;
+  const evidenceSnippet = cleanImportedSegment(item?.evidenceSnippet || item?.evidence || "");
+  const explanation = cleanImportedSegment(item?.explanation || item?.note || "");
+
+  const normalized = {
+    id: crypto.randomUUID(),
+    kind: "ai",
+    linkedCardId: linkedSource?.id || "",
+    sourceDeckId: linkedSource?.deckId || "",
+    prompt,
+    answer,
+    explanation,
+    topic,
+    tags,
+    sourceLabel,
+    sourcePage,
+    evidenceSnippet,
+    confidence,
+    choiceOptions: [],
+  };
+
+  if (mode === "choice") {
+    const choiceOptions = normalizeAiChoiceOptions(item?.options, answer);
+    if (!choiceOptions.length) {
+      return null;
+    }
+    normalized.choiceOptions = choiceOptions;
+  }
+
+  return normalized;
+}
+
+function normalizeAiChoiceOptions(options, answer) {
+  const safeOptions = Array.isArray(options) ? options : [];
+  const normalizedAnswer = cleanImportedSegment(answer);
+  const cleaned = safeOptions
+    .map((option, index) => {
+      const label = cleanImportedSegment(option?.label || option?.text || option || "");
+      if (!label) {
+        return null;
+      }
+      return {
+        id: crypto.randomUUID(),
+        label,
+        isCorrect:
+          Boolean(option?.isCorrect) ||
+          index === Number(option?.correctOptionIndex) ||
+          label === normalizedAnswer,
+      };
+    })
+    .filter(Boolean);
+
+  if (cleaned.length < 4) {
+    return [];
+  }
+
+  let correctOption =
+    cleaned.find((option) => option.isCorrect) ||
+    (normalizedAnswer
+      ? {
+          id: crypto.randomUUID(),
+          label: normalizedAnswer,
+          isCorrect: true,
+        }
+      : null);
+  if (!correctOption) {
+    return [];
+  }
+
+  correctOption = {
+    ...correctOption,
+    isCorrect: true,
+  };
+  const distractors = cleaned
+    .filter((option) => option.id !== correctOption.id && option.label !== correctOption.label)
+    .slice(0, 3)
+    .map((option) => ({
+      ...option,
+      isCorrect: false,
+    }));
+  if (distractors.length < 3) {
+    return [];
+  }
+
+  return shuffleList(
+    [correctOption, ...distractors].slice(0, 4),
+  );
+}
+
+async function requestAiGeneration({ task, payload, files = [] }) {
+  const formData = new FormData();
+  formData.append("task", task);
+  formData.append("payload", JSON.stringify(payload || {}));
+  files.forEach((file) => {
+    if (file) {
+      formData.append("files", file, file.name || "upload");
+    }
+  });
+
+  let response;
+  try {
+    response = await fetch(AI_GENERATE_ENDPOINT, {
+      method: "POST",
+      body: formData,
+    });
+  } catch (error) {
+    throw createAiClientError("AI_ENDPOINT_UNAVAILABLE", "AI機能に接続できませんでした。", error);
+  }
+
+  let data = {};
+  try {
+    data = await response.json();
+  } catch (error) {
+    if (!response.ok) {
+      data = {};
+    } else {
+      throw createAiClientError("AI_BAD_RESPONSE", "AI応答を読み取れませんでした。", error);
+    }
+  }
+
+  if (!response.ok) {
+    const code =
+      String(data.code || "").trim() ||
+      (response.status === 429 ? "AI_RATE_LIMITED" : response.status === 404 ? "AI_ENDPOINT_UNAVAILABLE" : "AI_REQUEST_FAILED");
+    const message = String(data.error || data.message || "").trim() || "AI生成に失敗しました。";
+    const error = createAiClientError(code, message);
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+}
+
+function createAiClientError(code, message, cause) {
+  const error = new Error(message);
+  error.code = code;
+  if (cause) {
+    error.cause = cause;
+  }
+  return error;
+}
+
+function getAiFallbackMessage(error) {
+  const code = String(error?.code || "").trim();
+  if (AI_FALLBACK_ERROR_CODES.has(code)) {
+    if (code === "AI_NOT_CONFIGURED" || code === "AI_DISABLED") {
+      return "AI設定がまだないため、";
+    }
+    if (code === "AI_RATE_LIMITED" || code === "FREE_TIER_EXCEEDED") {
+      return "AIの無料枠が上限に達したため、";
+    }
+    if (code === "AI_ENDPOINT_UNAVAILABLE") {
+      return "AI機能に接続できなかったため、";
+    }
+    if (code === "AI_FILE_TOO_LARGE") {
+      return "PDFが大きすぎて無料AIへ直接送れなかったため、";
+    }
+    return "AI生成が使えなかったため、";
+  }
+  return "AI生成に失敗したため、";
 }
 
 async function handleAssistantSubmit(event) {
@@ -5073,6 +5971,16 @@ function scoreTextAgainstTokens(text, tokens) {
 }
 
 function formatQuestionMatchConfidence(match) {
+  if (Number.isFinite(Number(match?.confidence))) {
+    const safeConfidence = clampNumber(Number(match.confidence || 0), 0, 1, 0);
+    if (safeConfidence >= 0.75) {
+      return "AIがかなり近い候補だと判断しました";
+    }
+    if (safeConfidence >= 0.45) {
+      return "AIが関連候補として妥当だと判断しました";
+    }
+    return "AIの補助候補です。必ず元のスライドも確認してください";
+  }
   if (match.coverage >= 0.55) {
     return "設問との重なりがかなり強い候補です";
   }
@@ -5290,13 +6198,13 @@ async function fetchCloudConfig() {
     }
 
     const config = await response.json();
-    cloudState.config =
-      config && config.supabaseUrl && config.supabaseAnonKey
-        ? {
-            supabaseUrl: String(config.supabaseUrl),
-            supabaseAnonKey: String(config.supabaseAnonKey),
-          }
-        : {};
+    cloudState.config = {
+      supabaseUrl: config && config.supabaseUrl ? String(config.supabaseUrl) : "",
+      supabaseAnonKey: config && config.supabaseAnonKey ? String(config.supabaseAnonKey) : "",
+      aiEnabled: Boolean(config?.aiEnabled),
+      aiProvider: String(config?.aiProvider || "gemini"),
+      aiModel: String(config?.aiModel || "gemini-2.5-flash-lite"),
+    };
     return cloudState.config;
   } catch (error) {
     console.warn("Failed to load cloud config:", error);
