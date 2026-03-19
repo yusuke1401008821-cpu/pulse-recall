@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#183153" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Pulse Recall" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="application-name" content="Pulse Recall" />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <meta
+      name="description"
+      content="iPhoneでも使いやすい、暗記カード学習用のWebアプリです。単語帳作成、復習スケジュール、学習履歴の確認ができます。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Pulse Recall | 暗記サポートアプリ" />
+    <meta
+      property="og:description"
+      content="iPhoneでも使いやすい、暗記カード学習用のWebアプリです。単語帳作成、復習スケジュール、学習履歴の確認ができます。"
+    />
+    <meta property="og:image" content="assets/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Pulse Recall | 暗記サポートアプリ" />
+    <meta
+      name="twitter:description"
+      content="iPhoneでも使いやすい、暗記カード学習用のWebアプリです。単語帳作成、復習スケジュール、学習履歴の確認ができます。"
+    />
+    <title>Pulse Recall | 暗記サポートアプリ</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Memorize with rhythm</p>
+          <h1>Pulse Recall</h1>
+        </div>
+        <button class="ghost-button" id="seedDemoButton" type="button">サンプル復元</button>
+      </header>
+
+      <main class="page">
+        <section class="hero panel">
+          <div>
+            <p class="eyebrow">Today Focus</p>
+            <h2 id="heroTitle">今日の復習を整える</h2>
+            <p id="heroText">
+              期限が来たカードを短く回して、覚えているものから次回間隔を伸ばします。
+            </p>
+          </div>
+          <div class="hero-metric">
+            <span id="dueCount">0</span>
+            <small>due cards</small>
+          </div>
+        </section>
+
+        <section class="stats-grid" id="statsGrid" aria-label="学習状況"></section>
+
+        <nav class="tabbar" aria-label="メインナビゲーション">
+          <button class="tab is-active" data-section="dashboard" type="button">ホーム</button>
+          <button class="tab" data-section="study" type="button">学習</button>
+          <button class="tab" data-section="manage" type="button">管理</button>
+        </nav>
+
+        <section class="content is-active" id="dashboard">
+          <div class="panel split-panel">
+            <div>
+              <p class="eyebrow">Quick Start</p>
+              <h3>今日やること</h3>
+              <p id="quickSummary">
+                まずは期限の来たカードを確認し、その後に新しいカードを追加できます。
+              </p>
+            </div>
+            <button class="primary-button" id="startReviewButton" type="button">復習を始める</button>
+          </div>
+
+          <div class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Decks</p>
+                <h3>デッキ一覧</h3>
+              </div>
+              <span class="muted" id="deckCountLabel">0 decks</span>
+            </div>
+            <div class="deck-list" id="deckList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">History</p>
+                <h3>学習の流れ</h3>
+              </div>
+              <span class="muted" id="historySummary">まだ履歴がありません</span>
+            </div>
+            <div class="history-chart" id="historyChart" aria-label="7日間の学習履歴"></div>
+            <div class="history-breakdown" id="historyBreakdown"></div>
+          </div>
+
+          <div class="panel tip-card">
+            <p class="eyebrow">iPhone Hint</p>
+            <p>
+              Safari の共有メニューから「ホーム画面に追加」を使うと、アプリっぽく開けます。
+            </p>
+          </div>
+        </section>
+
+        <section class="content" id="study">
+          <div class="panel section-heading">
+            <div>
+              <p class="eyebrow">Review Queue</p>
+              <h3>学習モード</h3>
+            </div>
+            <label class="inline-select">
+              <span>対象</span>
+              <select id="studyDeckFilter"></select>
+            </label>
+          </div>
+
+          <div class="study-layout">
+            <section class="flashcard-panel panel">
+              <div id="emptyState" class="empty-state">
+                <p class="eyebrow">All clear</p>
+                <h3>今は復習待ちのカードがありません</h3>
+                <p>カードを追加するか、時間を置いてから再度チェックしてください。</p>
+              </div>
+
+              <article id="flashcard" class="flashcard is-hidden" aria-live="polite">
+                <div class="flashcard-side">
+                  <p class="flashcard-label">問題</p>
+                  <h3 id="cardFront"></h3>
+                  <p class="flashcard-meta" id="cardDeckName"></p>
+                </div>
+                <div class="flashcard-side answer-area" id="answerArea">
+                  <p class="flashcard-label">答え</p>
+                  <p id="cardBack"></p>
+                  <p class="flashcard-hint" id="cardHint"></p>
+                </div>
+              </article>
+
+              <div class="study-actions">
+                <button class="secondary-button" id="toggleAnswerButton" type="button">答えを見る</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <p class="eyebrow">Answer</p>
+              <h3>覚え具合を記録</h3>
+              <div class="rating-grid">
+                <button class="rating danger" data-rating="again" type="button">忘れた</button>
+                <button class="rating caution" data-rating="hard" type="button">あいまい</button>
+                <button class="rating success" data-rating="good" type="button">覚えた</button>
+              </div>
+              <p class="muted" id="studyProgress">カードを選んで学習を始めます。</p>
+            </section>
+          </div>
+        </section>
+
+        <section class="content" id="manage">
+          <div class="forms-grid">
+            <section class="panel">
+              <p class="eyebrow">Create Deck</p>
+              <h3 id="deckFormTitle">デッキを作る</h3>
+              <form id="deckForm" class="stack-form">
+                <input id="deckIdInput" name="deckId" type="hidden" />
+                <label>
+                  <span>デッキ名</span>
+                  <input id="deckName" name="deckName" maxlength="40" placeholder="英単語 / 歴史 / 資格対策" required />
+                </label>
+                <label>
+                  <span>説明</span>
+                  <textarea id="deckDescription" name="deckDescription" rows="3" maxlength="120" placeholder="用途やテーマを短く書く"></textarea>
+                </label>
+                <div class="form-actions">
+                  <button class="primary-button" id="deckSubmitButton" type="submit">デッキを追加</button>
+                  <button class="ghost-button" id="cancelDeckEditButton" type="button" hidden>編集をやめる</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <p class="eyebrow">Create Card</p>
+              <h3 id="cardFormTitle">カードを追加</h3>
+              <form id="cardForm" class="stack-form">
+                <input id="cardIdInput" name="cardId" type="hidden" />
+                <label>
+                  <span>デッキ</span>
+                  <select id="cardDeckId" name="cardDeckId" required></select>
+                </label>
+                <label>
+                  <span>問題</span>
+                  <textarea id="cardFrontInput" name="cardFront" rows="2" maxlength="160" placeholder="表に出す内容" required></textarea>
+                </label>
+                <label>
+                  <span>答え</span>
+                  <textarea id="cardBackInput" name="cardBack" rows="3" maxlength="240" placeholder="裏面の内容" required></textarea>
+                </label>
+                <label>
+                  <span>補足</span>
+                  <input id="cardHintInput" name="cardHint" maxlength="80" placeholder="例文や覚え方のヒント" />
+                </label>
+                <div class="form-actions">
+                  <button class="primary-button" id="cardSubmitButton" type="submit">カードを保存</button>
+                  <button class="ghost-button" id="cancelCardEditButton" type="button" hidden>編集をやめる</button>
+                </div>
+              </form>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Library</p>
+                <h3>登録済みカード</h3>
+              </div>
+              <label class="inline-select">
+                <span>表示</span>
+                <select id="libraryDeckFilter"></select>
+              </label>
+            </div>
+            <div id="libraryList" class="library-list"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "Pulse Recall",
+  "short_name": "Pulse",
+  "description": "暗記カードを短く回して復習間隔を伸ばす、モバイル向けの暗記サポートアプリです。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4efe5",
+  "theme_color": "#183153",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
