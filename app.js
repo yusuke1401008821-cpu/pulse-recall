@@ -9,6 +9,8 @@ const PDFJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/legacy/build
 const PDFJS_WORKER_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/legacy/build/pdf.worker.mjs";
 const SUPABASE_MODULE_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 const CLOUD_CONFIG_ENDPOINT = "/api/client-config";
+const LOCAL_SHARE_PARAM = "deckshare";
+const CLOUD_SHARE_PARAM = "share";
 const TRACKS = [
   {
     id: "medical",
@@ -217,6 +219,9 @@ let cloudState = {
   session: null,
   profile: null,
   shareToken: "",
+  joinMode: "",
+  localSharePayload: null,
+  lastLocalShareDeckId: "",
   pendingRequests: [],
   lastSharePreview: null,
 };
@@ -395,7 +400,7 @@ function bindEvents() {
   });
   completeOnboardingButton.addEventListener("click", completeOnboarding);
   closeShareJoinButton.addEventListener("click", () => {
-    shareJoinModal.hidden = true;
+    closeShareJoinModal();
   });
   requestShareAccessButton.addEventListener("click", requestShareAccess);
 
@@ -768,6 +773,29 @@ function markDeckDirty(deckId) {
   deck.syncState = "dirty";
 }
 
+function closeShareJoinModal() {
+  shareJoinModal.hidden = true;
+  if (cloudState.joinMode === "local") {
+    clearLocalShareQuery();
+  }
+  cloudState.joinMode = "";
+  cloudState.localSharePayload = null;
+  requestShareAccessButton.textContent = "参加を申請する";
+}
+
+function getCurrentShareUrl(deck) {
+  if (!deck) {
+    return "";
+  }
+  if (deck.storageMode === "shared" && deck.shareToken) {
+    return buildShareUrl(deck.shareToken);
+  }
+  if (cloudState.lastLocalShareDeckId === deck.id) {
+    return shareLinkCache;
+  }
+  return "";
+}
+
 function renderSharePanel() {
   const deck = getSelectedShareDeck();
   const hasClientConfig = Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
@@ -797,12 +825,12 @@ function renderSharePanel() {
     return;
   }
 
-  const shareUrl = deck.shareToken ? `${window.location.origin}${window.location.pathname}?share=${deck.shareToken}` : "";
+  const shareUrl = getCurrentShareUrl(deck);
   const pendingRequests = cloudState.pendingRequests.filter((request) => request.deckId === deck.sharedDeckId);
   const canEdit = canEditDeckContent(deck);
   const canManage = canManageDeckShare(deck);
 
-  shareDeckButton.disabled = !hasClientConfig || !isSignedIn || !canEdit;
+  shareDeckButton.disabled = !canEdit;
   copyShareLinkButton.disabled = !shareUrl;
   syncSharedDeckButton.disabled = !hasClientConfig || !isSignedIn || deck.storageMode !== "shared";
   duplicateSharedDeckButton.disabled = false;
@@ -812,7 +840,13 @@ function renderSharePanel() {
       ? `このデッキは共有中です。権限: ${formatRoleLabel(deck.role)} / 状態: ${formatSyncState(deck.syncState)}${
           shareUrl ? ` / リンク: ${shareUrl}` : ""
         }`
-      : "まだローカルデッキです。共有リンクを作るとクラウドに複製されます。";
+      : hasClientConfig
+        ? shareUrl
+          ? `このローカルデッキの複製用リンクを作成済みです。共同編集にしたい場合はログイン後にもう一度「共有リンクを作る」を押してください。 / リンク: ${shareUrl}`
+          : "まだローカルデッキです。今は複製用の共有リンクを作れます。共同編集にしたい場合は Supabase にログインするとクラウド共有へ切り替わります。"
+        : shareUrl
+          ? `このローカルデッキの複製用リンクを作成済みです。 / リンク: ${shareUrl}`
+          : "Supabase 未設定でも、まずは複製用の共有リンクを作れます。共同編集を使いたい時だけ Supabase を接続してください。";
 
   shareRequestList.innerHTML = pendingRequests.length
     ? pendingRequests
@@ -3025,8 +3059,13 @@ async function getSupabaseClient() {
 
 async function initializeCloud() {
   const url = new URL(window.location.href);
-  cloudState.shareToken = String(url.searchParams.get("share") || "").trim();
+  cloudState.shareToken = String(url.searchParams.get(CLOUD_SHARE_PARAM) || "").trim();
+  const localShareParam = String(url.searchParams.get(LOCAL_SHARE_PARAM) || "").trim();
   renderSharePanel();
+
+  if (localShareParam) {
+    await previewLocalShare(localShareParam);
+  }
 
   const client = await getSupabaseClient();
   if (!client) {
@@ -3036,6 +3075,7 @@ async function initializeCloud() {
       shareJoinStatus.textContent =
         "この共有リンクを使うには、Supabase を接続してから共有タブでログインしてください。";
       requestShareAccessButton.disabled = true;
+      requestShareAccessButton.textContent = "参加を申請する";
       shareJoinModal.hidden = false;
     }
     renderSharePanel();
@@ -3441,6 +3481,209 @@ function buildShareUrl(token) {
   return `${window.location.origin}${window.location.pathname}?share=${encodeURIComponent(token)}`;
 }
 
+function clearLocalShareQuery() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(LOCAL_SHARE_PARAM)) {
+    return;
+  }
+  url.searchParams.delete(LOCAL_SHARE_PARAM);
+  history.replaceState({}, "", `${url.pathname}${url.search}`);
+}
+
+function createLocalShareSnapshot(deck) {
+  const cards = state.cards
+    .filter((card) => card.deckId === deck.id)
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((card) => ({
+      front: card.front,
+      back: card.back,
+      hint: card.hint || "",
+      topic: card.topic || "",
+      tags: card.tags || [],
+      note: card.note || "",
+      example: card.example || "",
+    }));
+
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    mode: "local-share",
+    deck: {
+      name: deck.name,
+      focus: deck.focus,
+      subject: deck.subject,
+      description: deck.description,
+    },
+    cards,
+  };
+}
+
+async function buildLocalShareUrl(deck) {
+  const snapshot = createLocalShareSnapshot(deck);
+  const encoded = await encodeSharePayload(snapshot);
+  const url = `${window.location.origin}${window.location.pathname}?${LOCAL_SHARE_PARAM}=${encodeURIComponent(encoded)}`;
+
+  if (url.length > 20000) {
+    throw new Error("デッキが大きすぎるためリンク共有できません。JSON バックアップ共有か Supabase 共有を使ってください");
+  }
+
+  return url;
+}
+
+async function encodeSharePayload(payload) {
+  const inputBytes = new TextEncoder().encode(JSON.stringify(payload));
+  const compressedBytes = await gzipBytesIfAvailable(inputBytes);
+
+  if (compressedBytes && compressedBytes.length < inputBytes.length) {
+    return `gz.${bytesToBase64Url(compressedBytes)}`;
+  }
+
+  return `plain.${bytesToBase64Url(inputBytes)}`;
+}
+
+async function decodeSharePayload(encodedPayload) {
+  const [mode, rawPayload] = String(encodedPayload || "").split(".", 2);
+  if (!rawPayload) {
+    throw new Error("共有リンクの形式が正しくありません");
+  }
+
+  const rawBytes = base64UrlToBytes(rawPayload);
+  const outputBytes =
+    mode === "gz"
+      ? await gunzipBytes(rawBytes)
+      : rawBytes;
+
+  const parsed = JSON.parse(new TextDecoder().decode(outputBytes));
+  if (!parsed?.deck || !Array.isArray(parsed.cards)) {
+    throw new Error("共有リンクの内容を読み取れませんでした");
+  }
+
+  return parsed;
+}
+
+async function gzipBytesIfAvailable(bytes) {
+  if (typeof CompressionStream === "undefined") {
+    return null;
+  }
+
+  try {
+    const stream = new CompressionStream("gzip");
+    const writer = stream.writable.getWriter();
+    writer.write(bytes);
+    writer.close();
+    const buffer = await new Response(stream.readable).arrayBuffer();
+    return new Uint8Array(buffer);
+  } catch (error) {
+    console.warn("Failed to gzip local share payload:", error);
+    return null;
+  }
+}
+
+async function gunzipBytes(bytes) {
+  if (typeof DecompressionStream === "undefined") {
+    throw new Error("この端末では圧縮共有リンクの展開に対応していません");
+  }
+
+  const stream = new DecompressionStream("gzip");
+  const writer = stream.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+  const buffer = await new Response(stream.readable).arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+function bytesToBase64Url(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.slice(index, index + chunkSize));
+  }
+
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlToBytes(value) {
+  const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
+  const binary = atob(normalized + padding);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+async function previewLocalShare(encodedPayload) {
+  try {
+    const payload = await decodeSharePayload(encodedPayload);
+    cloudState.joinMode = "local";
+    cloudState.localSharePayload = payload;
+    shareJoinTitle.textContent = `${payload.deck.name || "共有デッキ"} を追加`;
+    shareJoinStatus.textContent = `${payload.cards.length}枚のカードを、この端末のローカルデッキとして取り込めます。`;
+    requestShareAccessButton.disabled = false;
+    requestShareAccessButton.textContent = "自分のアプリに追加する";
+    shareJoinModal.hidden = false;
+  } catch (error) {
+    cloudState.joinMode = "local";
+    cloudState.localSharePayload = null;
+    shareJoinTitle.textContent = "共有リンクを開けませんでした";
+    shareJoinStatus.textContent = error.message || "共有リンクの読み込みに失敗しました。";
+    requestShareAccessButton.disabled = true;
+    requestShareAccessButton.textContent = "自分のアプリに追加する";
+    shareJoinModal.hidden = false;
+  }
+}
+
+function importLocalSharedDeck(payload) {
+  const now = Date.now();
+  const newDeckId = crypto.randomUUID();
+  const deckName = createUniqueDeckName(payload.deck?.name || "共有デッキ");
+  const description = [String(payload.deck?.description || "").trim(), "共有リンクから追加"].filter(Boolean).join(" / ");
+  const deck = normalizeDeck({
+    id: newDeckId,
+    name: deckName,
+    focus: normalizeDeckFocus(payload.deck?.focus),
+    subject: String(payload.deck?.subject || "").trim(),
+    description,
+    createdAt: now,
+    updatedAt: now,
+    storageMode: "local",
+    role: "owner",
+    syncState: "local-only",
+  });
+
+  state.decks.unshift(deck);
+  (payload.cards || []).forEach((card, index) => {
+    state.cards.unshift(
+      makeCard({
+        id: crypto.randomUUID(),
+        deckId: newDeckId,
+        front: String(card.front || "").trim(),
+        back: String(card.back || "").trim(),
+        hint: String(card.hint || "").trim(),
+        topic: String(card.topic || "").trim(),
+        tags: Array.isArray(card.tags) ? card.tags : parseTags(card.tags),
+        note: String(card.note || "").trim(),
+        example: String(card.example || "").trim(),
+        createdAt: now + index,
+        dueAt: now,
+        intervalDays: 0,
+      }),
+    );
+  });
+
+  persist();
+  render();
+  selectedDeckDetailId = newDeckId;
+  shareDeckSelect.value = newDeckId;
+  closeShareJoinModal();
+  switchSection("assistant");
+  showToast(`${deckName} を共有リンクから追加しました`);
+}
+
 async function sendMagicLink() {
   const email = String(authEmailInput.value || "").trim();
   const client = cloudState.client || (await getSupabaseClient());
@@ -3492,12 +3735,20 @@ async function shareDeck() {
     showToast("共有するデッキを選んでください");
     return;
   }
-  if (!client || !cloudState.session?.user) {
-    showToast("共有を使うにはログインしてください");
-    return;
-  }
   if (!canEditDeckContent(deck)) {
     showToast("この共有デッキは編集できません");
+    return;
+  }
+
+  if (!client || !cloudState.session?.user) {
+    try {
+      shareLinkCache = await buildLocalShareUrl(deck);
+      cloudState.lastLocalShareDeckId = deck.id;
+      renderSharePanel();
+      showToast("共有リンクを作成しました。開いた相手はローカルに複製できます");
+    } catch (error) {
+      showToast(error.message || "共有リンクの作成に失敗しました");
+    }
     return;
   }
 
@@ -3549,7 +3800,12 @@ async function shareDeck() {
 
 async function copyShareLink() {
   const deck = getSelectedShareDeck();
-  const link = deck?.shareToken ? buildShareUrl(deck.shareToken) : shareLinkCache;
+  let link = getCurrentShareUrl(deck);
+
+  if (!link && deck) {
+    await shareDeck();
+    link = getCurrentShareUrl(deck);
+  }
 
   if (!link) {
     showToast("先に共有リンクを作成してください");
@@ -3643,6 +3899,9 @@ async function refreshShareJoinPreview() {
     return;
   }
 
+  requestShareAccessButton.textContent = "参加を申請する";
+  cloudState.joinMode = "cloud";
+
   if (!cloudState.config?.supabaseUrl) {
     shareJoinTitle.textContent = "共有デッキに参加";
     shareJoinStatus.textContent =
@@ -3716,6 +3975,15 @@ async function refreshShareJoinPreview() {
 }
 
 async function requestShareAccess() {
+  if (cloudState.joinMode === "local") {
+    if (!cloudState.localSharePayload) {
+      showToast("共有リンクの内容を読み取れませんでした");
+      return;
+    }
+    importLocalSharedDeck(cloudState.localSharePayload);
+    return;
+  }
+
   if (!cloudState.shareToken) {
     showToast("共有リンクが見つかりません");
     return;
