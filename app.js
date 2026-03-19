@@ -276,6 +276,7 @@ let questionMapErrorMessage = "";
 let aiStudyDraft = null;
 let isAiStudyLoading = false;
 let aiStudyErrorMessage = "";
+let featureSearchVisible = false;
 let cloudState = {
   status: "idle",
   config: null,
@@ -298,6 +299,7 @@ const createModeButtons = [...document.querySelectorAll("[data-create-mode]")];
 const studyModeButtons = [...document.querySelectorAll("[data-study-mode]")];
 const templateButtons = [...document.querySelectorAll("[data-template]")];
 const deckDetailTabButtons = [...document.querySelectorAll("[data-deck-detail-tab]")];
+const openFeatureSearchButton = document.getElementById("openFeatureSearchButton");
 const dashboardSection = document.getElementById("dashboard");
 const dueCount = document.getElementById("dueCount");
 const heroTitle = document.getElementById("heroTitle");
@@ -511,6 +513,190 @@ const shareJoinRoleField = document.getElementById("shareJoinRoleField");
 const shareJoinRoleSelect = document.getElementById("shareJoinRoleSelect");
 const requestShareAccessButton = document.getElementById("requestShareAccessButton");
 const closeShareJoinButton = document.getElementById("closeShareJoinButton");
+const featureSearchModal = document.getElementById("featureSearchModal");
+const closeFeatureSearchButton = document.getElementById("closeFeatureSearchButton");
+const featureSearchInput = document.getElementById("featureSearchInput");
+const featureSearchStatus = document.getElementById("featureSearchStatus");
+const featureSearchResults = document.getElementById("featureSearchResults");
+
+const FEATURE_SEARCH_ITEMS = [
+  {
+    id: "review",
+    title: "今日の復習を開く",
+    sectionLabel: "学習",
+    description: "期限が来たカードを通常復習で回します。",
+    keywords: ["復習", "今日", "review", "勉強", "学習"],
+    action: "study-mode",
+    studyMode: "review",
+    targetId: "studyDeckFilter",
+    featured: true,
+  },
+  {
+    id: "test",
+    title: "小テストを始める",
+    sectionLabel: "学習",
+    description: "記述式の小テストを作って自己採点できます。",
+    keywords: ["小テスト", "テスト", "quiz", "記述", "確認"],
+    action: "study-mode",
+    studyMode: "test",
+    targetId: "startStudySessionButton",
+    featured: true,
+  },
+  {
+    id: "choice",
+    title: "4択クイズを始める",
+    sectionLabel: "学習",
+    description: "4択で素早く確認しながら弱点を見つけます。",
+    keywords: ["4択", "クイズ", "choice", "選択", "問題"],
+    action: "study-mode",
+    studyMode: "choice",
+    targetId: "startStudySessionButton",
+    featured: true,
+  },
+  {
+    id: "ai-test",
+    title: "AIで小テストを作る",
+    sectionLabel: "学習",
+    description: "選択中のデッキや弱点リストからAI問題案を作ります。",
+    keywords: ["AI", "小テスト", "高精度", "自動生成", "quiz"],
+    action: "study-mode",
+    studyMode: "test",
+    targetId: "generateAiStudyButton",
+    featured: true,
+  },
+  {
+    id: "ai-choice",
+    title: "AIで4択クイズを作る",
+    sectionLabel: "学習",
+    description: "保存済みカードからAIで4択問題案を作ります。",
+    keywords: ["AI", "4択", "クイズ", "高精度", "choice"],
+    action: "study-mode",
+    studyMode: "choice",
+    targetId: "generateAiStudyButton",
+    featured: false,
+  },
+  {
+    id: "create-deck",
+    title: "新しいデッキを作る",
+    sectionLabel: "作成",
+    description: "科目や単元ごとの学習デッキを追加します。",
+    keywords: ["デッキ", "作成", "新規", "科目", "追加"],
+    action: "create-mode",
+    createMode: "deck",
+    targetId: "deckName",
+    featured: true,
+  },
+  {
+    id: "create-card",
+    title: "カードを手入力で追加する",
+    sectionLabel: "作成",
+    description: "問題と答えを直接入力してカードを増やします。",
+    keywords: ["カード", "手入力", "追加", "単語帳", "flashcard"],
+    action: "create-mode",
+    createMode: "card",
+    targetId: "cardFrontInput",
+    featured: true,
+  },
+  {
+    id: "import-pdf",
+    title: "PDFからカード候補を作る",
+    sectionLabel: "作成",
+    description: "PDFや本文を解析してカード候補をまとめて作ります。",
+    keywords: ["PDF", "資料", "取り込み", "import", "カード候補"],
+    action: "create-mode",
+    createMode: "import",
+    targetId: "importFileInput",
+    featured: true,
+  },
+  {
+    id: "import-pdf-ai",
+    title: "PDFをAIで高精度生成する",
+    sectionLabel: "作成",
+    description: "Gemini の無料枠で PDF からカード候補を高精度に作ります。",
+    keywords: ["AI", "PDF", "高精度", "Gemini", "自動生成", "資料"],
+    action: "create-mode",
+    createMode: "import",
+    targetId: "analyzeImportAiButton",
+    featured: true,
+  },
+  {
+    id: "question-map",
+    title: "過去問とスライドを対応づける",
+    sectionLabel: "作成",
+    description: "設問がどの講義スライドに近いかを探します。",
+    keywords: ["過去問", "スライド", "対応", "参照", "授業", "問題文"],
+    action: "create-mode",
+    createMode: "locator",
+    targetId: "questionMapQuestionFileInput",
+    featured: true,
+  },
+  {
+    id: "question-map-ai",
+    title: "過去問参照をAIで補強する",
+    sectionLabel: "作成",
+    description: "対応候補の根拠説明を AI で補います。",
+    keywords: ["AI", "過去問", "スライド", "高精度", "補強", "根拠"],
+    action: "create-mode",
+    createMode: "locator",
+    targetId: "analyzeQuestionMapAiButton",
+    featured: false,
+  },
+  {
+    id: "library-search",
+    title: "保存済みカードを検索する",
+    sectionLabel: "ライブラリ",
+    description: "医学や英語の知識を保存済みカードだけから探します。",
+    keywords: ["検索", "ライブラリ", "知識", "カード検索", "調べる"],
+    action: "section",
+    sectionId: "assistant",
+    targetId: "assistantInput",
+    featured: true,
+  },
+  {
+    id: "share",
+    title: "共有デッキを管理する",
+    sectionLabel: "作成",
+    description: "共有リンクの作成、参加申請、共同編集の管理を行います。",
+    keywords: ["共有", "share", "グループ", "共同編集", "リンク"],
+    action: "create-mode",
+    createMode: "share",
+    targetId: "shareDeckSelect",
+    featured: true,
+  },
+  {
+    id: "backup",
+    title: "JSONバックアップを書く",
+    sectionLabel: "設定",
+    description: "いまのデッキと学習履歴を JSON として保存します。",
+    keywords: ["バックアップ", "JSON", "保存", "export", "エクスポート"],
+    action: "section",
+    sectionId: "settings",
+    targetId: "exportJsonButton",
+    featured: true,
+  },
+  {
+    id: "guide",
+    title: "使い方ガイドを開く",
+    sectionLabel: "設定",
+    description: "初回ガイドをもう一度見直せます。",
+    keywords: ["ガイド", "使い方", "ヘルプ", "案内", "初心者"],
+    action: "guide",
+    targetId: "",
+    featured: false,
+  },
+  {
+    id: "reset",
+    title: "初期化の場所を開く",
+    sectionLabel: "設定",
+    description: "危険操作なので、設定画面の初期化欄を安全に開きます。",
+    keywords: ["初期化", "リセット", "サンプル", "危険", "削除"],
+    action: "section",
+    sectionId: "settings",
+    targetId: "demoResetConfirmInput",
+    featured: false,
+    isDangerous: true,
+  },
+];
 
 bootstrap();
 
@@ -553,6 +739,27 @@ function bindEvents() {
       openDeckComposer("medical");
     });
   }
+  if (openFeatureSearchButton) {
+    openFeatureSearchButton.addEventListener("click", () => openFeatureSearchModal());
+  }
+  if (closeFeatureSearchButton) {
+    closeFeatureSearchButton.addEventListener("click", closeFeatureSearchModal);
+  }
+  if (featureSearchModal) {
+    featureSearchModal.addEventListener("click", (event) => {
+      if (event.target === featureSearchModal) {
+        closeFeatureSearchModal();
+      }
+    });
+  }
+  if (featureSearchInput) {
+    featureSearchInput.addEventListener("input", renderFeatureSearchResults);
+    featureSearchInput.addEventListener("keydown", handleFeatureSearchInputKeydown);
+  }
+  if (featureSearchResults) {
+    featureSearchResults.addEventListener("click", handleFeatureSearchResultClick);
+  }
+  document.addEventListener("keydown", handleGlobalKeydown);
   demoResetConfirmInput.addEventListener("input", renderDemoRestorePanel);
   seedDemoButton.addEventListener("click", restoreDemoData);
   if (settingsOpenGuideButton) {
@@ -738,6 +945,280 @@ function render() {
   renderCreatePanels();
   renderSharePanel();
   renderSettingsPanel();
+  renderFeatureSearchResults();
+}
+
+function openFeatureSearchModal(initialQuery = "") {
+  if (!featureSearchModal || !featureSearchInput) {
+    return;
+  }
+
+  featureSearchVisible = true;
+  featureSearchModal.hidden = false;
+  featureSearchInput.value = String(initialQuery || "");
+  renderFeatureSearchResults();
+  window.requestAnimationFrame(() => {
+    featureSearchInput.focus();
+    featureSearchInput.select();
+  });
+}
+
+function closeFeatureSearchModal() {
+  if (!featureSearchModal || !featureSearchInput) {
+    return;
+  }
+
+  featureSearchVisible = false;
+  featureSearchModal.hidden = true;
+  featureSearchInput.value = "";
+  renderFeatureSearchResults();
+}
+
+function renderFeatureSearchResults() {
+  if (!featureSearchResults || !featureSearchStatus || !featureSearchInput) {
+    return;
+  }
+
+  const query = String(featureSearchInput.value || "").trim();
+  const rankedItems = getRankedFeatureSearchItems(query);
+
+  if (!query) {
+    featureSearchStatus.textContent =
+      "例: PDF、過去問、共有、4択、バックアップ。よく使う機能を上に並べています。";
+  } else if (!rankedItems.length) {
+    featureSearchStatus.textContent = `「${query}」に近い機能は見つかりませんでした。言い換えでも探せます。`;
+  } else {
+    featureSearchStatus.textContent = `「${query}」に近い機能を ${rankedItems.length} 件見つけました。`;
+  }
+
+  featureSearchResults.innerHTML = rankedItems.length
+    ? rankedItems
+        .map(
+          (item) => `
+            <button class="feature-search-result" data-feature-search-id="${escapeHtml(item.id)}" type="button">
+              <div class="feature-search-copy">
+                <div class="feature-search-header">
+                  <p class="eyebrow">${escapeHtml(item.sectionLabel)}</p>
+                  ${item.isDangerous ? '<span class="meta-pill danger">注意</span>' : ""}
+                </div>
+                <strong>${escapeHtml(item.title)}</strong>
+                <span class="muted">${escapeHtml(item.description)}</span>
+              </div>
+            </button>
+          `,
+        )
+        .join("")
+    : `
+        <article class="library-card">
+          <h4>近い機能が見つかりませんでした</h4>
+          <p class="muted">「PDF」「過去問」「共有」「初期化」などの短い語で探すと見つけやすくなります。</p>
+        </article>
+      `;
+}
+
+function getRankedFeatureSearchItems(query) {
+  const safeQuery = normalizeFeatureSearchText(query);
+  const baseItems = FEATURE_SEARCH_ITEMS.map((item, index) => ({
+    ...item,
+    score: scoreFeatureSearchItem(item, safeQuery),
+    order: index,
+  }));
+
+  if (!safeQuery) {
+    return baseItems
+      .filter((item) => item.featured)
+      .slice(0, 8);
+  }
+
+  return baseItems
+    .filter((item) => item.score >= 0)
+    .sort((left, right) => right.score - left.score || left.order - right.order)
+    .slice(0, 10);
+}
+
+function scoreFeatureSearchItem(item, query) {
+  if (!query) {
+    return item.featured ? 1 : 0;
+  }
+
+  const tokens = query.split(" ").filter(Boolean);
+  if (!tokens.length) {
+    return item.featured ? 1 : 0;
+  }
+
+  const title = normalizeFeatureSearchText(item.title);
+  const sectionLabel = normalizeFeatureSearchText(item.sectionLabel);
+  const description = normalizeFeatureSearchText(item.description);
+  const keywords = (item.keywords || []).map((keyword) => normalizeFeatureSearchText(keyword));
+  let score = 0;
+
+  for (const token of tokens) {
+    let tokenMatched = false;
+
+    if (title === token) {
+      score += 120;
+      tokenMatched = true;
+    } else if (title.startsWith(token)) {
+      score += 90;
+      tokenMatched = true;
+    } else if (title.includes(token)) {
+      score += 70;
+      tokenMatched = true;
+    }
+
+    if (keywords.some((keyword) => keyword === token)) {
+      score += 80;
+      tokenMatched = true;
+    } else if (keywords.some((keyword) => keyword.includes(token))) {
+      score += 50;
+      tokenMatched = true;
+    }
+
+    if (sectionLabel.includes(token)) {
+      score += 20;
+      tokenMatched = true;
+    }
+
+    if (description.includes(token)) {
+      score += 18;
+      tokenMatched = true;
+    }
+
+    if (!tokenMatched) {
+      return -1;
+    }
+  }
+
+  if (item.featured) {
+    score += 6;
+  }
+  if (item.isDangerous) {
+    score -= 4;
+  }
+
+  return score;
+}
+
+function normalizeFeatureSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[・/]/g, " ")
+    .trim();
+}
+
+function handleFeatureSearchInputKeydown(event) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeFeatureSearchModal();
+    return;
+  }
+
+  if (event.key === "Enter") {
+    const firstItem = getRankedFeatureSearchItems(featureSearchInput.value || "")[0];
+    if (firstItem) {
+      event.preventDefault();
+      executeFeatureSearchItem(firstItem.id);
+    }
+  }
+}
+
+function handleFeatureSearchResultClick(event) {
+  const resultButton = event.target.closest("[data-feature-search-id]");
+  if (!resultButton) {
+    return;
+  }
+
+  executeFeatureSearchItem(resultButton.dataset.featureSearchId);
+}
+
+function handleGlobalKeydown(event) {
+  const isSearchShortcut = (event.metaKey || event.ctrlKey) && String(event.key || "").toLowerCase() === "k";
+  const isSlashShortcut = event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey;
+
+  if (featureSearchVisible && event.key === "Escape") {
+    event.preventDefault();
+    closeFeatureSearchModal();
+    return;
+  }
+
+  if (!isSearchShortcut && !isSlashShortcut) {
+    return;
+  }
+
+  if (isTypingIntoField(event.target)) {
+    return;
+  }
+
+  event.preventDefault();
+  openFeatureSearchModal(isSearchShortcut ? "" : "");
+}
+
+function isTypingIntoField(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  const tagName = target.tagName;
+  return ["INPUT", "TEXTAREA", "SELECT"].includes(tagName);
+}
+
+function executeFeatureSearchItem(itemId) {
+  const item = FEATURE_SEARCH_ITEMS.find((entry) => entry.id === itemId);
+  if (!item) {
+    return;
+  }
+
+  closeFeatureSearchModal();
+
+  if (item.action === "study-mode") {
+    switchSection("study");
+    setStudyMode(item.studyMode || "review");
+  } else if (item.action === "create-mode") {
+    openCreateMode(item.createMode || "deck");
+  } else if (item.action === "section") {
+    switchSection(item.sectionId || "dashboard");
+  } else if (item.action === "guide") {
+    switchSection("settings");
+    onboardingModal.hidden = false;
+  }
+
+  focusFeatureTarget(item.targetId, {
+    select: item.targetId === "demoResetConfirmInput" || item.targetId === "assistantInput" || item.targetId === "deckName",
+  });
+}
+
+function focusFeatureTarget(targetId, { select = false } = {}) {
+  if (!targetId) {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    const target = document.getElementById(targetId);
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+
+    if (typeof target.focus === "function" && !target.disabled) {
+      try {
+        target.focus({ preventScroll: true });
+      } catch (_error) {
+        target.focus();
+      }
+      if (select && typeof target.select === "function") {
+        target.select();
+      }
+    }
+  });
 }
 
 function renderStats() {

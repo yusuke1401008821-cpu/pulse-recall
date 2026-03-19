@@ -44,6 +44,7 @@
           <p class="eyebrow">医学部 / 英語 学習サポート</p>
           <h1>Pulse Recall</h1>
         </div>
+        <button class="ghost-button topbar-search-button" id="openFeatureSearchButton" type="button">機能検索</button>
       </header>
 
       <main class="page">
@@ -825,7 +826,7 @@
             <p class="muted">
               端末変更や誤操作に備えて、まずは JSON を書き出しておくと安全です。
             </p>
-            <div class="form-actions">
+            <div class="form-actions" id="settingsBackupActions">
               <button class="primary-button" id="exportJsonButton" type="button">JSONを書き出す</button>
               <label class="ghost-button file-button">
                 JSONを読み込む
@@ -915,6 +916,32 @@
         <div class="form-actions">
           <button class="ghost-button" id="closeDeckActionButton" type="button">閉じる</button>
         </div>
+      </div>
+    </div>
+
+    <div class="modal-shell" id="featureSearchModal" hidden>
+      <div class="modal-card feature-search-card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">機能検索</p>
+            <h3>やりたいことから探す</h3>
+          </div>
+          <button class="ghost-button" id="closeFeatureSearchButton" type="button">閉じる</button>
+        </div>
+        <label class="stack-form">
+          <span>何をしたいですか？</span>
+          <input
+            id="featureSearchInput"
+            type="search"
+            maxlength="80"
+            autocomplete="off"
+            placeholder="例: PDF、過去問、共有、4択、バックアップ"
+          />
+        </label>
+        <p class="muted" id="featureSearchStatus">
+          機能名や、やりたいことの言葉で探せます。
+        </p>
+        <div class="stack-list feature-search-list" id="featureSearchResults"></div>
       </div>
     </div>
 
