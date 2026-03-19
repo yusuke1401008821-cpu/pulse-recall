@@ -782,6 +782,10 @@ button:disabled {
   margin-top: 0;
 }
 
+.modal-card .inline-select {
+  margin: 16px 0 18px;
+}
+
 .onboarding-steps {
   display: grid;
   gap: 12px;

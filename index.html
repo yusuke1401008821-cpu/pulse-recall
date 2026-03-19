@@ -425,10 +425,13 @@
                     <button class="ghost-button" id="copyShareLinkButton" type="button">リンクをコピー</button>
                     <button class="ghost-button" id="syncSharedDeckButton" type="button">同期する</button>
                     <button class="ghost-button" id="duplicateSharedDeckButton" type="button">自分用に複製</button>
+                    <button class="ghost-button" id="refreshShareLinkButton" type="button">リンク再発行</button>
+                    <button class="ghost-button danger-button" id="leaveSharedDeckButton" type="button" hidden>共有をやめる</button>
                   </div>
                 </div>
                 <p class="muted" id="shareStatus">共有設定がまだありません。</p>
                 <div class="stack-list" id="shareRequestList"></div>
+                <div class="stack-list" id="shareMemberList"></div>
               </section>
 
               <section class="subpanel">
@@ -594,6 +597,13 @@
         <p class="eyebrow">Shared Deck</p>
         <h3 id="shareJoinTitle">共有デッキに参加</h3>
         <p class="muted" id="shareJoinStatus">共有リンクを確認しています。</p>
+        <label class="inline-select" id="shareJoinRoleField" hidden>
+          <span>申請する権限</span>
+          <select id="shareJoinRoleSelect">
+            <option value="viewer">閲覧のみで参加</option>
+            <option value="editor">編集できるメンバーとして参加</option>
+          </select>
+        </label>
         <div class="form-actions">
           <button class="ghost-button" id="closeShareJoinButton" type="button">閉じる</button>
           <button class="primary-button" id="requestShareAccessButton" type="button">参加を申請する</button>

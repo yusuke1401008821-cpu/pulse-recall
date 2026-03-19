@@ -223,6 +223,7 @@ let cloudState = {
   localSharePayload: null,
   lastLocalShareDeckId: "",
   pendingRequests: [],
+  membersByDeck: {},
   lastSharePreview: null,
 };
 
@@ -339,17 +340,22 @@ const shareDeckButton = document.getElementById("shareDeckButton");
 const copyShareLinkButton = document.getElementById("copyShareLinkButton");
 const syncSharedDeckButton = document.getElementById("syncSharedDeckButton");
 const duplicateSharedDeckButton = document.getElementById("duplicateSharedDeckButton");
+const refreshShareLinkButton = document.getElementById("refreshShareLinkButton");
+const leaveSharedDeckButton = document.getElementById("leaveSharedDeckButton");
 const exportJsonButton = document.getElementById("exportJsonButton");
 const importJsonFileInput = document.getElementById("importJsonFileInput");
 const refreshCloudButton = document.getElementById("refreshCloudButton");
 const shareStatus = document.getElementById("shareStatus");
 const shareRequestList = document.getElementById("shareRequestList");
+const shareMemberList = document.getElementById("shareMemberList");
 const onboardingModal = document.getElementById("onboardingModal");
 const dismissOnboardingButton = document.getElementById("dismissOnboardingButton");
 const completeOnboardingButton = document.getElementById("completeOnboardingButton");
 const shareJoinModal = document.getElementById("shareJoinModal");
 const shareJoinTitle = document.getElementById("shareJoinTitle");
 const shareJoinStatus = document.getElementById("shareJoinStatus");
+const shareJoinRoleField = document.getElementById("shareJoinRoleField");
+const shareJoinRoleSelect = document.getElementById("shareJoinRoleSelect");
 const requestShareAccessButton = document.getElementById("requestShareAccessButton");
 const closeShareJoinButton = document.getElementById("closeShareJoinButton");
 
@@ -455,6 +461,8 @@ function bindEvents() {
   copyShareLinkButton.addEventListener("click", copyShareLink);
   syncSharedDeckButton.addEventListener("click", syncSelectedSharedDeck);
   duplicateSharedDeckButton.addEventListener("click", duplicateSelectedDeck);
+  refreshShareLinkButton.addEventListener("click", () => regenerateShareLinkForDeck());
+  leaveSharedDeckButton.addEventListener("click", stopOrLeaveSelectedDeck);
   exportJsonButton.addEventListener("click", exportJsonBackup);
   importJsonFileInput.addEventListener("change", importJsonBackup);
   refreshCloudButton.addEventListener("click", refreshCloudData);
@@ -467,6 +475,7 @@ function bindEvents() {
   libraryList.addEventListener("click", handleLibraryActions);
   recentDeckList.addEventListener("click", handleLibraryActions);
   shareRequestList.addEventListener("click", handleDeckDetailActions);
+  shareMemberList.addEventListener("click", handleDeckDetailActions);
   deckDetailContent.addEventListener("click", handleDeckDetailActions);
   trackGrid.addEventListener("click", handleTrackActions);
   importPreview.addEventListener("click", handleImportPreviewActions);
@@ -765,6 +774,13 @@ function canManageDeckShare(deck) {
   return Boolean(deck && deck.storageMode === "shared" && deck.role === "owner");
 }
 
+function setShareJoinRoleVisibility(isVisible) {
+  shareJoinRoleField.hidden = !isVisible;
+  if (!isVisible) {
+    shareJoinRoleSelect.value = "viewer";
+  }
+}
+
 function markDeckDirty(deckId) {
   const deck = getDeckById(deckId);
   if (!deck || deck.storageMode !== "shared") {
@@ -780,7 +796,159 @@ function closeShareJoinModal() {
   }
   cloudState.joinMode = "";
   cloudState.localSharePayload = null;
+  setShareJoinRoleVisibility(false);
   requestShareAccessButton.textContent = "参加を申請する";
+}
+
+function getDeckShareMembers(deck) {
+  if (!deck?.sharedDeckId) {
+    return [];
+  }
+  return Array.isArray(cloudState.membersByDeck[deck.sharedDeckId]) ? cloudState.membersByDeck[deck.sharedDeckId] : [];
+}
+
+function formatShareMemberName(member) {
+  if (!member) {
+    return "メンバー";
+  }
+  if (member.isCurrentUser) {
+    return member.role === "owner" ? "あなた (owner)" : "あなた";
+  }
+  if (member.email) {
+    return member.email;
+  }
+  if (member.displayName) {
+    return member.displayName;
+  }
+  return "共有メンバー";
+}
+
+function renderShareRequestsMarkup(deck, canManage) {
+  const pendingRequests = cloudState.pendingRequests.filter((request) => request.deckId === deck.sharedDeckId);
+  if (!pendingRequests.length) {
+    return `
+      <article class="library-card">
+        <h4>承認待ちはありません</h4>
+        <p class="muted">共有リンクを配ると、参加申請がここに出ます。</p>
+      </article>
+    `;
+  }
+
+  return pendingRequests
+    .map(
+      (request) => `
+        <article class="library-card">
+          <h4>${escapeHtml(request.requesterEmail || "参加申請")}</h4>
+          <p class="muted">希望ロール: ${escapeHtml(formatRoleLabel(request.requestedRole || "viewer"))}</p>
+          <div class="button-row">
+            <button
+              class="primary-button"
+              data-approve-request="${request.id}"
+              data-approved-role="viewer"
+              type="button"
+              ${canManage ? "" : "disabled"}
+            >
+              閲覧で承認
+            </button>
+            <button
+              class="ghost-button"
+              data-approve-request="${request.id}"
+              data-approved-role="editor"
+              type="button"
+              ${canManage ? "" : "disabled"}
+            >
+              編集で承認
+            </button>
+            <button class="ghost-button danger-button" data-reject-request="${request.id}" type="button" ${canManage ? "" : "disabled"}>拒否</button>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderShareMembersMarkup(deck, canManage) {
+  const roleRank = { owner: 0, editor: 1, viewer: 2 };
+  const members = getDeckShareMembers(deck)
+    .slice()
+    .sort((left, right) => {
+      const leftRank = roleRank[left.role] ?? 9;
+      const rightRank = roleRank[right.role] ?? 9;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      if (left.isCurrentUser !== right.isCurrentUser) {
+        return left.isCurrentUser ? -1 : 1;
+      }
+      return String(left.email || left.displayName || "").localeCompare(String(right.email || right.displayName || ""));
+    });
+  if (!members.length) {
+    return `
+      <article class="library-card">
+        <h4>参加中メンバーはまだいません</h4>
+        <p class="muted">承認済みになると、ここに現在のメンバーとロールが並びます。</p>
+      </article>
+    `;
+  }
+
+  return members
+    .map((member) => {
+      const isOwner = member.role === "owner";
+      const canChangeRole = canManage && !isOwner;
+      const canRemove = !isOwner && (canManage || member.isCurrentUser);
+      return `
+        <article class="library-card">
+          <h4>${escapeHtml(formatShareMemberName(member))}</h4>
+          <div class="card-row-meta">
+            <span class="meta-pill">${escapeHtml(formatRoleLabel(member.role))}</span>
+            ${member.isCurrentUser ? '<span class="meta-pill">この端末</span>' : ""}
+          </div>
+          <div class="button-row">
+            ${
+              canChangeRole
+                ? `
+                  <button
+                    class="ghost-button"
+                    data-change-member-role="${member.id}"
+                    data-deck-id="${deck.id}"
+                    data-next-role="viewer"
+                    type="button"
+                    ${member.role === "viewer" ? "disabled" : ""}
+                  >
+                    閲覧のみ
+                  </button>
+                  <button
+                    class="ghost-button"
+                    data-change-member-role="${member.id}"
+                    data-deck-id="${deck.id}"
+                    data-next-role="editor"
+                    type="button"
+                    ${member.role === "editor" ? "disabled" : ""}
+                  >
+                    編集可
+                  </button>
+                `
+                : ""
+            }
+            ${
+              canRemove
+                ? `
+                  <button
+                    class="ghost-button danger-button"
+                    data-remove-member="${member.id}"
+                    data-deck-id="${deck.id}"
+                    type="button"
+                  >
+                    ${member.isCurrentUser ? "共有から抜ける" : "メンバーを外す"}
+                  </button>
+                `
+                : ""
+            }
+          </div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function getCurrentShareUrl(deck) {
@@ -815,6 +983,9 @@ function renderSharePanel() {
     copyShareLinkButton.disabled = true;
     syncSharedDeckButton.disabled = true;
     duplicateSharedDeckButton.disabled = true;
+    refreshShareLinkButton.disabled = true;
+    leaveSharedDeckButton.hidden = true;
+    leaveSharedDeckButton.disabled = true;
     shareStatus.textContent = "対象デッキがありません。先にデッキを作成してください。";
     shareRequestList.innerHTML = `
       <article class="library-card">
@@ -822,11 +993,11 @@ function renderSharePanel() {
         <p class="muted">デッキを作ると、ここから共有リンクを作れます。</p>
       </article>
     `;
+    shareMemberList.innerHTML = "";
     return;
   }
 
   const shareUrl = getCurrentShareUrl(deck);
-  const pendingRequests = cloudState.pendingRequests.filter((request) => request.deckId === deck.sharedDeckId);
   const canEdit = canEditDeckContent(deck);
   const canManage = canManageDeckShare(deck);
 
@@ -834,6 +1005,10 @@ function renderSharePanel() {
   copyShareLinkButton.disabled = !shareUrl;
   syncSharedDeckButton.disabled = !hasClientConfig || !isSignedIn || deck.storageMode !== "shared";
   duplicateSharedDeckButton.disabled = false;
+  refreshShareLinkButton.disabled = !canManage;
+  leaveSharedDeckButton.hidden = deck.storageMode !== "shared";
+  leaveSharedDeckButton.disabled = deck.storageMode !== "shared" || !isSignedIn;
+  leaveSharedDeckButton.textContent = canManage ? "共有をやめる" : "共有から抜ける";
 
   shareStatus.textContent =
     deck.storageMode === "shared"
@@ -848,27 +1023,16 @@ function renderSharePanel() {
           ? `このローカルデッキの複製用リンクを作成済みです。 / リンク: ${shareUrl}`
           : "Supabase 未設定でも、まずは複製用の共有リンクを作れます。共同編集を使いたい時だけ Supabase を接続してください。";
 
-  shareRequestList.innerHTML = pendingRequests.length
-    ? pendingRequests
-        .map(
-          (request) => `
-            <article class="library-card">
-              <h4>${escapeHtml(request.requesterEmail || "参加申請")}</h4>
-              <p class="muted">希望ロール: ${escapeHtml(formatRoleLabel(request.requestedRole || "viewer"))}</p>
-              <div class="button-row">
-                <button class="primary-button" data-approve-request="${request.id}" type="button" ${canManage ? "" : "disabled"}>承認</button>
-                <button class="ghost-button danger-button" data-reject-request="${request.id}" type="button" ${canManage ? "" : "disabled"}>拒否</button>
-              </div>
-            </article>
-          `,
-        )
-        .join("")
-    : `
-        <article class="library-card">
-          <h4>承認待ちはありません</h4>
-          <p class="muted">共有リンクを配ると、ここに参加申請が表示されます。</p>
-        </article>
-      `;
+  shareRequestList.innerHTML = renderShareRequestsMarkup(deck, canManage);
+  shareMemberList.innerHTML =
+    deck.storageMode === "shared"
+      ? renderShareMembersMarkup(deck, canManage)
+      : `
+          <article class="library-card">
+            <h4>共有後のメンバー管理</h4>
+            <p class="muted">クラウド共有を有効にすると、ここで editor / viewer の切り替えやメンバー管理ができます。</p>
+          </article>
+        `;
 }
 
 function syncDeckForm() {
@@ -1438,7 +1602,6 @@ function renderDeckDetail() {
 
   const deckCards = state.cards.filter((card) => card.deckId === deck.id);
   const dueCount = deckCards.filter((card) => card.study.dueAt <= Date.now()).length;
-  const pendingRequests = cloudState.pendingRequests.filter((request) => request.deckId === deck.sharedDeckId);
 
   if (deckDetailTab === "cards") {
     deckDetailContent.innerHTML = deckCards.length
@@ -1489,28 +1652,25 @@ function renderDeckDetail() {
           <button class="primary-button" data-share-deck="${deck.id}" type="button" ${canEdit ? "" : "disabled"}>共有する</button>
           <button class="ghost-button" data-sync-deck="${deck.id}" type="button" ${deck.storageMode === "shared" ? "" : "disabled"}>同期</button>
           <button class="ghost-button" data-duplicate-deck="${deck.id}" type="button">自分用に複製</button>
+          <button class="ghost-button" data-regenerate-share="${deck.id}" type="button" ${canManage ? "" : "disabled"}>リンク再発行</button>
+          <button
+            class="ghost-button danger-button"
+            data-stop-share="${deck.id}"
+            type="button"
+            ${deck.storageMode === "shared" && cloudState.session?.user ? "" : "disabled"}
+          >
+            ${canManage ? "共有をやめる" : "共有から抜ける"}
+          </button>
         </div>
       </article>
+      ${renderShareRequestsMarkup(deck, canManage)}
       ${
-        pendingRequests.length
-          ? pendingRequests
-              .map(
-                (request) => `
-                  <article class="library-card">
-                    <h4>${escapeHtml(request.requesterEmail || "参加申請")}</h4>
-                    <p class="muted">この共有デッキへの参加を希望しています。</p>
-                    <div class="button-row">
-                      <button class="primary-button" data-approve-request="${request.id}" type="button" ${canManage ? "" : "disabled"}>承認</button>
-                      <button class="ghost-button danger-button" data-reject-request="${request.id}" type="button" ${canManage ? "" : "disabled"}>拒否</button>
-                    </div>
-                  </article>
-                `,
-              )
-              .join("")
+        deck.storageMode === "shared"
+          ? renderShareMembersMarkup(deck, canManage)
           : `
               <article class="library-card">
-                <h4>承認待ちはありません</h4>
-                <p class="muted">共有リンクを配ると、参加申請がここに出ます。</p>
+                <h4>共有後のメンバー管理</h4>
+                <p class="muted">共有リンクを作ると、ここから承認・ロール変更・共有終了をまとめて管理できます。</p>
               </article>
             `
       }
@@ -1911,13 +2071,41 @@ function handleDeckDetailActions(event) {
 
   const approveButton = event.target.closest("[data-approve-request]");
   if (approveButton) {
-    approveShareRequest(approveButton.dataset.approveRequest);
+    approveShareRequest(approveButton.dataset.approveRequest, approveButton.dataset.approvedRole || "viewer");
     return;
   }
 
   const rejectButton = event.target.closest("[data-reject-request]");
   if (rejectButton) {
     rejectShareRequest(rejectButton.dataset.rejectRequest);
+    return;
+  }
+
+  const changeMemberRoleButton = event.target.closest("[data-change-member-role]");
+  if (changeMemberRoleButton) {
+    changeDeckMemberRole(
+      changeMemberRoleButton.dataset.deckId,
+      changeMemberRoleButton.dataset.changeMemberRole,
+      changeMemberRoleButton.dataset.nextRole,
+    );
+    return;
+  }
+
+  const removeMemberButton = event.target.closest("[data-remove-member]");
+  if (removeMemberButton) {
+    removeDeckMember(removeMemberButton.dataset.deckId, removeMemberButton.dataset.removeMember);
+    return;
+  }
+
+  const regenerateButton = event.target.closest("[data-regenerate-share]");
+  if (regenerateButton) {
+    regenerateShareLinkForDeck(regenerateButton.dataset.regenerateShare);
+    return;
+  }
+
+  const stopShareButton = event.target.closest("[data-stop-share]");
+  if (stopShareButton) {
+    stopOrLeaveDeck(stopShareButton.dataset.stopShare);
   }
 }
 
@@ -3139,11 +3327,84 @@ async function ensureCloudProfile() {
   return data;
 }
 
+function buildCloudMemberMap(memberRows, requestRows, userId) {
+  const latestEmailByMember = new Map();
+  (requestRows || []).forEach((request) => {
+    const key = `${request.deck_id}:${request.user_id}`;
+    const email = String(request.requester_email || "").trim();
+    if (email && !latestEmailByMember.has(key)) {
+      latestEmailByMember.set(key, email);
+    }
+  });
+
+  return (memberRows || []).reduce((collection, row) => {
+    const deckId = String(row.deck_id || "").trim();
+    if (!deckId) {
+      return collection;
+    }
+
+    if (!Array.isArray(collection[deckId])) {
+      collection[deckId] = [];
+    }
+
+    const isCurrentUser = row.user_id === userId;
+    collection[deckId].push({
+      id: row.id,
+      deckId,
+      userId: row.user_id,
+      role: row.role,
+      email: isCurrentUser
+        ? String(cloudState.session?.user?.email || cloudState.profile?.email || "").trim()
+        : latestEmailByMember.get(`${deckId}:${row.user_id}`) || "",
+      displayName: isCurrentUser ? String(cloudState.profile?.display_name || "").trim() : "",
+      isCurrentUser,
+      createdAt: parseCloudTimestamp(row.created_at),
+    });
+    return collection;
+  }, {});
+}
+
+function detachDeckFromCloud(deck, reasonText = "") {
+  if (!deck || deck.storageMode !== "shared") {
+    return;
+  }
+
+  const now = Date.now();
+  deck.storageMode = "local";
+  deck.sharedDeckId = "";
+  deck.shareToken = "";
+  deck.role = "owner";
+  deck.syncState = "local-only";
+  deck.updatedAt = now;
+
+  if (reasonText && !String(deck.description || "").includes(reasonText)) {
+    deck.description = [String(deck.description || "").trim(), reasonText].filter(Boolean).join(" / ");
+  }
+
+  state.cards.forEach((card, index) => {
+    if (card.deckId === deck.id) {
+      card.sharedCardId = "";
+      card.updatedAt = now + index;
+    }
+  });
+}
+
+function detachUnavailableSharedDecks(activeSharedDeckIds) {
+  const activeSet = new Set((activeSharedDeckIds || []).filter(Boolean));
+
+  state.decks.forEach((deck) => {
+    if (deck.storageMode === "shared" && deck.sharedDeckId && !activeSet.has(deck.sharedDeckId)) {
+      detachDeckFromCloud(deck, "共有から切り離されたためローカルコピーへ切り替え");
+    }
+  });
+}
+
 async function refreshCloudData({ silent = false } = {}) {
   const client = cloudState.client || (await getSupabaseClient());
   if (!client) {
     cloudState.status = "local-only";
     cloudState.pendingRequests = [];
+    cloudState.membersByDeck = {};
     renderSharePanel();
     return;
   }
@@ -3151,6 +3412,7 @@ async function refreshCloudData({ silent = false } = {}) {
   if (!cloudState.session?.user) {
     cloudState.status = "signed-out";
     cloudState.pendingRequests = [];
+    cloudState.membersByDeck = {};
     cloudState.profile = null;
     render();
     if (cloudState.shareToken) {
@@ -3202,21 +3464,32 @@ async function refreshCloudData({ silent = false } = {}) {
       throw progressResponse.error;
     }
 
+    const memberResponse = sharedDeckIds.length
+      ? await client.from("deck_members").select("id, deck_id, user_id, role, created_at").in("deck_id", sharedDeckIds)
+      : { data: [], error: null };
+    if (memberResponse.error) {
+      throw memberResponse.error;
+    }
+
     const requestResponse = ownerDeckIds.length
-      ? await client.from("deck_access_requests").select("*").eq("status", "pending").in("deck_id", ownerDeckIds)
+      ? await client.from("deck_access_requests").select("*").in("deck_id", ownerDeckIds).order("updated_at", { ascending: false })
       : { data: [], error: null };
     if (requestResponse.error) {
       throw requestResponse.error;
     }
 
+    detachUnavailableSharedDecks(sharedDeckIds);
     mergeCloudDecks(memberships, cardsResponse.data || [], progressResponse.data || []);
-    cloudState.pendingRequests = (requestResponse.data || []).map((request) => ({
-      ...request,
-      deckName: memberships.find((deck) => deck.id === request.deck_id)?.name || "共有デッキ",
-      deckId: request.deck_id,
-      requesterEmail: request.requester_email,
-      requestedRole: request.requested_role,
-    }));
+    cloudState.pendingRequests = (requestResponse.data || [])
+      .filter((request) => request.status === "pending")
+      .map((request) => ({
+        ...request,
+        deckName: memberships.find((deck) => deck.id === request.deck_id)?.name || "共有デッキ",
+        deckId: request.deck_id,
+        requesterEmail: request.requester_email,
+        requestedRole: request.requested_role,
+      }));
+    cloudState.membersByDeck = buildCloudMemberMap(memberResponse.data || [], requestResponse.data || [], userId);
     cloudState.status = "ready";
     persist();
     render();
@@ -3621,6 +3894,7 @@ async function previewLocalShare(encodedPayload) {
     const payload = await decodeSharePayload(encodedPayload);
     cloudState.joinMode = "local";
     cloudState.localSharePayload = payload;
+    setShareJoinRoleVisibility(false);
     shareJoinTitle.textContent = `${payload.deck.name || "共有デッキ"} を追加`;
     shareJoinStatus.textContent = `${payload.cards.length}枚のカードを、この端末のローカルデッキとして取り込めます。`;
     requestShareAccessButton.disabled = false;
@@ -3629,6 +3903,7 @@ async function previewLocalShare(encodedPayload) {
   } catch (error) {
     cloudState.joinMode = "local";
     cloudState.localSharePayload = null;
+    setShareJoinRoleVisibility(false);
     shareJoinTitle.textContent = "共有リンクを開けませんでした";
     shareJoinStatus.textContent = error.message || "共有リンクの読み込みに失敗しました。";
     requestShareAccessButton.disabled = true;
@@ -3723,6 +3998,7 @@ async function signOutCloud() {
   cloudState.session = null;
   cloudState.profile = null;
   cloudState.pendingRequests = [];
+  cloudState.membersByDeck = {};
   render();
   showToast("共有アカウントからログアウトしました");
 }
@@ -3901,6 +4177,7 @@ async function refreshShareJoinPreview() {
 
   requestShareAccessButton.textContent = "参加を申請する";
   cloudState.joinMode = "cloud";
+  setShareJoinRoleVisibility(false);
 
   if (!cloudState.config?.supabaseUrl) {
     shareJoinTitle.textContent = "共有デッキに参加";
@@ -3970,6 +4247,7 @@ async function refreshShareJoinPreview() {
     shareJoinStatus.textContent = `${preview.subject || formatDeckFocus(preview.focus)} の共有デッキです。承認制で参加できます。`;
   }
 
+  setShareJoinRoleVisibility(true);
   requestShareAccessButton.disabled = false;
   shareJoinModal.hidden = false;
 }
@@ -3995,9 +4273,11 @@ async function requestShareAccess() {
     return;
   }
 
+  const requestedRole = shareJoinRoleSelect.value === "editor" ? "editor" : "viewer";
+
   const { error } = await client.rpc("request_deck_access", {
     target_token: cloudState.shareToken,
-    requested_role: "viewer",
+    requested_role: requestedRole,
   });
 
   if (error) {
@@ -4007,10 +4287,10 @@ async function requestShareAccess() {
 
   await refreshShareJoinPreview();
   await refreshCloudData({ silent: true });
-  showToast("参加申請を送りました");
+  showToast(requestedRole === "editor" ? "編集権限で参加申請を送りました" : "参加申請を送りました");
 }
 
-async function approveShareRequest(requestId) {
+async function approveShareRequest(requestId, approvedRole = "viewer") {
   const client = cloudState.client || (await getSupabaseClient());
   if (!client) {
     return;
@@ -4018,6 +4298,7 @@ async function approveShareRequest(requestId) {
 
   const { error } = await client.rpc("approve_deck_access", {
     target_request_id: requestId,
+    approved_role: approvedRole === "editor" ? "editor" : "viewer",
   });
 
   if (error) {
@@ -4027,7 +4308,7 @@ async function approveShareRequest(requestId) {
 
   await refreshCloudData({ silent: true });
   renderSharePanel();
-  showToast("参加申請を承認しました");
+  showToast(approvedRole === "editor" ? "編集メンバーとして承認しました" : "閲覧メンバーとして承認しました");
 }
 
 async function rejectShareRequest(requestId) {
@@ -4048,6 +4329,143 @@ async function rejectShareRequest(requestId) {
   await refreshCloudData({ silent: true });
   renderSharePanel();
   showToast("参加申請を拒否しました");
+}
+
+async function changeDeckMemberRole(deckId, memberId, nextRole) {
+  const deck = getDeckById(deckId);
+  const client = cloudState.client || (await getSupabaseClient());
+  const safeRole = nextRole === "editor" ? "editor" : "viewer";
+
+  if (!deck || !canManageDeckShare(deck) || !client) {
+    showToast("この共有デッキのロールは変更できません");
+    return;
+  }
+
+  const member = getDeckShareMembers(deck).find((entry) => entry.id === memberId);
+  if (!member || member.role === "owner" || member.role === safeRole) {
+    return;
+  }
+
+  const { error } = await client.from("deck_members").update({ role: safeRole }).eq("id", memberId);
+  if (error) {
+    showToast(error.message || "ロール変更に失敗しました");
+    return;
+  }
+
+  await refreshCloudData({ silent: true });
+  showToast(`${formatShareMemberName(member)} を ${formatRoleLabel(safeRole)} に変更しました`);
+}
+
+async function removeDeckMember(deckId, memberId) {
+  const deck = getDeckById(deckId);
+  const client = cloudState.client || (await getSupabaseClient());
+
+  if (!deck || deck.storageMode !== "shared" || !client || !cloudState.session?.user) {
+    showToast("共有メンバーを操作するにはログインが必要です");
+    return;
+  }
+
+  const member = getDeckShareMembers(deck).find((entry) => entry.id === memberId);
+  if (!member || member.role === "owner") {
+    return;
+  }
+
+  const removingSelf = member.isCurrentUser;
+  const allowed = canManageDeckShare(deck) || removingSelf;
+  if (!allowed) {
+    showToast("この共有デッキのメンバー管理はできません");
+    return;
+  }
+
+  const confirmed = window.confirm(
+    removingSelf
+      ? "共有から抜けますか？ この端末にはローカルコピーを残します。"
+      : `${formatShareMemberName(member)} を共有から外しますか？ 相手の端末ではローカルコピーとして残ります。`,
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  const { error } = await client.from("deck_members").delete().eq("id", memberId);
+  if (error) {
+    showToast(error.message || "メンバーの更新に失敗しました");
+    return;
+  }
+
+  if (removingSelf) {
+    detachDeckFromCloud(deck, "共有から抜けたためローカルコピーへ切り替え");
+  }
+
+  await refreshCloudData({ silent: true });
+  showToast(removingSelf ? "共有から抜けてローカルコピーへ切り替えました" : "メンバーを共有から外しました");
+}
+
+async function regenerateShareLinkForDeck(deckId = "") {
+  const deck = deckId ? getDeckById(deckId) : getSelectedShareDeck();
+  const client = cloudState.client || (await getSupabaseClient());
+
+  if (!deck || !canManageDeckShare(deck) || !client || !cloudState.session?.user) {
+    showToast("リンクを再発行できるのは owner のみです");
+    return;
+  }
+
+  const nextToken = crypto.randomUUID();
+  const { error } = await client.from("shared_decks").update({ share_token: nextToken }).eq("id", deck.sharedDeckId);
+  if (error) {
+    showToast(error.message || "リンク再発行に失敗しました");
+    return;
+  }
+
+  deck.shareToken = nextToken;
+  shareLinkCache = buildShareUrl(nextToken);
+  persist();
+  render();
+  showToast("共有リンクを再発行しました。古いリンクは使えなくなります");
+}
+
+async function stopOrLeaveDeck(deckId) {
+  const deck = getDeckById(deckId);
+  const client = cloudState.client || (await getSupabaseClient());
+
+  if (!deck || deck.storageMode !== "shared" || !client || !cloudState.session?.user) {
+    showToast("共有操作にはログインが必要です");
+    return;
+  }
+
+  if (canManageDeckShare(deck)) {
+    const confirmed = window.confirm("この共有デッキを終了して、手元のデッキだけローカルに戻しますか？ 共有リンクは使えなくなります。");
+    if (!confirmed) {
+      return;
+    }
+
+    const { error } = await client.from("shared_decks").delete().eq("id", deck.sharedDeckId);
+    if (error) {
+      showToast(error.message || "共有終了に失敗しました");
+      return;
+    }
+
+    detachDeckFromCloud(deck, "共有を終了したためローカルデッキに戻しました");
+    await refreshCloudData({ silent: true });
+    showToast("共有を終了してローカルデッキに戻しました");
+    return;
+  }
+
+  const selfMember = getDeckShareMembers(deck).find((member) => member.isCurrentUser);
+  if (!selfMember) {
+    showToast("現在のメンバー情報を確認できませんでした");
+    return;
+  }
+
+  await removeDeckMember(deck.id, selfMember.id);
+}
+
+function stopOrLeaveSelectedDeck() {
+  const deck = getSelectedShareDeck();
+  if (!deck) {
+    showToast("対象デッキを選んでください");
+    return;
+  }
+  stopOrLeaveDeck(deck.id);
 }
 
 function exportJsonBackup() {

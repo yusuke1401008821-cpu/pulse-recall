@@ -284,6 +284,16 @@ to authenticated
 using (public.is_deck_owner(deck_id))
 with check (public.is_deck_owner(deck_id));
 
+drop policy if exists "deck_members_delete_owner_or_self" on public.deck_members;
+create policy "deck_members_delete_owner_or_self"
+on public.deck_members
+for delete
+to authenticated
+using (
+  (public.is_deck_owner(deck_id) and role <> 'owner')
+  or (user_id = auth.uid() and role <> 'owner')
+);
+
 drop policy if exists "deck_access_requests_select_requester_or_owner" on public.deck_access_requests;
 create policy "deck_access_requests_select_requester_or_owner"
 on public.deck_access_requests

@@ -26,6 +26,8 @@ ANKI に着想を得た、モバイル向けの暗記サポートアプリです
 - Supabase 未設定でも使える `共有リンクでローカル複製`
 - 共有時のみの magic link ログイン
 - owner 承認制の参加申請
+- owner による `viewer / editor` 承認とロール変更
+- 共有リンクの再発行、共有終了、メンバー退出
 - 共有デッキ内容と個人学習進捗の分離
 - `localStorage` による端末内保存
 - PWA 用の manifest / service worker の同梱
@@ -91,6 +93,11 @@ python3 -m http.server 4173
 - 共有リンクを作る/開くタイミングだけログインします
 - 共有されるのはデッキ内容で、学習進捗はユーザーごとに分離されます
 - 共有リンクの参加は owner 承認制です
+- 参加申請時に `閲覧のみ / 編集可` を選べます
+- owner は共有後もメンバーのロール変更、リンク再発行、共有終了ができます
+- 共有から外れたデッキは、その端末ではローカルコピーとして残ります
+
+Supabase を更新したときは、最新の [supabase-schema.sql](/Users/hattoriyuusuke/Documents/New%20project/supabase-schema.sql) を SQL Editor で再実行してください。メンバー退出や owner による除外は、この最新版ポリシーが入っている前提です。
 
 公開URLが確定したあとにやると良いこと:
 
@@ -100,8 +107,6 @@ python3 -m http.server 4173
 
 ## 今後の拡張候補
 
-- 共有デッキのロール変更 UI
-- 共有デッキ削除 UI
 - 長文読解テンプレートの追加
 - 音声読み上げ
 - iPhone 向けのホーム画面アイコンやスプラッシュ改善
