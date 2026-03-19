@@ -201,6 +201,7 @@ let toastTimer = null;
 let importDraft = null;
 let pdfjsModulePromise = null;
 let isAssistantLoading = false;
+let assistantErrorMessage = "";
 
 const tabs = [...document.querySelectorAll(".tab")];
 const sections = [...document.querySelectorAll(".content")];
@@ -575,10 +576,12 @@ function renderAssistant() {
 
   if (isAssistantLoading) {
     assistantStatus.textContent = "AIが回答を考えています。";
+  } else if (assistantErrorMessage) {
+    assistantStatus.textContent = assistantErrorMessage;
   }
 
   if (!state.assistant.messages.length) {
-    if (!isAssistantLoading) {
+    if (!isAssistantLoading && !assistantErrorMessage) {
       assistantStatus.textContent =
         "医学や英語の質問をすると、保存済みカードと必要ならWeb検索を使って回答します。";
     }
@@ -594,7 +597,7 @@ function renderAssistant() {
   }
 
   const latestAssistant = [...state.assistant.messages].reverse().find((message) => message.role === "assistant");
-  if (!isAssistantLoading) {
+  if (!isAssistantLoading && !assistantErrorMessage) {
     assistantStatus.textContent = latestAssistant?.usedWebSearch
       ? "最新の回答ではWeb検索を使いました。リンク付きで確認できます。"
       : "最新の回答では、保存済みカードや会話履歴をもとに回答しています。";
@@ -1023,6 +1026,7 @@ async function handleAssistantSubmit(event) {
   state.assistant.messages = state.assistant.messages.slice(-16);
   assistantInput.value = "";
   isAssistantLoading = true;
+  assistantErrorMessage = "";
   assistantStatus.textContent = "AIが回答を考えています。";
   persist();
   renderAssistant();
@@ -1038,12 +1042,14 @@ async function handleAssistantSubmit(event) {
       usedWebSearch: state.assistant.useWebSearch,
     });
     state.assistant.messages = state.assistant.messages.slice(-16);
+    assistantErrorMessage = "";
     persist();
     renderAssistant();
     showToast("AIの回答を追加しました");
   } catch (error) {
-    assistantStatus.textContent = error.message || "AI検索に失敗しました。";
-    showToast(error.message || "AI検索に失敗しました");
+    assistantErrorMessage = error.message || "AI検索に失敗しました。";
+    assistantStatus.textContent = assistantErrorMessage;
+    showToast(assistantErrorMessage);
   } finally {
     isAssistantLoading = false;
     renderAssistant();
@@ -1123,12 +1129,14 @@ function handleAssistantSettingsChange() {
   state.assistant.deckFilter = assistantDeckFilter.value || "all";
   state.assistant.useDeckContext = assistantUseDeckContext.checked;
   state.assistant.useWebSearch = assistantUseWebSearch.checked;
+  assistantErrorMessage = "";
   persist();
   renderAssistant();
 }
 
 function clearAssistantHistory() {
   state.assistant.messages = [];
+  assistantErrorMessage = "";
   persist();
   renderAssistant();
   showToast("AI検索の履歴を消しました");
