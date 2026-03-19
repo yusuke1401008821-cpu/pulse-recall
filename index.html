@@ -67,7 +67,7 @@
         <nav class="tabbar" aria-label="メインナビゲーション">
           <button class="tab is-active" data-section="dashboard" type="button">ホーム</button>
           <button class="tab" data-section="study" type="button">学習</button>
-          <button class="tab" data-section="assistant" type="button">AI検索</button>
+          <button class="tab" data-section="assistant" type="button">ローカル検索</button>
           <button class="tab" data-section="manage" type="button">管理</button>
         </nav>
 
@@ -174,8 +174,8 @@
         <section class="content" id="assistant">
           <div class="panel section-heading">
             <div>
-              <p class="eyebrow">AI Search</p>
-              <h3>常駐AI検索</h3>
+              <p class="eyebrow">Local Search</p>
+              <h3>安全モード検索</h3>
             </div>
             <button class="ghost-button" id="clearAssistantButton" type="button">履歴を消す</button>
           </div>
@@ -186,18 +186,10 @@
                 <span>参照範囲</span>
                 <select id="assistantDeckFilter"></select>
               </label>
-              <label class="toggle-row">
-                <input id="assistantUseDeckContext" type="checkbox" checked />
-                <span>保存済みカードを参照</span>
-              </label>
-              <label class="toggle-row">
-                <input id="assistantUseWebSearch" type="checkbox" checked />
-                <span>Web検索を使う</span>
-              </label>
             </div>
 
             <p class="muted" id="assistantStatus">
-              医学や英語の質問をすると、保存済みカードと必要ならWeb検索を使って回答します。
+              医学や英語の質問をすると、保存済みカードだけを参照して要点を返します。外部AIや課金APIは使いません。
             </p>
 
             <div id="assistantMessages" class="assistant-messages"></div>
@@ -210,12 +202,12 @@
                   name="assistantInput"
                   rows="4"
                   maxlength="1600"
-                  placeholder="例: ネフローゼ症候群の鑑別を要点だけ整理して / この英語表現の使い分けを教えて"
+                  placeholder="例: ネフローゼ症候群の4徴 / administer と prescribe の違い / 腎前性AKIのポイント"
                   required
                 ></textarea>
               </label>
               <div class="form-actions">
-                <button class="primary-button" id="assistantSubmitButton" type="submit">AIに質問する</button>
+                <button class="primary-button" id="assistantSubmitButton" type="submit">保存済みカードを検索</button>
               </div>
             </form>
           </section>

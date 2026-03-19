@@ -386,6 +386,10 @@ button:disabled {
   word-break: break-word;
 }
 
+.assistant-sources span {
+  width: fit-content;
+}
+
 .stack-form input,
 .stack-form select,
 .stack-form textarea,
@@ -689,8 +693,7 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .assistant-toolbar,
-  .toggle-row {
+  .assistant-toolbar {
     display: grid;
     justify-items: start;
   }

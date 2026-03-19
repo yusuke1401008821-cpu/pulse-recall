@@ -278,8 +278,6 @@ const assistantStatus = document.getElementById("assistantStatus");
 const assistantForm = document.getElementById("assistantForm");
 const assistantInput = document.getElementById("assistantInput");
 const assistantSubmitButton = document.getElementById("assistantSubmitButton");
-const assistantUseDeckContext = document.getElementById("assistantUseDeckContext");
-const assistantUseWebSearch = document.getElementById("assistantUseWebSearch");
 const clearAssistantButton = document.getElementById("clearAssistantButton");
 
 bootstrap();
@@ -336,8 +334,6 @@ function bindEvents() {
   saveImportButton.addEventListener("click", saveImportDraftAsDeck);
   clearImportDraftButton.addEventListener("click", clearImportDraft);
   assistantDeckFilter.addEventListener("change", handleAssistantSettingsChange);
-  assistantUseDeckContext.addEventListener("change", handleAssistantSettingsChange);
-  assistantUseWebSearch.addEventListener("change", handleAssistantSettingsChange);
   clearAssistantButton.addEventListener("click", clearAssistantHistory);
 
   document.querySelectorAll("[data-rating]").forEach((button) => {
@@ -561,9 +557,6 @@ function renderImportPanel() {
 }
 
 function syncAssistantControls() {
-  assistantUseDeckContext.checked = state.assistant.useDeckContext;
-  assistantUseWebSearch.checked = state.assistant.useWebSearch;
-
   if (optionExists(assistantDeckFilter, state.assistant.deckFilter)) {
     assistantDeckFilter.value = state.assistant.deckFilter;
   }
@@ -575,7 +568,7 @@ function renderAssistant() {
   clearAssistantButton.disabled = isAssistantLoading;
 
   if (isAssistantLoading) {
-    assistantStatus.textContent = "AIが回答を考えています。";
+    assistantStatus.textContent = "保存済みカードを検索しています。";
   } else if (assistantErrorMessage) {
     assistantStatus.textContent = assistantErrorMessage;
   }
@@ -583,14 +576,14 @@ function renderAssistant() {
   if (!state.assistant.messages.length) {
     if (!isAssistantLoading && !assistantErrorMessage) {
       assistantStatus.textContent =
-        "医学や英語の質問をすると、保存済みカードと必要ならWeb検索を使って回答します。";
+        "医学や英語の質問に対して、保存済みカードだけから要点を返します。外部AIや課金APIは使いません。";
     }
     assistantMessages.innerHTML = `
       <article class="assistant-message">
         <div class="assistant-message-header">
-          <h4>AI検索の使い方</h4>
+          <h4>ローカル検索の使い方</h4>
         </div>
-        <p>例: 「ネフローゼ症候群の鑑別を3つに絞って」「administer と prescribe の違いを例文付きで」</p>
+        <p>例: 「ネフローゼ症候群の4徴」「administer と prescribe の違い」「腎前性AKIのポイント」</p>
       </article>
     `;
     return;
@@ -598,9 +591,10 @@ function renderAssistant() {
 
   const latestAssistant = [...state.assistant.messages].reverse().find((message) => message.role === "assistant");
   if (!isAssistantLoading && !assistantErrorMessage) {
-    assistantStatus.textContent = latestAssistant?.usedWebSearch
-      ? "最新の回答ではWeb検索を使いました。リンク付きで確認できます。"
-      : "最新の回答では、保存済みカードや会話履歴をもとに回答しています。";
+    assistantStatus.textContent =
+      latestAssistant && latestAssistant.matchCount > 0
+        ? `最新の検索では保存済みカードから ${latestAssistant.matchCount} 件ヒットしました。`
+        : "一致するカードが少ない場合は、キーワードを短くしたり参照範囲を切り替えると見つかりやすくなります。";
   }
 
   assistantMessages.innerHTML = state.assistant.messages
@@ -612,9 +606,11 @@ function renderAssistant() {
               ${message.sources
                 .map(
                   (source) =>
-                    `<a href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(
-                      source.title || source.url,
-                    )}</a>`,
+                    source.url
+                      ? `<a href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(
+                          source.title || source.url,
+                        )}</a>`
+                      : `<span class="meta-pill">${escapeHtml(source.title)}</span>`,
                 )
                 .join("")}
             </div>
@@ -625,7 +621,7 @@ function renderAssistant() {
         message.role === "assistant"
           ? `
             <div class="button-row">
-              <button class="ghost-button" data-make-assistant-cards="${message.id}" type="button">回答からカード候補化</button>
+              <button class="ghost-button" data-make-assistant-cards="${message.id}" type="button">結果からカード候補化</button>
             </div>
           `
           : "";
@@ -633,7 +629,7 @@ function renderAssistant() {
       return `
         <article class="assistant-message ${message.role}">
           <div class="assistant-message-header">
-            <h4>${escapeHtml(message.role === "assistant" ? "AI" : "あなた")}</h4>
+            <h4>${escapeHtml(message.role === "assistant" ? "検索結果" : "あなた")}</h4>
             <span class="muted">${escapeHtml(formatMessageTime(message.createdAt))}</span>
           </div>
           <p>${escapeHtml(message.text).replaceAll("\n", "<br />")}</p>
@@ -1027,7 +1023,7 @@ async function handleAssistantSubmit(event) {
   assistantInput.value = "";
   isAssistantLoading = true;
   assistantErrorMessage = "";
-  assistantStatus.textContent = "AIが回答を考えています。";
+  assistantStatus.textContent = "保存済みカードを検索しています。";
   persist();
   renderAssistant();
 
@@ -1039,15 +1035,19 @@ async function handleAssistantSubmit(event) {
       text: response.answer,
       createdAt: Date.now(),
       sources: response.sources || [],
-      usedWebSearch: state.assistant.useWebSearch,
+      matchCount: response.matchCount || 0,
     });
     state.assistant.messages = state.assistant.messages.slice(-16);
     assistantErrorMessage = "";
     persist();
     renderAssistant();
-    showToast("AIの回答を追加しました");
+    showToast(
+      response.matchCount > 0
+        ? `${response.matchCount}件の関連カードを見つけました`
+        : "一致するカードは見つかりませんでした",
+    );
   } catch (error) {
-    assistantErrorMessage = error.message || "AI検索に失敗しました。";
+    assistantErrorMessage = error.message || "ローカル検索に失敗しました。";
     assistantStatus.textContent = assistantErrorMessage;
     showToast(assistantErrorMessage);
   } finally {
@@ -1127,8 +1127,6 @@ function handleImportPreviewActions(event) {
 
 function handleAssistantSettingsChange() {
   state.assistant.deckFilter = assistantDeckFilter.value || "all";
-  state.assistant.useDeckContext = assistantUseDeckContext.checked;
-  state.assistant.useWebSearch = assistantUseWebSearch.checked;
   assistantErrorMessage = "";
   persist();
   renderAssistant();
@@ -1139,7 +1137,7 @@ function clearAssistantHistory() {
   assistantErrorMessage = "";
   persist();
   renderAssistant();
-  showToast("AI検索の履歴を消しました");
+  showToast("ローカル検索の履歴を消しました");
 }
 
 function handleAssistantActions(event) {
@@ -1156,21 +1154,21 @@ function handleAssistantActions(event) {
 
   try {
     const focus = inferAssistantFocus(state.assistant.deckFilter);
-    const deckName = buildDeckNameFromSource(`AI検索 ${formatDateKey(new Date())}`);
+    const deckName = buildDeckNameFromSource(`ローカル検索 ${formatDateKey(new Date())}`);
     importDraft = buildImportDraft({
       text: message.text,
-      sourceName: "AI検索回答",
+      sourceName: "ローカル検索結果",
       deckName,
       focus,
-      subject: focus === "medical" ? "AI要点整理" : focus === "english" ? "AI English Notes" : "AI要点整理",
-      instructions: "AI検索の回答からカード候補化",
+      subject: focus === "medical" ? "ローカル検索要点" : focus === "english" ? "Local Search Notes" : "ローカル検索要点",
+      instructions: "ローカル検索の結果からカード候補化",
       limit: 12,
     });
     importFocusInput.value = focus;
     importDeckNameInput.value = deckName;
     switchSection("manage");
     render();
-    showToast("AI回答からカード候補を作成しました");
+    showToast("ローカル検索結果からカード候補を作成しました");
   } catch (error) {
     showToast(error.message || "カード候補化に失敗しました");
   }
@@ -1230,61 +1228,18 @@ function saveImportDraftAsDeck() {
 }
 
 async function requestAssistantAnswer(question) {
-  const history = state.assistant.messages
-    .slice(-9, -1)
-    .map((message) => ({ role: message.role, text: message.text }));
-  const deckContext = state.assistant.useDeckContext ? buildAssistantDeckContext(question, state.assistant.deckFilter) : "";
-  const response = await fetch("/api/assistant-search", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      question,
-      history,
-      useWebSearch: state.assistant.useWebSearch,
-      deckContext,
-      deckFilter: state.assistant.deckFilter,
-    }),
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || "AI検索APIの呼び出しに失敗しました");
-  }
-
-  if (!payload.answer) {
-    throw new Error("AIの回答が空でした");
-  }
-
-  return payload;
+  const matches = findAssistantMatches(question, state.assistant.deckFilter);
+  return buildAssistantLocalResponse(question, matches, state.assistant.deckFilter);
 }
 
-function buildAssistantDeckContext(question, filter) {
+function findAssistantMatches(question, filter) {
   const tokens = tokenizeSearchText(question);
-  const cards = state.cards
+  return state.cards
     .filter((card) => matchesCardFilter(card, filter || "all"))
     .map((card) => ({ card, score: scoreCardAgainstTokens(card, tokens) }))
     .filter((item) => item.score > 0 || !tokens.length)
     .sort((a, b) => b.score - a.score || b.card.updatedAt - a.card.updatedAt)
-    .slice(0, 12)
-    .map(({ card }) => {
-      const deck = getDeckById(card.deckId);
-      return [
-        `デッキ: ${deck?.name || "未分類"}`,
-        deck?.subject ? `分野: ${deck.subject}` : "",
-        card.topic ? `テーマ: ${card.topic}` : "",
-        card.tags?.length ? `タグ: ${card.tags.join(", ")}` : "",
-        `問題: ${card.front}`,
-        `答え: ${card.back}`,
-        card.note ? `補足: ${card.note}` : "",
-        card.example ? `例: ${card.example}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-    });
-
-  return cards.join("\n\n---\n\n");
+    .slice(0, 18);
 }
 
 function tokenizeSearchText(text) {
@@ -1293,24 +1248,103 @@ function tokenizeSearchText(text) {
 }
 
 function scoreCardAgainstTokens(card, tokens) {
-  const haystack = [
-    card.front,
-    card.back,
-    card.topic,
-    card.note,
-    card.example,
-    ...(card.tags || []),
-    getDeckName(card.deckId),
-    getDeckById(card.deckId)?.subject || "",
-  ]
-    .join(" ")
-    .toLowerCase();
-
   if (!tokens.length) {
-    return haystack.length > 0 ? 1 : 0;
+    return 1;
   }
 
-  return tokens.reduce((score, token) => (haystack.includes(token) ? score + 1 : score), 0);
+  const weightedFields = [
+    { text: card.front, weight: 4 },
+    { text: card.back, weight: 3 },
+    { text: card.topic, weight: 2 },
+    { text: card.note, weight: 2 },
+    { text: card.hint, weight: 1 },
+    { text: card.example, weight: 1 },
+    { text: (card.tags || []).join(" "), weight: 2 },
+    { text: getDeckName(card.deckId), weight: 2 },
+    { text: getDeckById(card.deckId)?.subject || "", weight: 2 },
+  ].map((field) => ({ ...field, text: String(field.text || "").toLowerCase() }));
+
+  return tokens.reduce(
+    (score, token) =>
+      score +
+      weightedFields.reduce(
+        (fieldScore, field) => (field.text.includes(token) ? fieldScore + field.weight : fieldScore),
+        0,
+      ),
+    0,
+  );
+}
+
+function buildAssistantLocalResponse(question, matches, filter) {
+  const filterLabel = getAssistantFilterLabel(filter);
+
+  if (!matches.length) {
+    return {
+      answer: [
+        `参照範囲「${filterLabel}」の保存済みカードからは、一致する内容が見つかりませんでした。`,
+        "キーワードを短くするか、参照範囲を切り替えてもう一度検索してください。",
+        "まだ未登録の内容なら、カード追加や PDF 取り込みを先に行うと検索できるようになります。",
+      ].join("\n"),
+      sources: [],
+      matchCount: 0,
+    };
+  }
+
+  const topMatches = matches.slice(0, 4);
+  const lines = [`質問: ${question}`, "", `参照範囲「${filterLabel}」の保存済みカードから ${matches.length} 件見つかりました。`, "", "要点"];
+
+  topMatches.forEach(({ card }, index) => {
+    lines.push(`${index + 1}. ${card.front}`);
+    lines.push(`答え: ${card.back}`);
+    if (card.note) {
+      lines.push(`補足: ${card.note}`);
+    } else if (card.hint) {
+      lines.push(`ヒント: ${card.hint}`);
+    }
+
+    if (card.example) {
+      lines.push(`例: ${card.example}`);
+    }
+
+    lines.push(`出典: ${buildAssistantSourceLabel(card)}`);
+    lines.push("");
+  });
+
+  if (matches.length > topMatches.length) {
+    lines.push(`他にも ${matches.length - topMatches.length} 件の関連カードがあります。参照範囲を絞ると見やすくなります。`);
+    lines.push("");
+  }
+
+  const relatedDecks = dedupeTags(topMatches.map(({ card }) => getDeckName(card.deckId)));
+  if (relatedDecks.length) {
+    lines.push(`関連デッキ: ${relatedDecks.join(" / ")}`);
+  }
+
+  return {
+    answer: lines.join("\n").trim(),
+    sources: topMatches.map(({ card }) => ({ title: buildAssistantSourceLabel(card) })),
+    matchCount: matches.length,
+  };
+}
+
+function getAssistantFilterLabel(filter) {
+  if (!filter || filter === "all") {
+    return "すべてのデッキ";
+  }
+
+  if (filter.startsWith("focus:")) {
+    const focus = filter.slice("focus:".length);
+    return TRACKS.find((track) => track.id === focus)?.title || `${formatDeckFocus(focus)}トラック`;
+  }
+
+  return getDeckName(filter);
+}
+
+function buildAssistantSourceLabel(card) {
+  const deck = getDeckById(card.deckId);
+  return [deck?.name || "未分類", deck?.subject || "", card.topic || ""]
+    .filter(Boolean)
+    .join(" / ");
 }
 
 function startDeckEditing(deckId) {
@@ -2109,8 +2143,6 @@ function createDemoState() {
     assistant: {
       messages: [],
       deckFilter: "all",
-      useDeckContext: true,
-      useWebSearch: true,
     },
   };
 }
@@ -2466,15 +2498,13 @@ function normalizeAssistantState(assistant) {
                     title: String(source.title || "").trim(),
                     url: String(source.url || "").trim(),
                   }))
-                  .filter((source) => source.url)
+                  .filter((source) => source.title || source.url)
               : [],
-            usedWebSearch: Boolean(message.usedWebSearch),
+            matchCount: Number.isFinite(message.matchCount) ? message.matchCount : 0,
           }))
           .slice(-16)
       : [],
     deckFilter: String(safeAssistant.deckFilter || "all"),
-    useDeckContext: safeAssistant.useDeckContext !== false,
-    useWebSearch: safeAssistant.useWebSearch !== false,
   };
 }
 
