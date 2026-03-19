@@ -5,6 +5,8 @@ const hourMs = 60 * 60 * 1000;
 const minuteMs = 60 * 1000;
 const learningStepsMinutes = [10, 180];
 const relearningStepsMinutes = [10, 360];
+const PDFJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/legacy/build/pdf.mjs";
+const PDFJS_WORKER_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/legacy/build/pdf.worker.mjs";
 const TRACKS = [
   {
     id: "medical",
@@ -196,6 +198,8 @@ let isAnswerVisible = false;
 let editingDeckId = null;
 let editingCardId = null;
 let toastTimer = null;
+let importDraft = null;
+let pdfjsModulePromise = null;
 
 const tabs = [...document.querySelectorAll(".tab")];
 const sections = [...document.querySelectorAll(".content")];
@@ -254,6 +258,18 @@ const cardTopicInput = document.getElementById("cardTopicInput");
 const cardTagsInput = document.getElementById("cardTagsInput");
 const cardNoteInput = document.getElementById("cardNoteInput");
 const cardExampleInput = document.getElementById("cardExampleInput");
+const importForm = document.getElementById("importForm");
+const importFileInput = document.getElementById("importFileInput");
+const importTextInput = document.getElementById("importTextInput");
+const importFocusInput = document.getElementById("importFocus");
+const importDeckNameInput = document.getElementById("importDeckName");
+const importSubjectInput = document.getElementById("importSubject");
+const importInstructionsInput = document.getElementById("importInstructions");
+const importLimitInput = document.getElementById("importLimit");
+const importStatus = document.getElementById("importStatus");
+const importPreview = document.getElementById("importPreview");
+const saveImportButton = document.getElementById("saveImportButton");
+const clearImportDraftButton = document.getElementById("clearImportDraftButton");
 
 bootstrap();
 
@@ -283,6 +299,7 @@ function bindEvents() {
 
   deckForm.addEventListener("submit", handleDeckSubmit);
   cardForm.addEventListener("submit", handleCardSubmit);
+  importForm.addEventListener("submit", handleImportSubmit);
   cancelDeckEditButton.addEventListener("click", () => {
     clearDeckEditing();
     renderForms();
@@ -302,6 +319,10 @@ function bindEvents() {
   libraryDeckFilter.addEventListener("change", renderLibrary);
   cardDeckId.addEventListener("change", applyCardContextPlaceholders);
   deckFocusInput.addEventListener("change", applyDeckFocusPreset);
+  importFocusInput.addEventListener("change", applyImportFocusPreset);
+  importFileInput.addEventListener("change", syncImportDeckNameFromFile);
+  saveImportButton.addEventListener("click", saveImportDraftAsDeck);
+  clearImportDraftButton.addEventListener("click", clearImportDraft);
 
   document.querySelectorAll("[data-rating]").forEach((button) => {
     button.addEventListener("click", () => reviewCurrentCard(button.dataset.rating));
@@ -310,6 +331,7 @@ function bindEvents() {
   deckList.addEventListener("click", handleDeckActions);
   libraryList.addEventListener("click", handleLibraryActions);
   trackGrid.addEventListener("click", handleTrackActions);
+  importPreview.addEventListener("click", handleImportPreviewActions);
 }
 
 function switchSection(sectionId) {
@@ -427,6 +449,7 @@ function renderDeckSelectors() {
 function renderForms() {
   syncDeckForm();
   syncCardForm();
+  renderImportPanel();
 }
 
 function syncDeckForm() {
@@ -461,6 +484,51 @@ function syncCardForm() {
   }
 
   applyCardContextPlaceholders();
+}
+
+function renderImportPanel() {
+  applyImportFocusPreset();
+  clearImportDraftButton.hidden = !importDraft;
+  saveImportButton.hidden = !importDraft;
+
+  if (!importDraft) {
+    importStatus.textContent =
+      "PDF または本文を入れると、自動でカード候補を作成します。スキャンPDFは文字抽出できないことがあります。";
+    importPreview.innerHTML = `
+      <article class="library-card">
+        <h4>まだ自動生成の候補はありません</h4>
+        <p class="muted">講義PDF、英語の資料、配布ノートを読み込むとここに候補が並びます。</p>
+      </article>
+    `;
+    return;
+  }
+
+  importStatus.textContent = `${importDraft.sourceName} から ${importDraft.cards.length} 枚の候補を作成しました。内容を確認してから保存できます。`;
+  importPreview.innerHTML = importDraft.cards
+    .map(
+      (card, index) => `
+        <article class="library-card">
+          <div class="card-row-header">
+            <div>
+              <h4>${index + 1}. ${escapeHtml(card.front)}</h4>
+              <p class="muted">${escapeHtml(card.back)}</p>
+            </div>
+            <div class="button-row">
+              <button class="ghost-button danger-button" data-remove-import-card="${card.id}" type="button">候補から外す</button>
+            </div>
+          </div>
+          ${card.note ? `<p class="flashcard-note">${escapeHtml(card.note)}</p>` : ""}
+          ${card.example ? `<p class="flashcard-example">${escapeHtml(card.example)}</p>` : ""}
+          <div class="card-row-meta">
+            <span class="meta-pill ${escapeHtml(importDraft.focus)}">${escapeHtml(formatDeckFocus(importDraft.focus))}</span>
+            ${card.topic ? `<span class="meta-pill">${escapeHtml(card.topic)}</span>` : ""}
+            ${(card.tags || []).slice(0, 4).map((tag) => `<span class="meta-pill">${escapeHtml(tag)}</span>`).join("")}
+          </div>
+          <p class="import-source">出典: ${escapeHtml(card.sourceLine || importDraft.sourceName)}</p>
+        </article>
+      `,
+    )
+    .join("");
 }
 
 function renderDashboard() {
@@ -793,6 +861,38 @@ function handleCardSubmit(event) {
   showToast("カードを保存しました");
 }
 
+async function handleImportSubmit(event) {
+  event.preventDefault();
+  importStatus.textContent = "資料を分析しています。少し待つと候補が表示されます。";
+
+  try {
+    const source = await loadImportSource();
+    const focus = normalizeDeckFocus(importFocusInput.value);
+    const limit = clampNumber(Number.parseInt(importLimitInput.value, 10), 4, 30, 12);
+    importLimitInput.value = String(limit);
+    const deckName = (importDeckNameInput.value || "").trim() || buildDeckNameFromSource(source.sourceName);
+    importDeckNameInput.value = deckName;
+
+    importDraft = buildImportDraft({
+      text: source.text,
+      sourceName: source.sourceName,
+      deckName,
+      focus,
+      subject: String(importSubjectInput.value || "").trim(),
+      instructions: String(importInstructionsInput.value || "").trim(),
+      limit,
+    });
+
+    renderImportPanel();
+    showToast(`${importDraft.cards.length}枚の候補を作成しました`);
+  } catch (error) {
+    importDraft = null;
+    renderImportPanel();
+    importStatus.textContent = error.message || "資料の分析に失敗しました。";
+    showToast(error.message || "資料の分析に失敗しました");
+  }
+}
+
 function handleDeckActions(event) {
   const startButton = event.target.closest("[data-start-deck]");
   if (startButton) {
@@ -842,6 +942,77 @@ function handleLibraryActions(event) {
   if (deleteButton) {
     deleteCard(deleteButton.dataset.deleteCard);
   }
+}
+
+function handleImportPreviewActions(event) {
+  const removeButton = event.target.closest("[data-remove-import-card]");
+  if (!removeButton || !importDraft) {
+    return;
+  }
+
+  importDraft.cards = importDraft.cards.filter((card) => card.id !== removeButton.dataset.removeImportCard);
+
+  if (!importDraft.cards.length) {
+    clearImportDraft();
+    showToast("候補がなくなったので下書きを消しました");
+    return;
+  }
+
+  renderImportPanel();
+  showToast("候補を1枚外しました");
+}
+
+function saveImportDraftAsDeck() {
+  if (!importDraft || !importDraft.cards.length) {
+    showToast("保存できる候補がありません");
+    return;
+  }
+
+  const now = Date.now();
+  const deckId = crypto.randomUUID();
+  const deckName = createUniqueDeckName(importDraft.deckName);
+  const descriptionBase = importDraft.sourceName ? `${importDraft.sourceName} から自動生成` : "資料から自動生成";
+
+  state.decks.unshift({
+    id: deckId,
+    name: deckName,
+    focus: importDraft.focus,
+    subject: importDraft.subject,
+    description: importDraft.instructions ? `${descriptionBase} / ${importDraft.instructions}` : descriptionBase,
+    createdAt: now,
+  });
+
+  importDraft.cards
+    .slice()
+    .reverse()
+    .forEach((card, index) => {
+      state.cards.unshift(
+        makeCard({
+          id: crypto.randomUUID(),
+          deckId,
+          front: card.front,
+          back: card.back,
+          hint: card.hint || "",
+          topic: card.topic || importDraft.subject,
+          tags: card.tags || [],
+          note: card.note || "",
+          example: card.example || "",
+          createdAt: now + index,
+          dueAt: now,
+          intervalDays: 0,
+        }),
+      );
+    });
+
+  const cardCount = importDraft.cards.length;
+  clearImportDraft();
+  persist();
+  render();
+  studyDeckFilter.value = deckId;
+  libraryDeckFilter.value = deckId;
+  cardDeckId.value = deckId;
+  applyCardContextPlaceholders();
+  showToast(`${deckName} を作成しました（${cardCount} cards）`);
 }
 
 function startDeckEditing(deckId) {
@@ -1003,6 +1174,15 @@ function clearCardEditing() {
   applyCardContextPlaceholders();
 }
 
+function clearImportDraft() {
+  importDraft = null;
+  importForm.reset();
+  importLimitInput.value = "12";
+  importFocusInput.value = "medical";
+  applyImportFocusPreset();
+  renderImportPanel();
+}
+
 function showToast(message) {
   window.clearTimeout(toastTimer);
   toast.textContent = message;
@@ -1057,6 +1237,39 @@ function applyCardContextPlaceholders() {
   cardTagsInput.placeholder = "タグをカンマ区切りで入力";
   cardNoteInput.placeholder = "重要な関連知識や使い分けを記録";
   cardExampleInput.placeholder = "例文や症例ベースの覚え方";
+}
+
+function applyImportFocusPreset() {
+  const focus = normalizeDeckFocus(importFocusInput.value);
+
+  if (focus === "medical") {
+    importSubjectInput.placeholder = "腎 / 循環 / 呼吸 / 解剖 / 病理";
+    importDeckNameInput.placeholder = "腎生理講義 / 循環器総論";
+    importInstructionsInput.placeholder = "例: 定義を優先して12枚、病態の流れが分かる形で";
+    return;
+  }
+
+  if (focus === "english") {
+    importSubjectInput.placeholder = "医学英語 / 語彙 / 読解 / リスニング";
+    importDeckNameInput.placeholder = "Medical English Handout / 英語長文";
+    importInstructionsInput.placeholder = "例: 語彙は例文付き、構文は意味が取りやすい形で";
+    return;
+  }
+
+  importSubjectInput.placeholder = "テーマ / 分野";
+  importDeckNameInput.placeholder = "資料から作る新規デッキ";
+  importInstructionsInput.placeholder = "例: 覚えるべき定義と要点を優先";
+}
+
+function syncImportDeckNameFromFile() {
+  const file = importFileInput.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  if (!importDeckNameInput.value.trim()) {
+    importDeckNameInput.value = buildDeckNameFromSource(file.name);
+  }
 }
 
 function getStudyQueue() {
@@ -1146,6 +1359,294 @@ function installStarterPack(focus) {
   }
 
   showToast(`${formatDeckFocus(focus)}スターターを追加しました（${addedDecks} deck / ${addedCards} cards）`);
+}
+
+async function loadImportSource() {
+  const file = importFileInput.files?.[0] || null;
+  const pastedText = String(importTextInput.value || "").trim();
+
+  if (!file && !pastedText) {
+    throw new Error("PDFまたは本文を入れてください");
+  }
+
+  if (file) {
+    const sourceName = file.name || "imported file";
+    if (!importDeckNameInput.value.trim()) {
+      importDeckNameInput.value = buildDeckNameFromSource(sourceName);
+    }
+
+    if (isPdfFile(file)) {
+      const text = await extractTextFromPdf(file);
+      return { text, sourceName };
+    }
+
+    const text = await file.text();
+    if (!text.trim()) {
+      throw new Error("ファイルから文字を読み取れませんでした");
+    }
+
+    return { text, sourceName };
+  }
+
+  return { text: pastedText, sourceName: "貼り付けテキスト" };
+}
+
+async function extractTextFromPdf(file) {
+  let pdfjsLib;
+
+  try {
+    pdfjsLib = await getPdfJsModule();
+  } catch (error) {
+    console.warn("Failed to load PDF.js:", error);
+    throw new Error("PDF解析ライブラリを読み込めませんでした。オンライン状態で再度試してください");
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const documentTask = pdfjsLib.getDocument({
+    data: new Uint8Array(arrayBuffer),
+    useWorkerFetch: true,
+  });
+  const pdf = await documentTask.promise;
+  const pageTexts = [];
+  const maxPages = Math.min(pdf.numPages, 24);
+
+  for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items ? buildPageText(textContent.items) : "";
+    if (pageText.trim()) {
+      pageTexts.push(pageText.trim());
+    }
+  }
+
+  const merged = pageTexts.join("\n\n");
+  if (!merged.trim()) {
+    throw new Error("PDFから文字を抽出できませんでした。画像PDFの可能性があります");
+  }
+
+  return merged;
+}
+
+async function getPdfJsModule() {
+  if (!pdfjsModulePromise) {
+    pdfjsModulePromise = import(PDFJS_MODULE_URL).then((module) => {
+      module.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+      return module;
+    });
+  }
+
+  return pdfjsModulePromise;
+}
+
+function buildPageText(items) {
+  const lines = [];
+  let currentLine = [];
+  let previousY = null;
+
+  items.forEach((item) => {
+    const raw = String(item?.str || "").trim();
+    if (!raw) {
+      return;
+    }
+
+    const y = Array.isArray(item.transform) ? item.transform[5] : previousY;
+    if (previousY !== null && typeof y === "number" && Math.abs(y - previousY) > 4) {
+      pushLine();
+    }
+
+    currentLine.push(raw);
+    previousY = typeof y === "number" ? y : previousY;
+  });
+
+  pushLine();
+  return lines.join("\n");
+
+  function pushLine() {
+    if (!currentLine.length) {
+      return;
+    }
+
+    lines.push(currentLine.join(" ").replace(/\s+/g, " ").trim());
+    currentLine = [];
+  }
+}
+
+function buildImportDraft({ text, sourceName, deckName, focus, subject, instructions, limit }) {
+  const normalizedText = normalizeImportedText(text);
+  const lines = extractMeaningfulLines(normalizedText);
+  const cards = dedupeImportCards([
+    ...buildDelimitedLineCards(lines, focus, subject),
+    ...buildAdjacentPairCards(lines, focus, subject),
+    ...buildBulletGroupCards(lines, focus, subject),
+    ...buildParagraphFallbackCards(normalizedText, focus, subject),
+  ]).slice(0, limit);
+
+  if (!cards.length) {
+    throw new Error("カード候補を作れませんでした。本文を少し整理してもう一度試してください");
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    sourceName,
+    deckName,
+    focus,
+    subject,
+    instructions,
+    cards: cards.map((card) => ({
+      ...card,
+      id: crypto.randomUUID(),
+      note: card.note || buildImportNote(sourceName, instructions),
+      tags: dedupeTags([formatDeckFocus(focus), ...(card.tags || []), ...splitSubjectTags(subject)]),
+    })),
+  };
+}
+
+function buildDelimitedLineCards(lines, focus, subject) {
+  const cards = [];
+
+  lines.forEach((line) => {
+    const colonMatch = line.match(/^(.{2,80}?)[\s\u3000]*[:：=]\s*(.{6,240})$/);
+    const dashMatch = line.match(/^(.{2,80}?)\s+[–—-]\s+(.{6,240})$/);
+    const match = colonMatch || dashMatch;
+
+    if (!match) {
+      return;
+    }
+
+    const left = cleanImportedSegment(match[1]);
+    const right = cleanImportedSegment(match[2]);
+    if (!isViableCardPair(left, right)) {
+      return;
+    }
+
+    cards.push(
+      createImportedCard({
+        focus,
+        subject,
+        title: left,
+        body: right,
+        sourceLine: line,
+      }),
+    );
+  });
+
+  return cards;
+}
+
+function buildAdjacentPairCards(lines, focus, subject) {
+  const cards = [];
+
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const current = cleanImportedSegment(lines[index]);
+    const next = cleanImportedSegment(lines[index + 1]);
+
+    if (!current || !next) {
+      continue;
+    }
+
+    if (current.length > 70 || next.length < 10 || next.length > 240) {
+      continue;
+    }
+
+    if (/[。.!?]$/.test(current) || startsWithBullet(current) || startsWithBullet(next)) {
+      continue;
+    }
+
+    if (focus === "english" && !looksLikeEnglishTerm(current)) {
+      continue;
+    }
+
+    if (focus !== "english" && !looksLikeHeading(current)) {
+      continue;
+    }
+
+    cards.push(
+      createImportedCard({
+        focus,
+        subject,
+        title: current,
+        body: next,
+        sourceLine: `${current} / ${next}`,
+      }),
+    );
+  }
+
+  return cards;
+}
+
+function buildBulletGroupCards(lines, focus, subject) {
+  const cards = [];
+
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const heading = cleanImportedSegment(lines[index]);
+    if (!looksLikeHeading(heading)) {
+      continue;
+    }
+
+    const bullets = [];
+    let lookahead = index + 1;
+    while (lookahead < lines.length && startsWithBullet(lines[lookahead]) && bullets.length < 4) {
+      bullets.push(stripBullet(lines[lookahead]));
+      lookahead += 1;
+    }
+
+    if (bullets.length < 2) {
+      continue;
+    }
+
+    cards.push(
+      createImportedCard({
+        focus,
+        subject,
+        title: heading,
+        body: bullets.join(" / "),
+        sourceLine: heading,
+      }),
+    );
+
+    index = lookahead - 1;
+  }
+
+  return cards;
+}
+
+function buildParagraphFallbackCards(text, focus, subject) {
+  return text
+    .split(/\n{2,}/)
+    .map((paragraph) => cleanImportedSegment(paragraph))
+    .filter((paragraph) => paragraph.length >= 50 && paragraph.length <= 280)
+    .slice(0, 8)
+    .map((paragraph) => {
+      const sentences = splitIntoSentences(paragraph);
+      const title = cleanImportedSegment(sentences[0] || paragraph.slice(0, 40));
+      const body = cleanImportedSegment(sentences.slice(1).join(" ") || paragraph);
+
+      return createImportedCard({
+        focus,
+        subject,
+        title,
+        body,
+        sourceLine: paragraph.slice(0, 120),
+      });
+    })
+    .filter((card) => isViableCardPair(card.front, card.back));
+}
+
+function createImportedCard({ focus, subject, title, body, sourceLine }) {
+  const cleanTitle = cleanImportedSegment(title);
+  const cleanBody = cleanImportedSegment(body);
+  const topic = inferImportedTopic(cleanTitle, subject, focus);
+
+  return {
+    front: buildImportedFront(cleanTitle, focus),
+    back: cleanBody,
+    hint: focus === "english" ? "資料取り込みから自動生成" : "講義資料から自動生成",
+    topic,
+    tags: buildImportedTags(cleanTitle, subject, focus),
+    note: "",
+    example: focus === "english" && /[A-Za-z]/.test(cleanBody) ? cleanBody : "",
+    sourceLine,
+  };
 }
 
 function getDueCountByDeck() {
@@ -1735,6 +2236,194 @@ function formatMinutesLabel(minutes) {
 
   const days = Math.round((minutes / (60 * 24)) * 10) / 10;
   return Number.isInteger(days) ? `${days}日` : `${days}日`;
+}
+
+function normalizeImportedText(text) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function extractMeaningfulLines(text) {
+  return [...new Set(
+    normalizeImportedText(text)
+      .split("\n")
+      .map((line) => cleanImportedSegment(line))
+      .filter((line) => line.length >= 3 && line.length <= 240)
+      .filter((line) => !/^\d+$/.test(line))
+      .filter((line) => !/^page\s+\d+$/i.test(line)),
+  )];
+}
+
+function cleanImportedSegment(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/^[:：\-–—=]+/, "")
+    .replace(/[:：\-–—=]+$/, "")
+    .trim();
+}
+
+function isViableCardPair(left, right) {
+  return Boolean(left && right && left.length <= 120 && right.length >= 6 && right.length <= 260 && left !== right);
+}
+
+function buildImportedFront(title, focus) {
+  if (focus === "english" && looksLikeEnglishTerm(title)) {
+    return title;
+  }
+
+  if (/[?？]$/.test(title)) {
+    return title;
+  }
+
+  if (title.endsWith("とは") || title.endsWith("は")) {
+    return `${title}？`;
+  }
+
+  return `${title}とは？`;
+}
+
+function inferImportedTopic(title, subject, focus) {
+  const baseTopic = splitSubjectTags(subject)[0];
+  if (baseTopic) {
+    return baseTopic;
+  }
+
+  if (focus === "medical") {
+    if (/腎|電解質|体液/.test(title)) return "腎";
+    if (/心|循環|冠|弁/.test(title)) return "循環";
+    if (/呼吸|肺|酸塩基/.test(title)) return "呼吸";
+    if (/薬|受容体|NSAIDs|ACE/.test(title)) return "薬理";
+    return "医学";
+  }
+
+  if (focus === "english") {
+    if (looksLikeEnglishTerm(title)) return "語彙";
+    return "読解";
+  }
+
+  return "";
+}
+
+function buildImportedTags(title, subject, focus) {
+  const tags = [];
+
+  if (focus === "medical") {
+    tags.push("医学");
+  } else if (focus === "english") {
+    tags.push("英語");
+  }
+
+  tags.push(...splitSubjectTags(subject));
+
+  if (focus === "english" && looksLikeEnglishTerm(title)) {
+    tags.push("vocabulary");
+  }
+
+  if (focus === "medical" && /症候|病態|鑑別/.test(title)) {
+    tags.push("臨床");
+  }
+
+  return dedupeTags(tags);
+}
+
+function dedupeImportCards(cards) {
+  const seen = new Set();
+
+  return cards.filter((card) => {
+    const key = `${card.front}__${card.back}`.toLowerCase();
+    if (seen.has(key) || !isViableCardPair(card.front, card.back)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function dedupeTags(tags) {
+  return [...new Set((tags || []).map((tag) => cleanImportedSegment(tag)).filter(Boolean))];
+}
+
+function splitSubjectTags(subject) {
+  return String(subject || "")
+    .split(/[\/,、，]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function buildImportNote(sourceName, instructions) {
+  const base = sourceName ? `${sourceName} から自動生成` : "資料から自動生成";
+  return instructions ? `${base} / ${instructions}` : base;
+}
+
+function buildDeckNameFromSource(sourceName) {
+  return String(sourceName || "自動生成デッキ")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+}
+
+function createUniqueDeckName(baseName) {
+  const name = cleanImportedSegment(baseName) || "自動生成デッキ";
+  if (!state.decks.some((deck) => deck.name === name)) {
+    return name;
+  }
+
+  let suffix = 2;
+  while (state.decks.some((deck) => deck.name === `${name} (${suffix})`)) {
+    suffix += 1;
+  }
+
+  return `${name} (${suffix})`;
+}
+
+function startsWithBullet(line) {
+  return /^[\-*•●・■□▪◦]|^\d+[.)]/.test(String(line || "").trim());
+}
+
+function stripBullet(line) {
+  return cleanImportedSegment(String(line || "").replace(/^[\-*•●・■□▪◦\d().\s]+/, ""));
+}
+
+function looksLikeEnglishTerm(value) {
+  return /^[A-Za-z][A-Za-z0-9(),/+\- ]{1,80}$/.test(String(value || "").trim());
+}
+
+function splitIntoSentences(text) {
+  return String(text || "")
+    .replace(/([。.!?])/g, "$1\n")
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function looksLikeHeading(value) {
+  const line = String(value || "").trim();
+  return Boolean(
+    line &&
+      line.length <= 70 &&
+      !/[。.!?]$/.test(line) &&
+      !startsWithBullet(line) &&
+      !/[,:：=]/.test(line),
+  );
+}
+
+function isPdfFile(file) {
+  const fileName = String(file?.name || "").toLowerCase();
+  return file?.type === "application/pdf" || fileName.endsWith(".pdf");
+}
+
+function clampNumber(value, min, max, fallback) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, value));
 }
 
 function normalizeDeckFocus(value) {

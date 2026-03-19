@@ -524,6 +524,20 @@ button:disabled {
   margin-top: 14px;
 }
 
+.import-panel .stack-form {
+  margin-top: 16px;
+}
+
+.import-help {
+  margin-top: 16px;
+}
+
+.import-source {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
 .meta-pill {
   padding: 8px 10px;
   border-radius: 999px;

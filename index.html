@@ -249,6 +249,73 @@
             </section>
           </div>
 
+          <section class="panel import-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Auto Import</p>
+                <h3>PDF から自動でデッキ化</h3>
+              </div>
+              <button class="ghost-button" id="clearImportDraftButton" type="button" hidden>候補を消す</button>
+            </div>
+            <p class="muted">
+              講義資料や英語の本文を読み取り、カード候補をまとめて作成します。保存前に内容を確認できます。
+            </p>
+            <form id="importForm" class="stack-form">
+              <label>
+                <span>PDF / テキストファイル</span>
+                <input id="importFileInput" name="importFile" type="file" accept=".pdf,.txt,.md,.text" />
+              </label>
+              <label>
+                <span>または本文を貼り付け</span>
+                <textarea
+                  id="importTextInput"
+                  name="importText"
+                  rows="5"
+                  maxlength="24000"
+                  placeholder="講義ノート、英語長文、要点メモを貼り付けても自動分析できます"
+                ></textarea>
+              </label>
+              <label>
+                <span>学習トラック</span>
+                <select id="importFocus" name="importFocus">
+                  <option value="medical">医学</option>
+                  <option value="english">英語</option>
+                  <option value="general">汎用</option>
+                </select>
+              </label>
+              <label>
+                <span>新しいデッキ名</span>
+                <input id="importDeckName" name="importDeckName" maxlength="60" placeholder="腎生理講義 / Medical English Handout" />
+              </label>
+              <label>
+                <span>分野</span>
+                <input id="importSubject" name="importSubject" maxlength="60" placeholder="腎 / 循環 / 医学英語 / 読解" />
+              </label>
+              <label>
+                <span>追加指示</span>
+                <textarea
+                  id="importInstructions"
+                  name="importInstructions"
+                  rows="3"
+                  maxlength="240"
+                  placeholder="例: 定義を優先して12枚、症候と病態の対応を中心に、英単語は例文付きで"
+                ></textarea>
+              </label>
+              <label>
+                <span>生成上限</span>
+                <input id="importLimit" name="importLimit" type="number" min="4" max="30" value="12" />
+              </label>
+              <div class="form-actions">
+                <button class="primary-button" id="analyzeImportButton" type="submit">資料を分析する</button>
+                <button class="secondary-button" id="saveImportButton" type="button" hidden>この候補でデッキ作成</button>
+              </div>
+            </form>
+            <p class="muted import-help" id="importStatus">
+              PDF または本文を入れると、自動でカード候補を作成します。スキャンPDFは文字抽出できないことがあります。
+            </p>
+            <div id="importPreview" class="library-list"></div>
+          </section>
+
           <section class="panel">
             <div class="section-heading">
               <div>
