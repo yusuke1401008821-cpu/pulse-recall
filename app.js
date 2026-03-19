@@ -238,6 +238,10 @@ let state = loadState();
 let activeSection = "dashboard";
 let currentCardId = null;
 let isAnswerVisible = false;
+let studyMode = "review";
+let studySourceKey = "due";
+let studySessionSize = 8;
+let studySession = null;
 let editingDeckId = null;
 let editingCardId = null;
 let toastTimer = null;
@@ -272,6 +276,7 @@ let cloudState = {
 const tabs = [...document.querySelectorAll(".tab")];
 const sections = [...document.querySelectorAll(".content")];
 const createModeButtons = [...document.querySelectorAll("[data-create-mode]")];
+const studyModeButtons = [...document.querySelectorAll("[data-study-mode]")];
 const templateButtons = [...document.querySelectorAll("[data-template]")];
 const deckDetailTabButtons = [...document.querySelectorAll("[data-deck-detail-tab]")];
 const statsGrid = document.getElementById("statsGrid");
@@ -291,6 +296,10 @@ const historyChart = document.getElementById("historyChart");
 const historySummary = document.getElementById("historySummary");
 const historyBreakdown = document.getElementById("historyBreakdown");
 const studyDeckFilter = document.getElementById("studyDeckFilter");
+const studyModeSummary = document.getElementById("studyModeSummary");
+const studySessionSizeInput = document.getElementById("studySessionSizeInput");
+const startStudySessionButton = document.getElementById("startStudySessionButton");
+const studySmartListGrid = document.getElementById("studySmartListGrid");
 const assistantDeckFilter = document.getElementById("assistantDeckFilter");
 const libraryDeckFilter = document.getElementById("libraryDeckFilter");
 const libraryTagFilter = document.getElementById("libraryTagFilter");
@@ -302,6 +311,8 @@ const cardDeckId = document.getElementById("cardDeckId");
 const searchCardifyTarget = document.getElementById("searchCardifyTarget");
 const emptyState = document.getElementById("emptyState");
 const flashcard = document.getElementById("flashcard");
+const shortQuizCard = document.getElementById("shortQuizCard");
+const choiceQuizCard = document.getElementById("choiceQuizCard");
 const cardFront = document.getElementById("cardFront");
 const cardBack = document.getElementById("cardBack");
 const cardHint = document.getElementById("cardHint");
@@ -313,6 +324,38 @@ const cardExample = document.getElementById("cardExample");
 const answerArea = document.getElementById("answerArea");
 const toggleAnswerButton = document.getElementById("toggleAnswerButton");
 const studyProgress = document.getElementById("studyProgress");
+const emptyStateEyebrow = document.getElementById("emptyStateEyebrow");
+const emptyStateTitle = document.getElementById("emptyStateTitle");
+const emptyStateText = document.getElementById("emptyStateText");
+const shortQuizFront = document.getElementById("shortQuizFront");
+const shortQuizMeta = document.getElementById("shortQuizMeta");
+const shortQuizTopic = document.getElementById("shortQuizTopic");
+const shortQuizTags = document.getElementById("shortQuizTags");
+const shortQuizAnswerInput = document.getElementById("shortQuizAnswerInput");
+const shortQuizAnswerArea = document.getElementById("shortQuizAnswerArea");
+const shortQuizBack = document.getElementById("shortQuizBack");
+const shortQuizHint = document.getElementById("shortQuizHint");
+const shortQuizNote = document.getElementById("shortQuizNote");
+const shortQuizExample = document.getElementById("shortQuizExample");
+const shortQuizRevealButton = document.getElementById("shortQuizRevealButton");
+const shortQuizNextButton = document.getElementById("shortQuizNextButton");
+const shortQuizFeedbackPanel = document.getElementById("shortQuizFeedbackPanel");
+const shortQuizProgress = document.getElementById("shortQuizProgress");
+const choiceQuizFront = document.getElementById("choiceQuizFront");
+const choiceQuizMeta = document.getElementById("choiceQuizMeta");
+const choiceQuizTopic = document.getElementById("choiceQuizTopic");
+const choiceQuizTags = document.getElementById("choiceQuizTags");
+const choiceQuizOptions = document.getElementById("choiceQuizOptions");
+const choiceQuizAnswerArea = document.getElementById("choiceQuizAnswerArea");
+const choiceQuizBack = document.getElementById("choiceQuizBack");
+const choiceQuizHint = document.getElementById("choiceQuizHint");
+const choiceQuizNote = document.getElementById("choiceQuizNote");
+const choiceQuizExample = document.getElementById("choiceQuizExample");
+const choiceQuizNextButton = document.getElementById("choiceQuizNextButton");
+const choiceQuizFeedbackPanel = document.getElementById("choiceQuizFeedbackPanel");
+const choiceQuizStatus = document.getElementById("choiceQuizStatus");
+const choiceQuizScore = document.getElementById("choiceQuizScore");
+const reviewFeedbackPanel = document.getElementById("reviewFeedbackPanel");
 const ratingButtons = Object.fromEntries(
   [...document.querySelectorAll("[data-rating]")].map((button) => [button.dataset.rating, button]),
 );
@@ -441,6 +484,9 @@ function bindEvents() {
   createModeButtons.forEach((button) => {
     button.addEventListener("click", () => setCreateMode(button.dataset.createMode));
   });
+  studyModeButtons.forEach((button) => {
+    button.addEventListener("click", () => setStudyMode(button.dataset.studyMode));
+  });
   templateButtons.forEach((button) => {
     button.addEventListener("click", () => applyTemplate(button.dataset.template));
   });
@@ -489,10 +535,20 @@ function bindEvents() {
   });
 
   studyDeckFilter.addEventListener("change", () => {
+    resetStudySession();
     currentCardId = null;
     isAnswerVisible = false;
     renderStudy();
   });
+  studySessionSizeInput.addEventListener("input", () => {
+    studySessionSize = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), 3, 20, 8);
+    studySessionSizeInput.value = String(studySessionSize);
+    renderStudy();
+  });
+  startStudySessionButton.addEventListener("click", startStudySession);
+  shortQuizRevealButton.addEventListener("click", revealShortQuizAnswer);
+  shortQuizNextButton.addEventListener("click", advanceStudySession);
+  choiceQuizNextButton.addEventListener("click", advanceStudySession);
   libraryDeckFilter.addEventListener("change", renderLibrary);
   libraryTagFilter.addEventListener("change", renderLibrary);
   librarySubjectFilter.addEventListener("change", renderLibrary);
@@ -544,8 +600,13 @@ function bindEvents() {
   shareMemberList.addEventListener("click", handleDeckDetailActions);
   deckDetailContent.addEventListener("click", handleDeckDetailActions);
   trackGrid.addEventListener("click", handleTrackActions);
+  studySmartListGrid.addEventListener("click", handleStudySmartListActions);
   importPreview.addEventListener("click", handleImportPreviewActions);
   assistantMessages.addEventListener("click", handleAssistantActions);
+  choiceQuizOptions.addEventListener("click", handleChoiceQuizActions);
+  document.querySelectorAll("[data-short-quiz-grade]").forEach((button) => {
+    button.addEventListener("click", () => gradeShortQuiz(button.dataset.shortQuizGrade));
+  });
 }
 
 function switchSection(sectionId) {
@@ -750,6 +811,37 @@ function setCreateMode(mode) {
 function openCreateMode(mode) {
   setCreateMode(mode);
   switchSection("manage");
+}
+
+function setStudyMode(mode) {
+  if (!["review", "test", "choice"].includes(String(mode || ""))) {
+    return;
+  }
+
+  studyMode = mode;
+  resetStudySession();
+  currentCardId = null;
+  isAnswerVisible = false;
+  renderStudy();
+}
+
+function setStudySource(key) {
+  if (!["due", "again", "hard", "weak", "all"].includes(String(key || ""))) {
+    return;
+  }
+
+  studySourceKey = key;
+  resetStudySession();
+  currentCardId = null;
+  isAnswerVisible = false;
+  renderStudy();
+}
+
+function resetStudySession() {
+  studySession = null;
+  shortQuizAnswerInput.value = "";
+  shortQuizAnswerArea.classList.add("is-hidden");
+  choiceQuizAnswerArea.classList.add("is-hidden");
 }
 
 function runUiShortcut(action, { focus = "", mode = "" } = {}) {
@@ -2061,21 +2153,226 @@ function buildTrackSummary(focus) {
   };
 }
 
+function buildStudySourceGroups() {
+  const filter = studyDeckFilter.value || "all";
+  const candidateCards = state.cards.filter((card) => matchesCardFilter(card, filter));
+  const reviewStats = buildStudyReviewStats(candidateCards);
+  const now = Date.now();
+  const weakCandidates = candidateCards
+    .map((card) => ({
+      card,
+      score: scoreStudyWeakness(card, reviewStats.get(card.id)),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score || right.card.updatedAt - left.card.updatedAt)
+    .map((item) => item.card);
+
+  return {
+    due: {
+      key: "due",
+      title: "復習待ち",
+      description: "期限が来たカードを優先して通常復習に戻します。",
+      cards: candidateCards
+        .filter((card) => card.study.dueAt <= now)
+        .sort((left, right) => left.study.dueAt - right.study.dueAt),
+    },
+    again: {
+      key: "again",
+      title: "直近ミス",
+      description: "最近の不正解が多いカードだけを先に回します。",
+      cards: candidateCards
+        .filter((card) => (reviewStats.get(card.id)?.againRecent || 0) > 0 || reviewStats.get(card.id)?.lastRating === "again")
+        .sort(
+          (left, right) =>
+            (reviewStats.get(right.id)?.againRecent || 0) - (reviewStats.get(left.id)?.againRecent || 0) ||
+            right.updatedAt - left.updatedAt,
+        ),
+    },
+    hard: {
+      key: "hard",
+      title: "あいまい多め",
+      description: "惜しい回答や学習中カードを固めて解きます。",
+      cards: candidateCards
+        .filter(
+          (card) =>
+            (reviewStats.get(card.id)?.hardRecent || 0) > 0 ||
+            reviewStats.get(card.id)?.lastRating === "hard" ||
+            card.study.mode === "learning" ||
+            card.study.mode === "relearning",
+        )
+        .sort(
+          (left, right) =>
+            (reviewStats.get(right.id)?.hardRecent || 0) - (reviewStats.get(left.id)?.hardRecent || 0) ||
+            right.updatedAt - left.updatedAt,
+        ),
+    },
+    weak: {
+      key: "weak",
+      title: "伸び悩み",
+      description: "ミス回数や lapse を見て、今つまずいているカードをまとめます。",
+      cards: weakCandidates,
+    },
+    all: {
+      key: "all",
+      title: "全カード",
+      description: "対象デッキのカードから広く出題します。",
+      cards: [...candidateCards].sort((left, right) => right.updatedAt - left.updatedAt),
+    },
+  };
+}
+
+function buildStudyReviewStats(cards) {
+  const cardIds = new Set(cards.map((card) => card.id));
+  const stats = new Map();
+  const now = Date.now();
+
+  state.reviewLog.forEach((entry) => {
+    if (!cardIds.has(entry.cardId)) {
+      return;
+    }
+
+    const current = stats.get(entry.cardId) || {
+      againRecent: 0,
+      hardRecent: 0,
+      totalRecent: 0,
+      lastRating: "",
+      lastTimestamp: 0,
+    };
+    const ageMs = now - Number(entry.timestamp || 0);
+    if (ageMs <= 21 * dayMs) {
+      current.totalRecent += 1;
+      if (entry.rating === "again") {
+        current.againRecent += 1;
+      }
+      if (entry.rating === "hard") {
+        current.hardRecent += 1;
+      }
+    }
+
+    if (Number(entry.timestamp || 0) >= current.lastTimestamp) {
+      current.lastTimestamp = Number(entry.timestamp || 0);
+      current.lastRating = String(entry.rating || "");
+    }
+
+    stats.set(entry.cardId, current);
+  });
+
+  return stats;
+}
+
+function scoreStudyWeakness(card, stats = {}) {
+  let score = 0;
+  score += Number(stats.againRecent || 0) * 5;
+  score += Number(stats.hardRecent || 0) * 3;
+  score += Number(card.study.lapses || 0) * 4;
+  if (card.study.mode === "relearning") {
+    score += 4;
+  } else if (card.study.mode === "learning") {
+    score += 2;
+  }
+  if ((card.study.intervalDays || 0) < 3) {
+    score += 1;
+  }
+  if (stats.lastRating === "again") {
+    score += 3;
+  } else if (stats.lastRating === "hard") {
+    score += 1;
+  }
+
+  return score;
+}
+
 function renderStudy() {
-  const queue = getStudyQueue();
+  const groups = buildStudySourceGroups();
+  const source = groups[studySourceKey] || groups.due;
+  const sourceCards = source.cards;
+  const choiceReadyCards = sourceCards.filter((card) => canBuildChoiceOptions(card, sourceCards));
+  const size = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), 3, 20, 8);
+  studySessionSize = size;
+  studySessionSizeInput.value = String(size);
+
+  studyModeButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.studyMode === studyMode);
+  });
+  startStudySessionButton.hidden = studyMode === "review";
+  startStudySessionButton.textContent = studyMode === "choice" ? "4択クイズを作る" : "小テストを作る";
+  studyModeSummary.textContent =
+    studyMode === "review"
+      ? `${source.title} を中心に、通常の復習キューとして回します。`
+      : `${source.title} から ${Math.min(studySessionSize, studyMode === "choice" ? choiceReadyCards.length : sourceCards.length)} 問を選び、${studyMode === "choice" ? "4択クイズ" : "記述小テスト"}を作ります。`;
+  studySmartListGrid.innerHTML = ["due", "again", "hard", "weak"]
+    .map((key) => {
+      const item = groups[key];
+      return `
+        <article class="library-card ${studySourceKey === key ? "is-selected-card" : ""}">
+          <div class="card-row-header">
+            <div>
+              <h4>${escapeHtml(item.title)}</h4>
+              <p class="muted">${escapeHtml(item.description)}</p>
+            </div>
+            <span class="meta-pill">${item.cards.length}枚</span>
+          </div>
+          <div class="button-row">
+            <button class="${studySourceKey === key ? "primary-button" : "ghost-button"}" data-study-source="${key}" type="button">
+              ${studySourceKey === key ? "現在の出題元" : "このリストを使う"}
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  if (studyMode === "review") {
+    renderReviewStudy(sourceCards);
+    return;
+  }
+
+  if (!studySession || studySession.mode !== studyMode || studySession.sourceKey !== studySourceKey) {
+    renderStudySessionPending(source, size, choiceReadyCards.length);
+    return;
+  }
+
+  if (studySession.index >= studySession.items.length) {
+    renderStudySessionComplete(source);
+    return;
+  }
+
+  if (studyMode === "test") {
+    renderShortQuizStudy(source);
+    return;
+  }
+
+  renderChoiceQuizStudy(source);
+}
+
+function renderReviewStudy(queue) {
   const currentCard = pickCurrentCard(queue);
   const deck = currentCard ? getDeckById(currentCard.deckId) : null;
 
-  emptyState.classList.toggle("is-hidden", Boolean(currentCard));
+  reviewFeedbackPanel.hidden = false;
+  shortQuizFeedbackPanel.hidden = true;
+  choiceQuizFeedbackPanel.hidden = true;
+  toggleAnswerButton.hidden = false;
+  shortQuizRevealButton.hidden = true;
+  shortQuizNextButton.hidden = true;
+  choiceQuizNextButton.hidden = true;
   flashcard.classList.toggle("is-hidden", !currentCard);
+  shortQuizCard.classList.add("is-hidden");
+  choiceQuizCard.classList.add("is-hidden");
 
   if (!currentCard) {
+    showStudyEmpty({
+      eyebrow: "いまは空き時間",
+      title: "今は復習待ちのカードがありません",
+      text: "カードを追加するか、弱点リストへ切り替えて小テストから回すこともできます。",
+    });
     studyProgress.textContent = "復習待ちはありません。「作成」タブからカードを追加できます。";
     toggleAnswerButton.disabled = true;
     renderRatingHints(null);
     return;
   }
 
+  emptyState.classList.add("is-hidden");
   toggleAnswerButton.disabled = false;
   cardFront.textContent = currentCard.front;
   cardBack.textContent = currentCard.back;
@@ -2093,8 +2390,182 @@ function renderStudy() {
   setElementCopy(cardExample, currentCard.example ? `例: ${currentCard.example}` : "");
   answerArea.classList.toggle("is-hidden", !isAnswerVisible);
   toggleAnswerButton.textContent = isAnswerVisible ? "答えを隠す" : "答えを見る";
-  studyProgress.textContent = `${queue.length}枚の復習待ちカードがあります。現在は${formatStudyMode(currentCard.study)}フェーズです。`;
+  studyProgress.textContent = `${queue.length}枚の対象カードがあります。現在は${formatStudyMode(currentCard.study)}フェーズです。`;
   renderRatingHints(currentCard);
+}
+
+function renderStudySessionPending(source, size, choiceReadyCount = 0) {
+  const readyCount = studyMode === "choice" ? choiceReadyCount : source.cards.length;
+  const sessionCount = Math.min(size, readyCount);
+  reviewFeedbackPanel.hidden = studyMode !== "review";
+  shortQuizFeedbackPanel.hidden = studyMode !== "test";
+  choiceQuizFeedbackPanel.hidden = studyMode !== "choice";
+  flashcard.classList.add("is-hidden");
+  shortQuizCard.classList.add("is-hidden");
+  choiceQuizCard.classList.add("is-hidden");
+  toggleAnswerButton.hidden = true;
+  shortQuizRevealButton.hidden = true;
+  shortQuizNextButton.hidden = true;
+  choiceQuizNextButton.hidden = true;
+  showStudyEmpty({
+    eyebrow: studyMode === "choice" ? "4択準備" : "小テスト準備",
+    title: readyCount
+      ? `${source.title} から ${sessionCount} 問の${studyMode === "choice" ? "4択クイズ" : "小テスト"}を作れます`
+      : `${source.title} に使えるカードがまだありません`,
+    text: readyCount
+      ? studyMode === "choice"
+        ? "上の「セッションを作る」を押すと、その場で4択の出題セットを組みます。"
+        : "上の「セッションを作る」を押すと、その場で出題セットを組みます。"
+      : "出題元を変えるか、まず通常復習で回答履歴を増やすと弱点リストが育ちます。",
+  });
+  if (studyMode === "test") {
+    shortQuizProgress.textContent = "まずは小テストを作ると、ここに進捗が出ます。";
+  } else {
+    choiceQuizStatus.textContent = readyCount
+      ? "4択クイズを作ると、選択結果がここに出ます。"
+      : "4択は答え候補が4つ以上そろうカードから自動生成されます。";
+    choiceQuizScore.textContent = readyCount
+      ? "まだセッションは始まっていません。"
+      : "別のデッキを選ぶか、カード数を増やすと始めやすくなります。";
+  }
+}
+
+function renderStudySessionComplete(source) {
+  const summary = buildStudySessionSummary(studySession);
+  reviewFeedbackPanel.hidden = studyMode !== "review";
+  shortQuizFeedbackPanel.hidden = studyMode !== "test";
+  choiceQuizFeedbackPanel.hidden = studyMode !== "choice";
+  flashcard.classList.add("is-hidden");
+  shortQuizCard.classList.add("is-hidden");
+  choiceQuizCard.classList.add("is-hidden");
+  toggleAnswerButton.hidden = true;
+  shortQuizRevealButton.hidden = true;
+  shortQuizNextButton.hidden = true;
+  choiceQuizNextButton.hidden = true;
+  showStudyEmpty({
+    eyebrow: "セッション完了",
+    title: `${source.title} の${studyMode === "choice" ? "4択クイズ" : "小テスト"}が終わりました`,
+    text:
+      studyMode === "choice"
+        ? `正解 ${summary.good} / ${summary.total} 問でした。間違えた問題は復習待ちへ戻しています。`
+        : `正解 ${summary.good}、惜しい ${summary.hard}、不正解 ${summary.again} でした。弱点リストへ戻して再挑戦できます。`,
+  });
+  if (studyMode === "test") {
+    shortQuizProgress.textContent = `正解 ${summary.good} / 惜しい ${summary.hard} / 不正解 ${summary.again}`;
+  } else {
+    choiceQuizStatus.textContent = "4択クイズを完了しました。";
+    choiceQuizScore.textContent = `正解 ${summary.good} / ${summary.total} 問`;
+  }
+}
+
+function renderShortQuizStudy(source) {
+  const item = getCurrentStudySessionItem();
+  const card = item ? getCardById(item.cardId) : null;
+  const deck = card ? getDeckById(card.deckId) : null;
+
+  reviewFeedbackPanel.hidden = true;
+  shortQuizFeedbackPanel.hidden = false;
+  choiceQuizFeedbackPanel.hidden = true;
+  flashcard.classList.add("is-hidden");
+  shortQuizCard.classList.toggle("is-hidden", !card);
+  choiceQuizCard.classList.add("is-hidden");
+  toggleAnswerButton.hidden = true;
+  shortQuizRevealButton.hidden = !card || item.revealed;
+  shortQuizNextButton.hidden = true;
+  choiceQuizNextButton.hidden = true;
+
+  if (!card || !item) {
+    renderStudySessionPending(source, studySessionSize);
+    return;
+  }
+
+  emptyState.classList.add("is-hidden");
+  shortQuizFront.textContent = card.front;
+  setElementCopy(shortQuizMeta, `${getDeckName(card.deckId)} · ${item.index + 1}/${studySession.items.length}`);
+  setElementCopy(shortQuizTopic, card.topic ? `テーマ: ${card.topic}` : deck?.subject ? `テーマ: ${deck.subject}` : "");
+  shortQuizTags.innerHTML = renderPillRow(card.tags || [], deck?.focus || "general");
+  shortQuizTags.hidden = !(card.tags || []).length;
+  shortQuizAnswerInput.value = item.typedAnswer || "";
+  shortQuizAnswerInput.disabled = item.revealed;
+  shortQuizAnswerArea.classList.toggle("is-hidden", !item.revealed);
+  shortQuizBack.textContent = card.back;
+  setElementCopy(shortQuizHint, card.hint);
+  setElementCopy(shortQuizNote, card.note);
+  setElementCopy(shortQuizExample, card.example ? `例: ${card.example}` : "");
+
+  const summary = buildStudySessionSummary(studySession);
+  shortQuizProgress.textContent = item.revealed
+    ? `第${item.index + 1}問を採点してください。現在の集計: 正解 ${summary.good} / 惜しい ${summary.hard} / 不正解 ${summary.again}`
+    : `第${item.index + 1}問 / ${studySession.items.length}問。${source.title} から出題しています。`;
+}
+
+function renderChoiceQuizStudy(source) {
+  const item = getCurrentStudySessionItem();
+  const card = item ? getCardById(item.cardId) : null;
+  const deck = card ? getDeckById(card.deckId) : null;
+
+  reviewFeedbackPanel.hidden = true;
+  shortQuizFeedbackPanel.hidden = true;
+  choiceQuizFeedbackPanel.hidden = false;
+  flashcard.classList.add("is-hidden");
+  shortQuizCard.classList.add("is-hidden");
+  choiceQuizCard.classList.toggle("is-hidden", !card);
+  toggleAnswerButton.hidden = true;
+  shortQuizRevealButton.hidden = true;
+  shortQuizNextButton.hidden = true;
+  choiceQuizNextButton.hidden = !item || !item.answered;
+
+  if (!card || !item) {
+    renderStudySessionPending(source, studySessionSize);
+    return;
+  }
+
+  emptyState.classList.add("is-hidden");
+  choiceQuizFront.textContent = card.front;
+  setElementCopy(choiceQuizMeta, `${getDeckName(card.deckId)} · ${item.index + 1}/${studySession.items.length}`);
+  setElementCopy(choiceQuizTopic, card.topic ? `テーマ: ${card.topic}` : deck?.subject ? `テーマ: ${deck.subject}` : "");
+  choiceQuizTags.innerHTML = renderPillRow(card.tags || [], deck?.focus || "general");
+  choiceQuizTags.hidden = !(card.tags || []).length;
+  choiceQuizOptions.innerHTML = item.choiceOptions
+    .map((option, index) => {
+      const isSelected = item.selectedOptionId === option.id;
+      const isCorrect = item.answered && option.id === card.id;
+      const isWrong = item.answered && isSelected && option.id !== card.id;
+      const className = isCorrect ? "correct" : isWrong ? "wrong" : "";
+
+      return `
+        <button
+          class="ghost-button quiz-option ${className}"
+          data-choice-option-id="${option.id}"
+          type="button"
+          ${item.answered ? "disabled" : ""}
+        >
+          <span class="eyebrow">選択肢 ${index + 1}</span>
+          <strong>${escapeHtml(option.label)}</strong>
+        </button>
+      `;
+    })
+    .join("");
+
+  choiceQuizAnswerArea.classList.toggle("is-hidden", !item.answered);
+  choiceQuizBack.textContent = card.back;
+  setElementCopy(choiceQuizHint, card.hint);
+  setElementCopy(choiceQuizNote, card.note);
+  setElementCopy(choiceQuizExample, card.example ? `例: ${card.example}` : "");
+  const summary = buildStudySessionSummary(studySession);
+  choiceQuizStatus.textContent = item.answered
+    ? item.selectedOptionId === card.id
+      ? "正解です。解説を確認して次へ進めます。"
+      : "不正解です。正解と解説を確認してから次へ進めます。"
+    : `第${item.index + 1}問 / ${studySession.items.length}問。1つ選んでください。`;
+  choiceQuizScore.textContent = `現在の正解数: ${summary.good} / ${studySession.items.length}`;
+}
+
+function showStudyEmpty({ eyebrow, title, text }) {
+  emptyState.classList.remove("is-hidden");
+  emptyStateEyebrow.textContent = eyebrow;
+  emptyStateTitle.textContent = title;
+  emptyStateText.textContent = text;
 }
 
 function pickCurrentCard(queue) {
@@ -2113,6 +2584,238 @@ function pickCurrentCard(queue) {
   }
 
   return selected;
+}
+
+function startStudySession() {
+  if (studyMode === "review") {
+    showToast("復習モードではそのままカードを回せます");
+    return;
+  }
+
+  const groups = buildStudySourceGroups();
+  const source = groups[studySourceKey] || groups.due;
+  const cards =
+    studyMode === "choice"
+      ? source.cards.filter((card) => canBuildChoiceOptions(card, source.cards))
+      : source.cards;
+  const size = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), 3, 20, 8);
+  studySessionSize = size;
+  studySessionSizeInput.value = String(size);
+
+  if (!cards.length) {
+    showToast(studyMode === "choice" ? "4択に使えるカードがまだありません" : "小テストに使えるカードがまだありません");
+    renderStudy();
+    return;
+  }
+
+  studySession = buildStudySession(studyMode, cards, size);
+  currentCardId = null;
+  isAnswerVisible = false;
+  renderStudy();
+  showToast(studyMode === "choice" ? "4択クイズを作成しました" : "小テストを作成しました");
+}
+
+function buildStudySession(mode, cards, size) {
+  const selectedCards = shuffleList([...cards]).slice(0, Math.min(size, cards.length));
+
+  return {
+    id: crypto.randomUUID(),
+    mode,
+    sourceKey: studySourceKey,
+    items: selectedCards.map((card) => ({
+      cardId: card.id,
+      typedAnswer: "",
+      revealed: false,
+      answered: false,
+      rating: "",
+      selectedOptionId: "",
+      choiceOptions: mode === "choice" ? buildChoiceOptions(card, cards) : [],
+    })),
+    index: 0,
+  };
+}
+
+function getCurrentStudySessionItem() {
+  if (!studySession || studySession.index >= studySession.items.length) {
+    return null;
+  }
+
+  return studySession.items[studySession.index];
+}
+
+function revealShortQuizAnswer() {
+  const item = getCurrentStudySessionItem();
+  if (!item || studyMode !== "test") {
+    return;
+  }
+
+  item.typedAnswer = String(shortQuizAnswerInput.value || "").trim();
+  item.revealed = true;
+  renderStudy();
+}
+
+function gradeShortQuiz(rating) {
+  const item = getCurrentStudySessionItem();
+  const card = item ? getCardById(item.cardId) : null;
+  if (!item || !card) {
+    return;
+  }
+
+  if (!item.revealed) {
+    showToast("先に答えを確認してください");
+    return;
+  }
+
+  item.typedAnswer = String(shortQuizAnswerInput.value || "").trim();
+  item.answered = true;
+  item.rating = rating;
+  recordPracticeResult(card, rating, "quiz-test");
+  advanceStudySession();
+}
+
+function handleChoiceQuizActions(event) {
+  const optionButton = event.target.closest("[data-choice-option-id]");
+  if (!optionButton || studyMode !== "choice") {
+    return;
+  }
+
+  const item = getCurrentStudySessionItem();
+  const card = item ? getCardById(item.cardId) : null;
+  if (!item || !card || item.answered) {
+    return;
+  }
+
+  item.selectedOptionId = optionButton.dataset.choiceOptionId;
+  item.answered = true;
+  item.rating = item.selectedOptionId === card.id ? "good" : "again";
+  recordPracticeResult(card, item.rating, "quiz-choice");
+  render();
+}
+
+function advanceStudySession() {
+  const item = getCurrentStudySessionItem();
+  if (!item || !item.answered) {
+    return;
+  }
+
+  shortQuizAnswerInput.value = "";
+  if (studySession.index < studySession.items.length) {
+    studySession.index += 1;
+  }
+  render();
+}
+
+function recordPracticeResult(card, rating, sessionType) {
+  const now = Date.now();
+  card.updatedAt = now;
+  card.study.reps = (card.study.reps || 0) + 1;
+  card.study.lastReviewedAt = now;
+
+  if (rating === "again") {
+    card.study.dueAt = Math.min(card.study.dueAt, now);
+    card.study.lapses = (card.study.lapses || 0) + 1;
+  } else if (rating === "hard") {
+    card.study.dueAt = Math.min(card.study.dueAt, now + 2 * hourMs);
+  }
+
+  state.reviewLog.push({
+    id: crypto.randomUUID(),
+    cardId: card.id,
+    rating,
+    timestamp: now,
+    dateKey: formatDateKey(new Date(now)),
+    mode: card.study.mode,
+    intervalDays: card.study.intervalDays,
+    sessionType,
+  });
+  state.reviewLog = state.reviewLog.slice(-400);
+  persist();
+  syncSharedProgressForCard(card, rating).catch((error) => {
+    console.warn("Failed to sync shared progress:", error);
+  });
+}
+
+function buildStudySessionSummary(session) {
+  const summary = { total: session?.items?.length || 0, good: 0, hard: 0, again: 0 };
+  (session?.items || []).forEach((item) => {
+    if (item.rating === "good") {
+      summary.good += 1;
+    } else if (item.rating === "hard") {
+      summary.hard += 1;
+    } else if (item.rating === "again") {
+      summary.again += 1;
+    }
+  });
+  return summary;
+}
+
+function buildChoiceOptions(card, sourceCards) {
+  const correctLabel = buildChoiceLabel(card.back);
+  const distractorPool = getChoiceDistractorPool(card, sourceCards);
+  const distractors = distractorPool.slice(0, 3);
+  const options = [
+    { id: card.id, label: correctLabel },
+    ...distractors.map((candidate) => ({ id: candidate.id, label: buildChoiceLabel(candidate.back) })),
+  ];
+
+  return shuffleList(options).slice(0, 4);
+}
+
+function buildChoiceLabel(text) {
+  return cleanImportedSegment(String(text || "").split(/[。.\n]/)[0] || String(text || "")).slice(0, 90);
+}
+
+function isChoiceEligibleCard(card) {
+  return Boolean(card && cleanImportedSegment(card.back).length >= 2 && cleanImportedSegment(card.back).length <= 120);
+}
+
+function getChoiceDistractorPool(card, sourceCards) {
+  const correctLabel = buildChoiceLabel(card.back);
+  return shuffleList(
+    dedupeById(
+      [...sourceCards, ...state.cards]
+        .filter((candidate) => candidate.id !== card.id)
+        .filter((candidate) => isChoiceEligibleCard(candidate))
+        .filter((candidate) => buildChoiceLabel(candidate.back) !== correctLabel),
+    ),
+  );
+}
+
+function canBuildChoiceOptions(card, sourceCards) {
+  if (!isChoiceEligibleCard(card)) {
+    return false;
+  }
+
+  return getChoiceDistractorPool(card, sourceCards).length >= 3;
+}
+
+function dedupeById(items) {
+  const seen = new Set();
+  return (items || []).filter((item) => {
+    if (!item || seen.has(item.id)) {
+      return false;
+    }
+    seen.add(item.id);
+    return true;
+  });
+}
+
+function shuffleList(items) {
+  const list = [...items];
+  for (let index = list.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [list[index], list[swapIndex]] = [list[swapIndex], list[index]];
+  }
+  return list;
+}
+
+function handleStudySmartListActions(event) {
+  const sourceButton = event.target.closest("[data-study-source]");
+  if (!sourceButton) {
+    return;
+  }
+
+  setStudySource(sourceButton.dataset.studySource);
 }
 
 function renderLibrary() {

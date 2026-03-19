@@ -151,23 +151,44 @@
         </section>
 
         <section class="content" id="study">
-          <div class="panel section-heading">
-            <div>
-              <p class="eyebrow">復習キュー</p>
-              <h3>学習モード</h3>
+          <div class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">復習キュー</p>
+                <h3>学習モード</h3>
+              </div>
+              <label class="inline-select">
+                <span>対象</span>
+                <select id="studyDeckFilter"></select>
+              </label>
             </div>
-            <label class="inline-select">
-              <span>対象</span>
-              <select id="studyDeckFilter"></select>
-            </label>
+            <div class="button-row" id="studyModeNav">
+              <button class="chip-button is-active" data-study-mode="review" type="button">復習</button>
+              <button class="chip-button" data-study-mode="test" type="button">小テスト</button>
+              <button class="chip-button" data-study-mode="choice" type="button">4択クイズ</button>
+            </div>
+            <div class="filter-grid study-config-grid">
+              <label class="inline-select">
+                <span>問題数</span>
+                <input id="studySessionSizeInput" type="number" min="3" max="20" value="8" />
+              </label>
+              <article class="subpanel">
+                <p class="eyebrow">現在の設定</p>
+                <p class="muted" id="studyModeSummary">まずは復習モードから始められます。</p>
+              </article>
+              <div class="button-row align-end">
+                <button class="primary-button" id="startStudySessionButton" type="button" hidden>セッションを作る</button>
+              </div>
+            </div>
+            <div class="action-grid" id="studySmartListGrid"></div>
           </div>
 
           <div class="study-layout">
             <section class="flashcard-panel panel">
               <div id="emptyState" class="empty-state">
-                <p class="eyebrow">いまは空き時間</p>
-                <h3>今は復習待ちのカードがありません</h3>
-                <p>カードを追加するか、時間を置いてから再度チェックしてください。</p>
+                <p class="eyebrow" id="emptyStateEyebrow">いまは空き時間</p>
+                <h3 id="emptyStateTitle">今は復習待ちのカードがありません</h3>
+                <p id="emptyStateText">カードを追加するか、時間を置いてから再度チェックしてください。</p>
               </div>
 
               <article id="flashcard" class="flashcard is-hidden" aria-live="polite">
@@ -187,20 +208,91 @@
                 </div>
               </article>
 
+              <article id="shortQuizCard" class="flashcard is-hidden" aria-live="polite">
+                <div class="flashcard-side">
+                  <p class="flashcard-label">小テスト</p>
+                  <h3 id="shortQuizFront"></h3>
+                  <p class="flashcard-meta" id="shortQuizMeta"></p>
+                  <p class="flashcard-hint" id="shortQuizTopic"></p>
+                  <div class="pill-row" id="shortQuizTags"></div>
+                </div>
+                <div class="flashcard-side">
+                  <label class="stack-form">
+                    <span>自分の答え</span>
+                    <textarea
+                      id="shortQuizAnswerInput"
+                      rows="5"
+                      maxlength="320"
+                      placeholder="思い出せる範囲で答えを書いてから、答え確認へ進みます"
+                    ></textarea>
+                  </label>
+                </div>
+                <div class="flashcard-side answer-area is-hidden" id="shortQuizAnswerArea">
+                  <p class="flashcard-label">模範解答</p>
+                  <p id="shortQuizBack"></p>
+                  <p class="flashcard-hint" id="shortQuizHint"></p>
+                  <p class="flashcard-note" id="shortQuizNote"></p>
+                  <p class="flashcard-example" id="shortQuizExample"></p>
+                </div>
+              </article>
+
+              <article id="choiceQuizCard" class="flashcard is-hidden" aria-live="polite">
+                <div class="flashcard-side">
+                  <p class="flashcard-label">4択クイズ</p>
+                  <h3 id="choiceQuizFront"></h3>
+                  <p class="flashcard-meta" id="choiceQuizMeta"></p>
+                  <p class="flashcard-hint" id="choiceQuizTopic"></p>
+                  <div class="pill-row" id="choiceQuizTags"></div>
+                </div>
+                <div class="flashcard-side">
+                  <div class="quiz-options" id="choiceQuizOptions"></div>
+                </div>
+                <div class="flashcard-side answer-area is-hidden" id="choiceQuizAnswerArea">
+                  <p class="flashcard-label">答えと解説</p>
+                  <p id="choiceQuizBack"></p>
+                  <p class="flashcard-hint" id="choiceQuizHint"></p>
+                  <p class="flashcard-note" id="choiceQuizNote"></p>
+                  <p class="flashcard-example" id="choiceQuizExample"></p>
+                </div>
+              </article>
+
               <div class="study-actions">
                 <button class="secondary-button" id="toggleAnswerButton" type="button">答えを見る</button>
+                <button class="secondary-button" id="shortQuizRevealButton" type="button" hidden>答えを確認</button>
+                <button class="secondary-button" id="shortQuizNextButton" type="button" hidden>次の問題へ</button>
+                <button class="secondary-button" id="choiceQuizNextButton" type="button" hidden>次の問題へ</button>
               </div>
             </section>
 
             <section class="panel">
-              <p class="eyebrow">回答</p>
-              <h3>覚え具合を記録</h3>
-              <div class="rating-grid">
-                <button class="rating danger" data-rating="again" type="button">忘れた</button>
-                <button class="rating caution" data-rating="hard" type="button">あいまい</button>
-                <button class="rating success" data-rating="good" type="button">覚えた</button>
+              <div id="reviewFeedbackPanel">
+                <p class="eyebrow">回答</p>
+                <h3>覚え具合を記録</h3>
+                <div class="rating-grid">
+                  <button class="rating danger" data-rating="again" type="button">忘れた</button>
+                  <button class="rating caution" data-rating="hard" type="button">あいまい</button>
+                  <button class="rating success" data-rating="good" type="button">覚えた</button>
+                </div>
+                <p class="muted" id="studyProgress">カードを選んで学習を始めます。</p>
               </div>
-              <p class="muted" id="studyProgress">カードを選んで学習を始めます。</p>
+
+              <div id="shortQuizFeedbackPanel" hidden>
+                <p class="eyebrow">採点</p>
+                <h3>自己採点で弱点へ戻す</h3>
+                <div class="rating-grid">
+                  <button class="rating danger" data-short-quiz-grade="again" type="button">不正解</button>
+                  <button class="rating caution" data-short-quiz-grade="hard" type="button">惜しい</button>
+                  <button class="rating success" data-short-quiz-grade="good" type="button">正解</button>
+                </div>
+                <p class="muted" id="shortQuizProgress">答えを確認したあとに採点できます。</p>
+              </div>
+
+              <div id="choiceQuizFeedbackPanel" hidden>
+                <p class="eyebrow">4択結果</p>
+                <h3>選択結果を確認</h3>
+                <p class="muted" id="choiceQuizStatus">4択を選ぶと、正解と解説がここに出ます。</p>
+                <p class="muted" id="choiceQuizScore">まだ回答していません。</p>
+              </div>
             </section>
           </div>
         </section>
