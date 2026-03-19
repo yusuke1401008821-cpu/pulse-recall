@@ -13,25 +13,25 @@
     <meta name="google-site-verification" content="yB_P683yh1jK0fufhmPcY9-cGy1gdYH9QJHF6ogSue8" />
     <meta
       name="description"
-      content="iPhoneでも使いやすい、暗記カード学習用のWebアプリです。単語帳作成、復習スケジュール、学習履歴の確認ができます。"
+      content="医学部の学習と英語学習をiPhoneでも進めやすい、暗記カード型のWebアプリです。医学、医学英語、読解、復習履歴をまとめて管理できます。"
     />
     <link rel="canonical" href="https://pulse-recall.vercel.app/" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://pulse-recall.vercel.app/" />
-    <meta property="og:title" content="Pulse Recall | 暗記サポートアプリ" />
+    <meta property="og:title" content="Pulse Recall | 医学部・英語学習アプリ" />
     <meta
       property="og:description"
-      content="iPhoneでも使いやすい、暗記カード学習用のWebアプリです。単語帳作成、復習スケジュール、学習履歴の確認ができます。"
+      content="医学部の学習と英語学習をiPhoneでも進めやすい、暗記カード型のWebアプリです。医学、医学英語、読解、復習履歴をまとめて管理できます。"
     />
     <meta property="og:image" content="https://pulse-recall.vercel.app/assets/icon-512.png" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:url" content="https://pulse-recall.vercel.app/" />
-    <meta name="twitter:title" content="Pulse Recall | 暗記サポートアプリ" />
+    <meta name="twitter:title" content="Pulse Recall | 医学部・英語学習アプリ" />
     <meta
       name="twitter:description"
-      content="iPhoneでも使いやすい、暗記カード学習用のWebアプリです。単語帳作成、復習スケジュール、学習履歴の確認ができます。"
+      content="医学部の学習と英語学習をiPhoneでも進めやすい、暗記カード型のWebアプリです。医学、医学英語、読解、復習履歴をまとめて管理できます。"
     />
-    <title>Pulse Recall | 暗記サポートアプリ</title>
+    <title>Pulse Recall | 医学部・英語学習アプリ</title>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
@@ -53,7 +53,7 @@
             <p class="eyebrow">Today Focus</p>
             <h2 id="heroTitle">今日の復習を整える</h2>
             <p id="heroText">
-              期限が来たカードを短く回して、覚えているものから次回間隔を伸ばします。
+              医学部の基礎科目と英語学習を、期限が来たカードから短く回して定着させます。
             </p>
           </div>
           <div class="hero-metric">
@@ -81,6 +81,8 @@
             </div>
             <button class="primary-button" id="startReviewButton" type="button">復習を始める</button>
           </div>
+
+          <section class="track-grid" id="trackGrid" aria-label="医学と英語の学習トラック"></section>
 
           <div class="panel">
             <div class="section-heading">
@@ -138,11 +140,15 @@
                   <p class="flashcard-label">問題</p>
                   <h3 id="cardFront"></h3>
                   <p class="flashcard-meta" id="cardDeckName"></p>
+                  <p class="flashcard-hint" id="cardTopic"></p>
+                  <div class="pill-row" id="cardTags"></div>
                 </div>
                 <div class="flashcard-side answer-area" id="answerArea">
                   <p class="flashcard-label">答え</p>
                   <p id="cardBack"></p>
                   <p class="flashcard-hint" id="cardHint"></p>
+                  <p class="flashcard-note" id="cardNote"></p>
+                  <p class="flashcard-example" id="cardExample"></p>
                 </div>
               </article>
 
@@ -173,7 +179,19 @@
                 <input id="deckIdInput" name="deckId" type="hidden" />
                 <label>
                   <span>デッキ名</span>
-                  <input id="deckName" name="deckName" maxlength="40" placeholder="英単語 / 歴史 / 資格対策" required />
+                  <input id="deckName" name="deckName" maxlength="40" placeholder="解剖・生理 / Medical English / 読解" required />
+                </label>
+                <label>
+                  <span>学習トラック</span>
+                  <select id="deckFocus" name="deckFocus">
+                    <option value="medical">医学</option>
+                    <option value="english">英語</option>
+                    <option value="general">汎用</option>
+                  </select>
+                </label>
+                <label>
+                  <span>分野</span>
+                  <input id="deckSubject" name="deckSubject" maxlength="60" placeholder="解剖 / 生理 / 医学英語 / 読解" />
                 </label>
                 <label>
                   <span>説明</span>
@@ -206,6 +224,22 @@
                 <label>
                   <span>補足</span>
                   <input id="cardHintInput" name="cardHint" maxlength="80" placeholder="例文や覚え方のヒント" />
+                </label>
+                <label>
+                  <span>分野 / テーマ</span>
+                  <input id="cardTopicInput" name="cardTopic" maxlength="60" placeholder="解剖 / 病理 / 語彙 / 読解" />
+                </label>
+                <label>
+                  <span>タグ</span>
+                  <input id="cardTagsInput" name="cardTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+                </label>
+                <label>
+                  <span>臨床ポイント / 語法メモ</span>
+                  <textarea id="cardNoteInput" name="cardNote" rows="3" maxlength="220" placeholder="重要な関連知識や使い分けを記録"></textarea>
+                </label>
+                <label>
+                  <span>例文 / 症例メモ</span>
+                  <textarea id="cardExampleInput" name="cardExample" rows="3" maxlength="220" placeholder="例文や症例ベースの覚え方"></textarea>
                 </label>
                 <div class="form-actions">
                   <button class="primary-button" id="cardSubmitButton" type="submit">カードを保存</button>

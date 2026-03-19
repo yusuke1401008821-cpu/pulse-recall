@@ -5,6 +5,188 @@ const hourMs = 60 * 60 * 1000;
 const minuteMs = 60 * 1000;
 const learningStepsMinutes = [10, 180];
 const relearningStepsMinutes = [10, 360];
+const TRACKS = [
+  {
+    id: "medical",
+    eyebrow: "Medical Track",
+    title: "医学部コア学習",
+    description: "解剖・生理・病態・臨床推論をテーマ別に回して、知識をつなげて定着させます。",
+    recommendation: "解剖、生理、病態、症候のように階層を分けると医学系の復習効率が安定します。",
+  },
+  {
+    id: "english",
+    eyebrow: "English Track",
+    title: "英語学習トラック",
+    description: "医学英語の語彙、英語長文、構文理解を分けて回し、英語の処理速度を上げます。",
+    recommendation: "語彙と長文を別デッキにすると、英語学習の弱点が見えやすくなります。",
+  },
+];
+const STARTER_PACKS = {
+  medical: [
+    {
+      name: "解剖・生理ベーシック",
+      subject: "解剖 / 生理",
+      description: "構造と機能を対で覚える、医学部基礎向けのスターターデッキ。",
+      cards: [
+        {
+          front: "僧帽弁はどの部屋の間にある？",
+          back: "左心房と左心室の間にある。",
+          hint: "房室弁の左右差で整理する。",
+          topic: "循環",
+          tags: ["解剖", "循環", "必修"],
+          note: "右は三尖弁、左は僧帽弁。弁膜症の病態整理にも直結する。",
+          example: "僧帽弁狭窄では左房圧が上がり、肺うっ血につながる。",
+          dueOffset: -40 * minuteMs,
+          intervalDays: 0,
+        },
+        {
+          front: "細胞外液量を規定する主要イオンは？",
+          back: "ナトリウムイオン（Na+）。",
+          hint: "体液区分と主要イオンをセットで覚える。",
+          topic: "体液",
+          tags: ["生理", "腎", "電解質"],
+          note: "Na+は細胞外液、K+は細胞内液の代表。脱水・浮腫の整理で重要。",
+          example: "低Na血症では水分バランス異常の評価が必要になる。",
+          dueOffset: -90 * minuteMs,
+          intervalDays: 1,
+        },
+        {
+          front: "NSAIDsで糸球体濾過量が低下しやすい理由は？",
+          back: "プロスタグランジン産生が抑制され、輸入細動脈が収縮しやすくなるから。",
+          hint: "輸入細動脈と輸出細動脈の作用差を確認。",
+          topic: "腎機能",
+          tags: ["薬理", "腎", "臨床"],
+          note: "脱水や高齢者ではAKIリスクが上がるため、NSAIDsの扱いに注意する。",
+          example: "ACE阻害薬・利尿薬・NSAIDsの併用は腎前性AKIの典型的リスク。",
+          dueOffset: -20 * minuteMs,
+          intervalDays: 0,
+        },
+      ],
+    },
+    {
+      name: "病態・臨床推論",
+      subject: "病態 / 内科",
+      description: "症状から病態をつなぐ、臨床寄りの復習デッキ。",
+      cards: [
+        {
+          front: "ネフローゼ症候群の4徴は？",
+          back: "高度蛋白尿、低アルブミン血症、浮腫、高脂血症。",
+          hint: "低Albから浮腫につながる流れを押さえる。",
+          topic: "腎疾患",
+          tags: ["病理", "腎", "内科"],
+          note: "糸球体障害で蛋白漏出が起こり、膠質浸透圧低下から浮腫が出る。",
+          example: "膜性腎症や微小変化型ネフローゼで典型的にみられる。",
+          dueOffset: -70 * minuteMs,
+          intervalDays: 2,
+        },
+        {
+          front: "呼吸性アシドーシスで一次的に上昇するのは？",
+          back: "PaCO2。",
+          hint: "代謝性か呼吸性かを最初に分ける。",
+          topic: "酸塩基平衡",
+          tags: ["生理", "呼吸", "救急"],
+          note: "慢性化すると腎代償でHCO3-も上がるが、最初に見るのはCO2。",
+          example: "COPD増悪ではPaCO2上昇とアシドーシスが問題になる。",
+          dueOffset: -15 * minuteMs,
+          intervalDays: 0,
+        },
+        {
+          front: "胸痛・冷汗・ST上昇で最優先に疑う病態は？",
+          back: "急性冠症候群、特にST上昇型心筋梗塞（STEMI）。",
+          hint: "症候から緊急度を判断する。",
+          topic: "循環救急",
+          tags: ["循環", "救急", "症候"],
+          note: "発症時刻、誘導部位、再灌流適応を一緒に確認すると臨床像が残りやすい。",
+          example: "冷汗を伴う強い胸痛なら、まずACSを想起して12誘導心電図を急ぐ。",
+          dueOffset: -5 * minuteMs,
+          intervalDays: 0,
+        },
+      ],
+    },
+  ],
+  english: [
+    {
+      name: "Medical English Core",
+      subject: "医学英語 / 語彙",
+      description: "医療現場や論文で頻出の表現を回す語彙デッキ。",
+      cards: [
+        {
+          front: "administer",
+          back: "投与する、実施する。",
+          hint: "薬剤や酸素、検査の文脈で頻出。",
+          topic: "医学英語",
+          tags: ["vocabulary", "medical english", "verb"],
+          note: "administer a drug, administer oxygen, administer a test の形が多い。",
+          example: "The nurse administered the medication intravenously.",
+          dueOffset: -55 * minuteMs,
+          intervalDays: 1,
+        },
+        {
+          front: "adverse event",
+          back: "有害事象。",
+          hint: "副作用より広く、介入後に起こる好ましくない出来事を指す。",
+          topic: "医学英語",
+          tags: ["vocabulary", "clinical trial", "noun"],
+          note: "side effect よりも臨床試験では adverse event の方が広い概念。",
+          example: "No serious adverse events were reported during the study.",
+          dueOffset: -18 * minuteMs,
+          intervalDays: 0,
+        },
+        {
+          front: "underlying condition",
+          back: "基礎疾患、背景にある病態。",
+          hint: "患者背景を説明するときの定番表現。",
+          topic: "医学英語",
+          tags: ["vocabulary", "history taking", "noun"],
+          note: "underlying disease と近いが、condition の方が広く使いやすい。",
+          example: "Patients with underlying conditions were excluded from the trial.",
+          dueOffset: -12 * minuteMs,
+          intervalDays: 0,
+        },
+      ],
+    },
+    {
+      name: "English Reading Patterns",
+      subject: "読解 / 構文",
+      description: "英語長文や論文読解に必要な構文を確認するデッキ。",
+      cards: [
+        {
+          front: "be associated with",
+          back: "A is associated with B = AはBと関連している。",
+          hint: "因果関係ではなく関連性を示すことが多い。",
+          topic: "読解",
+          tags: ["reading", "論文", "phrase"],
+          note: "論文では cause より控えめな言い方として頻出する。",
+          example: "Obesity is associated with an increased risk of hypertension.",
+          dueOffset: -28 * minuteMs,
+          intervalDays: 2,
+        },
+        {
+          front: "Although A, B",
+          back: "Aではあるが、B。",
+          hint: "逆接の主張は後半に来る。",
+          topic: "構文",
+          tags: ["reading", "grammar", "contrast"],
+          note: "読解では although 節のあとよりも、主節の内容を優先して把握する。",
+          example: "Although the sample size was small, the trend was consistent.",
+          dueOffset: -8 * minuteMs,
+          intervalDays: 0,
+        },
+        {
+          front: "Patients who were treated early had lower mortality.",
+          back: "早期に治療された患者では死亡率が低かった。",
+          hint: "who were treated early が patients を修飾している。",
+          topic: "読解",
+          tags: ["reading", "relative clause", "medical english"],
+          note: "主語の患者像をまず把握し、その後に述語の評価指標を読むと速い。",
+          example: "Patients who received early antibiotics had shorter hospital stays.",
+          dueOffset: -3 * minuteMs,
+          intervalDays: 0,
+        },
+      ],
+    },
+  ],
+};
 
 const demoState = createDemoState();
 let state = loadState();
@@ -22,6 +204,7 @@ const dueCount = document.getElementById("dueCount");
 const heroTitle = document.getElementById("heroTitle");
 const heroText = document.getElementById("heroText");
 const quickSummary = document.getElementById("quickSummary");
+const trackGrid = document.getElementById("trackGrid");
 const deckCountLabel = document.getElementById("deckCountLabel");
 const deckList = document.getElementById("deckList");
 const historyChart = document.getElementById("historyChart");
@@ -36,6 +219,10 @@ const cardFront = document.getElementById("cardFront");
 const cardBack = document.getElementById("cardBack");
 const cardHint = document.getElementById("cardHint");
 const cardDeckName = document.getElementById("cardDeckName");
+const cardTopic = document.getElementById("cardTopic");
+const cardTags = document.getElementById("cardTags");
+const cardNote = document.getElementById("cardNote");
+const cardExample = document.getElementById("cardExample");
 const answerArea = document.getElementById("answerArea");
 const toggleAnswerButton = document.getElementById("toggleAnswerButton");
 const studyProgress = document.getElementById("studyProgress");
@@ -57,10 +244,16 @@ const cancelCardEditButton = document.getElementById("cancelCardEditButton");
 const deckIdInput = document.getElementById("deckIdInput");
 const cardIdInput = document.getElementById("cardIdInput");
 const deckNameInput = document.getElementById("deckName");
+const deckFocusInput = document.getElementById("deckFocus");
+const deckSubjectInput = document.getElementById("deckSubject");
 const deckDescriptionInput = document.getElementById("deckDescription");
 const cardFrontInput = document.getElementById("cardFrontInput");
 const cardBackInput = document.getElementById("cardBackInput");
 const cardHintInput = document.getElementById("cardHintInput");
+const cardTopicInput = document.getElementById("cardTopicInput");
+const cardTagsInput = document.getElementById("cardTagsInput");
+const cardNoteInput = document.getElementById("cardNoteInput");
+const cardExampleInput = document.getElementById("cardExampleInput");
 
 bootstrap();
 
@@ -107,6 +300,8 @@ function bindEvents() {
     renderStudy();
   });
   libraryDeckFilter.addEventListener("change", renderLibrary);
+  cardDeckId.addEventListener("change", applyCardContextPlaceholders);
+  deckFocusInput.addEventListener("change", applyDeckFocusPreset);
 
   document.querySelectorAll("[data-rating]").forEach((button) => {
     button.addEventListener("click", () => reviewCurrentCard(button.dataset.rating));
@@ -114,6 +309,7 @@ function bindEvents() {
 
   deckList.addEventListener("click", handleDeckActions);
   libraryList.addEventListener("click", handleLibraryActions);
+  trackGrid.addEventListener("click", handleTrackActions);
 }
 
 function switchSection(sectionId) {
@@ -137,6 +333,7 @@ function render() {
   renderDeckSelectors();
   renderForms();
   renderDashboard();
+  renderTrackGrid();
   renderStudy();
   renderLibrary();
 }
@@ -147,12 +344,12 @@ function renderStats() {
   heroTitle.textContent = stats.dueCount > 0 ? "今日の復習が待っています" : "今日の復習は落ち着いています";
   heroText.textContent =
     stats.dueCount > 0
-      ? `${stats.dueCount}枚のカードが復習待ちです。短く回して記憶を定着させましょう。`
-      : "復習待ちのカードはありません。新しいカードを足して次の学習に備えられます。";
+      ? `医学${stats.medicalDue}枚・英語${stats.englishDue}枚が復習待ちです。優先したいトラックから短く回しましょう。`
+      : "復習待ちのカードはありません。医学と英語のデッキを整えて次の学習に備えられます。";
   quickSummary.textContent =
-    stats.todayReviewed > 0
-      ? `今日はすでに${stats.todayReviewed}回の回答を記録しました。流れを切らさず続けましょう。`
-      : "最初はサンプルカードで感触をつかみ、必要なデッキを自分用に増やすのがおすすめです。";
+    stats.totalCards > 0
+      ? `医学${stats.medicalCards}枚、英語${stats.englishCards}枚を管理中です。テーマ別に分けると復習の見通しが良くなります。`
+      : "医学と英語のスターターを追加して、基礎の復習ルートから始めるのがおすすめです。";
   deckCountLabel.textContent = `${state.decks.length} decks`;
 
   statsGrid.innerHTML = stats.cards
@@ -174,13 +371,22 @@ function buildStats() {
   const todayKey = formatDateKey(new Date(now));
   const todayReviewed = state.reviewLog.filter((entry) => entry.dateKey === todayKey).length;
   const mastered = state.cards.filter((card) => card.study.mode === "review" && card.study.intervalDays >= 7).length;
+  const medicalCards = state.cards.filter((card) => getDeckFocus(card.deckId) === "medical").length;
+  const englishCards = state.cards.filter((card) => getDeckFocus(card.deckId) === "english").length;
+  const medicalDue = dueCards.filter((card) => getDeckFocus(card.deckId) === "medical").length;
+  const englishDue = dueCards.filter((card) => getDeckFocus(card.deckId) === "english").length;
 
   return {
     dueCount: dueCards.length,
     todayReviewed,
+    totalCards: cards,
+    medicalCards,
+    englishCards,
+    medicalDue,
+    englishDue,
     cards: [
-      { label: "総デッキ数", value: state.decks.length },
-      { label: "総カード数", value: cards },
+      { label: "医学カード", value: medicalCards },
+      { label: "英語カード", value: englishCards },
       { label: "今日の回答数", value: todayReviewed },
       { label: "7日以上に伸びた枚数", value: mastered },
     ],
@@ -192,12 +398,15 @@ function renderDeckSelectors() {
   const previousLibrary = libraryDeckFilter.value || "all";
   const previousCardDeck = cardDeckId.value;
   const allOption = '<option value="all">すべてのデッキ</option>';
+  const focusOptions = TRACKS.map(
+    (track) => `<option value="focus:${track.id}">${escapeHtml(track.title)}</option>`,
+  ).join("");
   const deckOptions = state.decks
     .map((deck) => `<option value="${deck.id}">${escapeHtml(deck.name)}</option>`)
     .join("");
 
-  studyDeckFilter.innerHTML = allOption + deckOptions;
-  libraryDeckFilter.innerHTML = allOption + deckOptions;
+  studyDeckFilter.innerHTML = allOption + focusOptions + deckOptions;
+  libraryDeckFilter.innerHTML = allOption + focusOptions + deckOptions;
   cardDeckId.innerHTML = deckOptions;
 
   if (optionExists(studyDeckFilter, previousStudy)) {
@@ -227,7 +436,10 @@ function syncDeckForm() {
   cancelDeckEditButton.hidden = !deck;
   deckIdInput.value = deck?.id || "";
   deckNameInput.value = deck?.name || "";
+  deckFocusInput.value = deck?.focus || "medical";
+  deckSubjectInput.value = deck?.subject || "";
   deckDescriptionInput.value = deck?.description || "";
+  applyDeckFocusPreset();
 }
 
 function syncCardForm() {
@@ -239,10 +451,16 @@ function syncCardForm() {
   cardFrontInput.value = card?.front || "";
   cardBackInput.value = card?.back || "";
   cardHintInput.value = card?.hint || "";
+  cardTopicInput.value = card?.topic || "";
+  cardTagsInput.value = Array.isArray(card?.tags) ? card.tags.join(", ") : "";
+  cardNoteInput.value = card?.note || "";
+  cardExampleInput.value = card?.example || "";
 
   if (card && optionExists(cardDeckId, card.deckId)) {
     cardDeckId.value = card.deckId;
   }
+
+  applyCardContextPlaceholders();
 }
 
 function renderDashboard() {
@@ -270,6 +488,8 @@ function renderDashboard() {
             </div>
           </div>
           <div class="deck-card-meta">
+            <span class="meta-pill ${escapeHtml(deck.focus)}">${escapeHtml(formatDeckFocus(deck.focus))}</span>
+            ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
             <span class="meta-pill">${cardCount} cards</span>
             <span class="meta-pill">${due} due</span>
           </div>
@@ -281,9 +501,69 @@ function renderDashboard() {
   renderHistoryPanel();
 }
 
+function renderTrackGrid() {
+  trackGrid.innerHTML = TRACKS.map((track) => {
+    const summary = buildTrackSummary(track.id);
+
+    return `
+      <article class="track-card ${track.id}">
+        <div class="track-card-header">
+          <div>
+            <p class="eyebrow">${escapeHtml(track.eyebrow)}</p>
+            <h3>${escapeHtml(track.title)}</h3>
+          </div>
+          <span class="meta-pill ${track.id}">${summary.deckCount} decks</span>
+        </div>
+        <p class="muted">${escapeHtml(track.description)}</p>
+        <div class="track-stats">
+          <div class="track-stat">
+            <span class="eyebrow">Due</span>
+            <strong>${summary.dueCount}</strong>
+          </div>
+          <div class="track-stat">
+            <span class="eyebrow">Cards</span>
+            <strong>${summary.cardCount}</strong>
+          </div>
+          <div class="track-stat">
+            <span class="eyebrow">Focus</span>
+            <strong>${escapeHtml(summary.subjectCountLabel)}</strong>
+          </div>
+        </div>
+        <p class="muted">${escapeHtml(summary.subjectLine)}</p>
+        <div class="button-row">
+          <button class="secondary-button" data-study-focus="${track.id}" type="button">${escapeHtml(
+            track.id === "medical" ? "医学を学習" : "英語を学習",
+          )}</button>
+          <button class="ghost-button" data-install-track="${track.id}" type="button">${escapeHtml(
+            track.id === "medical" ? "医学スターター追加" : "英語スターター追加",
+          )}</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function buildTrackSummary(focus) {
+  const trackDecks = state.decks.filter((deck) => deck.focus === focus);
+  const trackCards = state.cards.filter((card) => getDeckFocus(card.deckId) === focus);
+  const dueCount = trackCards.filter((card) => card.study.dueAt <= Date.now()).length;
+  const subjects = [...new Set(trackDecks.map((deck) => deck.subject).filter(Boolean))];
+  const track = TRACKS.find((item) => item.id === focus);
+
+  return {
+    deckCount: trackDecks.length,
+    cardCount: trackCards.length,
+    dueCount,
+    subjectCountLabel: subjects.length > 0 ? `${subjects.length}分野` : "準備中",
+    subjectLine:
+      subjects.length > 0 ? `分野: ${subjects.slice(0, 4).join(" / ")}` : track?.recommendation || "スターターを追加できます。",
+  };
+}
+
 function renderStudy() {
   const queue = getStudyQueue();
   const currentCard = pickCurrentCard(queue);
+  const deck = currentCard ? getDeckById(currentCard.deckId) : null;
 
   emptyState.classList.toggle("is-hidden", Boolean(currentCard));
   flashcard.classList.toggle("is-hidden", !currentCard);
@@ -298,8 +578,18 @@ function renderStudy() {
   toggleAnswerButton.disabled = false;
   cardFront.textContent = currentCard.front;
   cardBack.textContent = currentCard.back;
-  cardHint.textContent = currentCard.hint || "補足はありません";
-  cardDeckName.textContent = `${getDeckName(currentCard.deckId)} · ${formatStudyMode(currentCard.study)}`;
+  setElementCopy(
+    cardDeckName,
+    [getDeckName(currentCard.deckId), deck?.subject || formatDeckFocus(deck?.focus), formatStudyMode(currentCard.study)]
+      .filter(Boolean)
+      .join(" · "),
+  );
+  setElementCopy(cardTopic, currentCard.topic ? `テーマ: ${currentCard.topic}` : deck?.subject ? `テーマ: ${deck.subject}` : "");
+  cardTags.innerHTML = renderPillRow(currentCard.tags || [], deck?.focus || "general");
+  cardTags.hidden = !(currentCard.tags || []).length;
+  setElementCopy(cardHint, currentCard.hint);
+  setElementCopy(cardNote, currentCard.note);
+  setElementCopy(cardExample, currentCard.example ? `例: ${currentCard.example}` : "");
   answerArea.classList.toggle("is-hidden", !isAnswerVisible);
   toggleAnswerButton.textContent = isAnswerVisible ? "答えを隠す" : "答えを見る";
   studyProgress.textContent = `${queue.length}枚の復習待ちカードがあります。現在は${formatStudyMode(currentCard.study)}フェーズです。`;
@@ -326,7 +616,7 @@ function pickCurrentCard(queue) {
 
 function renderLibrary() {
   const filter = libraryDeckFilter.value || "all";
-  const items = state.cards.filter((card) => filter === "all" || card.deckId === filter);
+  const items = state.cards.filter((card) => matchesCardFilter(card, filter));
 
   if (!items.length) {
     libraryList.innerHTML = `
@@ -342,6 +632,7 @@ function renderLibrary() {
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .map((card) => {
       const nextReview = formatDueLabel(card.study.dueAt);
+      const deck = getDeckById(card.deckId);
 
       return `
         <article class="library-card">
@@ -355,12 +646,19 @@ function renderLibrary() {
               <button class="ghost-button danger-button" data-delete-card="${card.id}" type="button">削除</button>
             </div>
           </div>
+          ${card.note ? `<p class="flashcard-note">${escapeHtml(card.note)}</p>` : ""}
+          ${card.example ? `<p class="flashcard-example">${escapeHtml(card.example)}</p>` : ""}
           <div class="card-row-meta">
             <span class="meta-pill">${escapeHtml(getDeckName(card.deckId))}</span>
+            <span class="meta-pill ${escapeHtml(deck?.focus || "general")}">${escapeHtml(
+              formatDeckFocus(deck?.focus),
+            )}</span>
+            ${card.topic ? `<span class="meta-pill">${escapeHtml(card.topic)}</span>` : deck?.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
             <span class="meta-pill">${escapeHtml(formatStudyMode(card.study))}</span>
             <span class="meta-pill">次回 ${escapeHtml(nextReview)}</span>
             <span class="meta-pill">間隔 ${escapeHtml(formatInterval(card.study.intervalDays))}</span>
           </div>
+          ${(card.tags || []).length ? `<div class="card-row-meta">${renderPillRow(card.tags, deck?.focus || "general")}</div>` : ""}
         </article>
       `;
     })
@@ -372,6 +670,8 @@ function handleDeckSubmit(event) {
   const formData = new FormData(deckForm);
   const deckId = String(formData.get("deckId") || "").trim();
   const name = String(formData.get("deckName") || "").trim();
+  const focus = String(formData.get("deckFocus") || "medical").trim();
+  const subject = String(formData.get("deckSubject") || "").trim();
   const description = String(formData.get("deckDescription") || "").trim();
 
   if (!name) {
@@ -389,6 +689,8 @@ function handleDeckSubmit(event) {
     }
 
     deck.name = name;
+    deck.focus = normalizeDeckFocus(focus);
+    deck.subject = subject;
     deck.description = description;
     clearDeckEditing();
     persist();
@@ -400,6 +702,8 @@ function handleDeckSubmit(event) {
   const deck = {
     id: crypto.randomUUID(),
     name,
+    focus: normalizeDeckFocus(focus),
+    subject,
     description,
     createdAt: Date.now(),
   };
@@ -420,6 +724,10 @@ function handleCardSubmit(event) {
   const front = String(formData.get("cardFront") || "").trim();
   const back = String(formData.get("cardBack") || "").trim();
   const hint = String(formData.get("cardHint") || "").trim();
+  const topic = String(formData.get("cardTopic") || "").trim();
+  const tags = parseTags(String(formData.get("cardTags") || ""));
+  const note = String(formData.get("cardNote") || "").trim();
+  const example = String(formData.get("cardExample") || "").trim();
 
   if (!deckId || !front || !back) {
     showToast("カードの必須項目を入力してください");
@@ -441,6 +749,10 @@ function handleCardSubmit(event) {
     card.front = front;
     card.back = back;
     card.hint = hint;
+    card.topic = topic;
+    card.tags = tags;
+    card.note = note;
+    card.example = example;
     card.updatedAt = now;
     clearCardEditing();
     persist();
@@ -455,6 +767,10 @@ function handleCardSubmit(event) {
     front,
     back,
     hint,
+    topic,
+    tags,
+    note,
+    example,
     createdAt: now,
     updatedAt: now,
     study: {
@@ -496,6 +812,22 @@ function handleDeckActions(event) {
   const deleteButton = event.target.closest("[data-delete-deck]");
   if (deleteButton) {
     deleteDeck(deleteButton.dataset.deleteDeck);
+  }
+}
+
+function handleTrackActions(event) {
+  const studyButton = event.target.closest("[data-study-focus]");
+  if (studyButton) {
+    studyDeckFilter.value = `focus:${studyButton.dataset.studyFocus}`;
+    currentCardId = null;
+    isAnswerVisible = false;
+    switchSection("study");
+    return;
+  }
+
+  const installButton = event.target.closest("[data-install-track]");
+  if (installButton) {
+    installStarterPack(installButton.dataset.installTrack);
   }
 }
 
@@ -660,12 +992,15 @@ function clearDeckEditing() {
   editingDeckId = null;
   deckForm.reset();
   deckIdInput.value = "";
+  deckFocusInput.value = "medical";
+  applyDeckFocusPreset();
 }
 
 function clearCardEditing() {
   editingCardId = null;
   cardForm.reset();
   cardIdInput.value = "";
+  applyCardContextPlaceholders();
 }
 
 function showToast(message) {
@@ -677,14 +1012,140 @@ function showToast(message) {
   }, 2200);
 }
 
+function applyDeckFocusPreset() {
+  const focus = normalizeDeckFocus(deckFocusInput.value);
+
+  if (focus === "medical") {
+    deckSubjectInput.placeholder = "解剖 / 生理 / 病理 / 薬理 / 内科";
+    deckDescriptionInput.placeholder = "例: 症候から病態を引けるようにする復習デッキ";
+    return;
+  }
+
+  if (focus === "english") {
+    deckSubjectInput.placeholder = "医学英語 / 語彙 / 読解 / リスニング";
+    deckDescriptionInput.placeholder = "例: 医学英語と長文読解を分けて反復する";
+    return;
+  }
+
+  deckSubjectInput.placeholder = "テーマ / 分野";
+  deckDescriptionInput.placeholder = "用途やテーマを短く書く";
+}
+
+function applyCardContextPlaceholders() {
+  const focus = getDeckFocus(cardDeckId.value);
+
+  if (focus === "medical") {
+    cardHintInput.placeholder = "病態の流れや鑑別のヒント";
+    cardTopicInput.placeholder = "解剖 / 生理 / 病理 / 薬理 / 症候";
+    cardTagsInput.placeholder = "循環, 腎, 呼吸, 必修";
+    cardNoteInput.placeholder = "臨床ポイント、鑑別、関連知識を残す";
+    cardExampleInput.placeholder = "症例ベースの覚え方や所見のつなぎ方";
+    return;
+  }
+
+  if (focus === "english") {
+    cardHintInput.placeholder = "語源、言い換え、読み方のヒント";
+    cardTopicInput.placeholder = "医学英語 / 語彙 / 読解 / 構文";
+    cardTagsInput.placeholder = "vocabulary, reading, phrase, medical english";
+    cardNoteInput.placeholder = "語法メモ、似た表現、論文での使い分け";
+    cardExampleInput.placeholder = "例文や英文のまま覚えたいフレーズ";
+    return;
+  }
+
+  cardHintInput.placeholder = "例文や覚え方のヒント";
+  cardTopicInput.placeholder = "テーマ";
+  cardTagsInput.placeholder = "タグをカンマ区切りで入力";
+  cardNoteInput.placeholder = "重要な関連知識や使い分けを記録";
+  cardExampleInput.placeholder = "例文や症例ベースの覚え方";
+}
+
 function getStudyQueue() {
   const filter = studyDeckFilter.value || "all";
   const now = Date.now();
 
   return state.cards
-    .filter((card) => (filter === "all" ? true : card.deckId === filter))
+    .filter((card) => matchesCardFilter(card, filter))
     .filter((card) => card.study.dueAt <= now)
     .sort((a, b) => a.study.dueAt - b.study.dueAt);
+}
+
+function matchesCardFilter(card, filter) {
+  if (!filter || filter === "all") {
+    return true;
+  }
+
+  if (filter.startsWith("focus:")) {
+    return getDeckFocus(card.deckId) === filter.slice("focus:".length);
+  }
+
+  return card.deckId === filter;
+}
+
+function installStarterPack(focus) {
+  const starterDecks = STARTER_PACKS[focus];
+  if (!starterDecks) {
+    return;
+  }
+
+  let addedDecks = 0;
+  let addedCards = 0;
+  let latestDeckId = "";
+  const now = Date.now();
+
+  starterDecks.forEach((starterDeck, deckIndex) => {
+    if (state.decks.some((deck) => deck.name === starterDeck.name)) {
+      return;
+    }
+
+    const deckId = crypto.randomUUID();
+    latestDeckId = deckId;
+    state.decks.unshift({
+      id: deckId,
+      name: starterDeck.name,
+      focus,
+      subject: starterDeck.subject,
+      description: starterDeck.description,
+      createdAt: now - deckIndex * hourMs,
+    });
+    addedDecks += 1;
+
+    starterDeck.cards.forEach((starterCard, cardIndex) => {
+      state.cards.unshift(
+        makeCard({
+          id: crypto.randomUUID(),
+          deckId,
+          front: starterCard.front,
+          back: starterCard.back,
+          hint: starterCard.hint,
+          topic: starterCard.topic,
+          tags: starterCard.tags,
+          note: starterCard.note,
+          example: starterCard.example,
+          createdAt: now - (deckIndex * starterDeck.cards.length + cardIndex + 1) * minuteMs,
+          dueAt: now + (starterCard.dueOffset || 0),
+          intervalDays: starterCard.intervalDays || 0,
+        }),
+      );
+      addedCards += 1;
+    });
+  });
+
+  if (!addedDecks) {
+    showToast(`${formatDeckFocus(focus)}スターターはすでに追加済みです`);
+    return;
+  }
+
+  clearDeckEditing();
+  clearCardEditing();
+  persist();
+  render();
+
+  if (latestDeckId && optionExists(cardDeckId, latestDeckId)) {
+    cardDeckId.value = latestDeckId;
+    applyCardContextPlaceholders();
+  }
+
+  showToast(`${formatDeckFocus(focus)}スターターを追加しました（${addedDecks} deck / ${addedCards} cards）`);
 }
 
 function getDueCountByDeck() {
@@ -744,61 +1205,99 @@ function registerServiceWorker() {
 
 function createDemoState() {
   const now = Date.now();
-  const englishDeckId = "deck-english";
-  const historyDeckId = "deck-history";
+  const medicalBasicsDeckId = "deck-medical-basics";
+  const medicalClinicalDeckId = "deck-medical-clinical";
+  const englishMedicalDeckId = "deck-english-medical";
+  const englishReadingDeckId = "deck-english-reading";
 
   return {
     decks: [
       {
-        id: englishDeckId,
-        name: "英単語",
-        description: "短い意味と例文で回す英語デッキ",
+        id: medicalBasicsDeckId,
+        name: "解剖・生理ベーシック",
+        focus: "medical",
+        subject: "解剖 / 生理",
+        description: "構造と機能を対で覚える医学部基礎デッキ",
         createdAt: now - 6 * dayMs,
       },
       {
-        id: historyDeckId,
-        name: "日本史",
-        description: "人物・年号・出来事を確認するデッキ",
+        id: medicalClinicalDeckId,
+        name: "病態・臨床推論",
+        focus: "medical",
+        subject: "病態 / 内科",
+        description: "症状から病態をつなぐ臨床寄りデッキ",
+        createdAt: now - 5 * dayMs,
+      },
+      {
+        id: englishMedicalDeckId,
+        name: "Medical English Core",
+        focus: "english",
+        subject: "医学英語 / 語彙",
+        description: "医療現場や論文で頻出の語彙デッキ",
+        createdAt: now - 4 * dayMs,
+      },
+      {
+        id: englishReadingDeckId,
+        name: "English Reading Patterns",
+        focus: "english",
+        subject: "読解 / 構文",
+        description: "長文読解や論文読解の構文デッキ",
         createdAt: now - 4 * dayMs,
       },
     ],
     cards: [
       makeCard({
         id: "card-1",
-        deckId: englishDeckId,
-        front: "abandon",
-        back: "捨てる、断念する",
-        hint: "ab = away のイメージ",
+        deckId: medicalBasicsDeckId,
+        front: "僧帽弁はどの部屋の間にある？",
+        back: "左心房と左心室の間。",
+        hint: "房室弁の左右差で整理する。",
+        topic: "循環",
+        tags: ["解剖", "循環", "必修"],
+        note: "右は三尖弁、左は僧帽弁。弁膜症の整理にもつながる。",
+        example: "僧帽弁狭窄では左房圧上昇から肺うっ血につながる。",
         createdAt: now - 5 * dayMs,
         dueAt: now - 2 * hourMs,
         intervalDays: 0,
       }),
       makeCard({
         id: "card-2",
-        deckId: englishDeckId,
-        front: "yield",
-        back: "生み出す、屈する",
-        hint: "文脈で意味が変わる動詞",
+        deckId: medicalClinicalDeckId,
+        front: "ネフローゼ症候群の4徴は？",
+        back: "高度蛋白尿、低アルブミン血症、浮腫、高脂血症。",
+        hint: "低Albから浮腫につながる流れを押さえる。",
+        topic: "腎疾患",
+        tags: ["病理", "腎", "内科"],
+        note: "糸球体障害による蛋白漏出と膠質浸透圧低下を一続きで覚える。",
+        example: "膜性腎症や微小変化型ネフローゼで典型的。",
         createdAt: now - 3 * dayMs,
         dueAt: now - hourMs,
         intervalDays: 1,
       }),
       makeCard({
         id: "card-3",
-        deckId: historyDeckId,
-        front: "大化の改新は何年？",
-        back: "645年",
-        hint: "むしごろし",
+        deckId: englishMedicalDeckId,
+        front: "administer",
+        back: "投与する、実施する。",
+        hint: "薬剤や酸素、検査の文脈で頻出。",
+        topic: "医学英語",
+        tags: ["vocabulary", "medical english", "verb"],
+        note: "administer a drug, administer oxygen の形をセットで覚える。",
+        example: "The nurse administered the medication intravenously.",
         createdAt: now - 4 * dayMs,
         dueAt: now - 30 * 60 * 1000,
         intervalDays: 0,
       }),
       makeCard({
         id: "card-4",
-        deckId: historyDeckId,
-        front: "鎌倉幕府を開いた人物は？",
-        back: "源頼朝",
-        hint: "征夷大将軍に注目",
+        deckId: englishReadingDeckId,
+        front: "Although A, B",
+        back: "Aではあるが、B。",
+        hint: "逆接の主張は後半に来る。",
+        topic: "構文",
+        tags: ["reading", "grammar", "contrast"],
+        note: "読解では although 節のあとよりも主節の内容を優先して把握する。",
+        example: "Although the sample size was small, the trend was consistent.",
         createdAt: now - 2 * dayMs,
         dueAt: now + dayMs,
         intervalDays: 2,
@@ -808,13 +1307,17 @@ function createDemoState() {
   };
 }
 
-function makeCard({ id, deckId, front, back, hint, createdAt, dueAt, intervalDays }) {
+function makeCard({ id, deckId, front, back, hint, topic = "", tags = [], note = "", example = "", createdAt, dueAt, intervalDays }) {
   return {
     id,
     deckId,
     front,
     back,
     hint,
+    topic,
+    tags: Array.isArray(tags) ? tags : parseTags(String(tags || "")),
+    note,
+    example,
     createdAt,
     updatedAt: createdAt,
     study: {
@@ -1130,15 +1633,34 @@ function calculateLearningPhaseOutcome(study, rating, now) {
 
 function normalizeState(rawState) {
   return {
-    decks: Array.isArray(rawState.decks) ? rawState.decks : [],
+    decks: Array.isArray(rawState.decks) ? rawState.decks.map((deck) => normalizeDeck(deck)) : [],
     cards: Array.isArray(rawState.cards) ? rawState.cards.map((card) => normalizeCard(card)) : [],
     reviewLog: Array.isArray(rawState.reviewLog) ? rawState.reviewLog : [],
+  };
+}
+
+function normalizeDeck(deck) {
+  const safeDeck = deck || {};
+
+  return {
+    id: String(safeDeck.id || crypto.randomUUID()),
+    name: String(safeDeck.name || "無題デッキ"),
+    focus: normalizeDeckFocus(safeDeck.focus),
+    subject: String(safeDeck.subject || "").trim(),
+    description: String(safeDeck.description || "").trim(),
+    createdAt: Number.isFinite(safeDeck.createdAt) ? safeDeck.createdAt : Date.now(),
   };
 }
 
 function normalizeCard(card) {
   return {
     ...card,
+    topic: String(card.topic || "").trim(),
+    tags: Array.isArray(card.tags) ? card.tags.filter(Boolean) : parseTags(card.tags),
+    note: String(card.note || "").trim(),
+    example: String(card.example || "").trim(),
+    createdAt: Number.isFinite(card.createdAt) ? card.createdAt : Date.now(),
+    updatedAt: Number.isFinite(card.updatedAt) ? card.updatedAt : Number.isFinite(card.createdAt) ? card.createdAt : Date.now(),
     study: normalizeStudy(card.study, Date.now()),
   };
 }
@@ -1212,12 +1734,57 @@ function formatMinutesLabel(minutes) {
   return Number.isInteger(days) ? `${days}日` : `${days}日`;
 }
 
+function normalizeDeckFocus(value) {
+  const focus = String(value || "").trim();
+  if (focus === "medical" || focus === "english" || focus === "general") {
+    return focus;
+  }
+
+  return "general";
+}
+
+function formatDeckFocus(focus) {
+  if (focus === "medical") {
+    return "医学";
+  }
+
+  if (focus === "english") {
+    return "英語";
+  }
+
+  return "汎用";
+}
+
+function getDeckFocus(deckId) {
+  return normalizeDeckFocus(getDeckById(deckId)?.focus);
+}
+
+function parseTags(input) {
+  return [...new Set(
+    String(input || "")
+      .split(/[,\n、，]/)
+      .map((tag) => tag.trim())
+      .filter(Boolean),
+  )];
+}
+
+function renderPillRow(items, className = "") {
+  return items
+    .map((item) => `<span class="meta-pill ${escapeHtml(className)}">${escapeHtml(item)}</span>`)
+    .join("");
+}
+
+function setElementCopy(element, value) {
+  element.textContent = value || "";
+  element.hidden = !value;
+}
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
 function escapeHtml(value) {
-  return value
+  return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")

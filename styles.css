@@ -108,6 +108,7 @@ button:disabled {
 .forms-grid,
 .study-layout,
 .stats-grid,
+.track-grid,
 .deck-list,
 .library-list,
 .stack-form,
@@ -165,6 +166,10 @@ button:disabled {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
+.track-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
 .stat-card {
   padding: 16px;
   border-radius: var(--radius-md);
@@ -176,6 +181,58 @@ button:disabled {
   display: block;
   font-size: 1.8rem;
   margin-top: 8px;
+}
+
+.track-card {
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(249, 244, 234, 0.9)),
+    var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.track-card.medical {
+  background:
+    radial-gradient(circle at top right, rgba(24, 49, 83, 0.12), transparent 38%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(235, 242, 250, 0.92));
+}
+
+.track-card.english {
+  background:
+    radial-gradient(circle at top right, rgba(240, 138, 75, 0.16), transparent 38%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(252, 244, 233, 0.92));
+}
+
+.track-card-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.track-card h3 {
+  margin: 0;
+}
+
+.track-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 14px;
+}
+
+.track-stat {
+  padding: 14px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(24, 49, 83, 0.08);
+}
+
+.track-stat strong {
+  display: block;
+  font-size: 1.2rem;
 }
 
 .tabbar {
@@ -322,6 +379,24 @@ button:disabled {
   color: var(--text-soft);
 }
 
+.flashcard-note,
+.flashcard-example {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(24, 49, 83, 0.06);
+}
+
+.flashcard-example {
+  background: rgba(240, 138, 75, 0.12);
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .rating-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -427,6 +502,8 @@ button:disabled {
 
 .deck-card,
 .library-card {
+  display: grid;
+  gap: 14px;
   padding: 18px;
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.82);
@@ -453,6 +530,16 @@ button:disabled {
   background: rgba(24, 49, 83, 0.08);
   color: var(--text-soft);
   font-size: 0.86rem;
+}
+
+.meta-pill.medical {
+  background: rgba(24, 49, 83, 0.12);
+  color: var(--bg-strong);
+}
+
+.meta-pill.english {
+  background: rgba(240, 138, 75, 0.18);
+  color: #8f4e1f;
 }
 
 .tip-card {
@@ -522,6 +609,10 @@ button:disabled {
   }
 
   .rating-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .track-stats {
     grid-template-columns: 1fr;
   }
 
