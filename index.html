@@ -41,7 +41,7 @@
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Memorize with rhythm</p>
+          <p class="eyebrow">医学部 / 英語 学習サポート</p>
           <h1>Pulse Recall</h1>
         </div>
         <button class="ghost-button" id="seedDemoButton" type="button">サンプル復元</button>
@@ -50,7 +50,7 @@
       <main class="page">
         <section class="hero panel">
           <div>
-            <p class="eyebrow">Today Focus</p>
+            <p class="eyebrow">今日の学習</p>
             <h2 id="heroTitle">今日の復習を整える</h2>
             <p id="heroText">
               医学部の基礎科目と英語学習を、期限が来たカードから短く回して定着させます。
@@ -58,7 +58,7 @@
           </div>
           <div class="hero-metric">
             <span id="dueCount">0</span>
-            <small>due cards</small>
+            <small>復習待ち</small>
           </div>
         </section>
 
@@ -74,7 +74,7 @@
         <section class="content is-active" id="dashboard">
           <div class="panel split-panel">
             <div>
-              <p class="eyebrow">Quick Start</p>
+              <p class="eyebrow">はじめの一手</p>
               <h3>今日やること</h3>
               <p id="quickSummary">
                 まずは期限の来たカードを確認し、その後に新しいカードを追加できます。
@@ -86,7 +86,7 @@
           <div class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">First Steps</p>
+                <p class="eyebrow">使い方</p>
                 <h3>初心者向けガイド</h3>
               </div>
               <button class="ghost-button" id="openOnboardingButton" type="button">使い方を見る</button>
@@ -100,7 +100,7 @@
             <section class="panel">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">Pending Shares</p>
+                  <p class="eyebrow">共有</p>
                   <h3>共有待ち</h3>
                 </div>
                 <span class="muted" id="pendingShareLabel">共有なし</span>
@@ -111,7 +111,7 @@
             <section class="panel">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">Recent Decks</p>
+                  <p class="eyebrow">最近使ったもの</p>
                   <h3>最近のデッキ</h3>
                 </div>
               </div>
@@ -122,10 +122,10 @@
           <div class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Decks</p>
+                <p class="eyebrow">一覧</p>
                 <h3>デッキ一覧</h3>
               </div>
-              <span class="muted" id="deckCountLabel">0 decks</span>
+              <span class="muted" id="deckCountLabel">0デッキ</span>
             </div>
             <div class="deck-list" id="deckList"></div>
           </div>
@@ -133,7 +133,7 @@
           <div class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">History</p>
+                <p class="eyebrow">履歴</p>
                 <h3>学習の流れ</h3>
               </div>
               <span class="muted" id="historySummary">まだ履歴がありません</span>
@@ -143,7 +143,7 @@
           </div>
 
           <div class="panel tip-card">
-            <p class="eyebrow">iPhone Hint</p>
+            <p class="eyebrow">iPhone ヒント</p>
             <p>
               Safari の共有メニューから「ホーム画面に追加」を使うと、アプリっぽく開けます。
             </p>
@@ -153,7 +153,7 @@
         <section class="content" id="study">
           <div class="panel section-heading">
             <div>
-              <p class="eyebrow">Review Queue</p>
+              <p class="eyebrow">復習キュー</p>
               <h3>学習モード</h3>
             </div>
             <label class="inline-select">
@@ -165,7 +165,7 @@
           <div class="study-layout">
             <section class="flashcard-panel panel">
               <div id="emptyState" class="empty-state">
-                <p class="eyebrow">All clear</p>
+                <p class="eyebrow">いまは空き時間</p>
                 <h3>今は復習待ちのカードがありません</h3>
                 <p>カードを追加するか、時間を置いてから再度チェックしてください。</p>
               </div>
@@ -193,7 +193,7 @@
             </section>
 
             <section class="panel">
-              <p class="eyebrow">Answer</p>
+              <p class="eyebrow">回答</p>
               <h3>覚え具合を記録</h3>
               <div class="rating-grid">
                 <button class="rating danger" data-rating="again" type="button">忘れた</button>
@@ -208,7 +208,7 @@
         <section class="content" id="manage">
           <div class="panel section-heading">
             <div>
-              <p class="eyebrow">Create</p>
+              <p class="eyebrow">作成</p>
               <h3>作成と共有</h3>
             </div>
             <div class="button-row" id="createNav">
@@ -222,7 +222,7 @@
           <section class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Templates</p>
+                <p class="eyebrow">プリセット</p>
                 <h3>おすすめの作成プリセット</h3>
               </div>
             </div>
@@ -233,8 +233,20 @@
             </div>
           </section>
 
+          <section class="panel tip-card" id="createGuidePanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">ナビ</p>
+                <h3 id="createGuideTitle">この画面でやること</h3>
+              </div>
+            </div>
+            <p class="muted" id="createGuideSummary">いま開いている作成モードに合わせて、迷わず進められる手順を表示します。</p>
+            <div class="stack-list" id="createGuideSteps"></div>
+            <div class="button-row" id="createGuideActions"></div>
+          </section>
+
           <section class="panel create-panel is-active" id="createDeckPanel">
-            <p class="eyebrow">Create Deck</p>
+            <p class="eyebrow">デッキ作成</p>
             <h3 id="deckFormTitle">デッキを作る</h3>
             <form id="deckForm" class="stack-form">
               <input id="deckIdInput" name="deckId" type="hidden" />
@@ -266,7 +278,7 @@
           </section>
 
           <section class="panel create-panel" id="createCardPanel">
-            <p class="eyebrow">Create Card</p>
+            <p class="eyebrow">カード作成</p>
             <h3 id="cardFormTitle">カードを追加</h3>
             <form id="cardForm" class="stack-form">
               <input id="cardIdInput" name="cardId" type="hidden" />
@@ -312,7 +324,7 @@
           <section class="panel import-panel create-panel" id="createImportPanel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Auto Import</p>
+                <p class="eyebrow">自動取り込み</p>
                 <h3>PDF から自動でデッキ化</h3>
               </div>
               <button class="ghost-button" id="clearImportDraftButton" type="button" hidden>候補を消す</button>
@@ -390,14 +402,14 @@
           <section class="panel create-panel" id="createSharePanel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Share & Backup</p>
+                <p class="eyebrow">共有とバックアップ</p>
                 <h3>共有とバックアップ</h3>
               </div>
               <button class="ghost-button" id="refreshCloudButton" type="button">共有情報を更新</button>
             </div>
             <div class="share-grid">
               <section class="subpanel">
-                <p class="eyebrow">Auth</p>
+                <p class="eyebrow">ログイン</p>
                 <h4>共有するときだけログイン</h4>
                 <p class="muted" id="authStatus">Supabase 未設定ならローカル専用のまま使えます。</p>
                 <div class="stack-form">
@@ -413,7 +425,7 @@
               </section>
 
               <section class="subpanel">
-                <p class="eyebrow">Deck Share</p>
+                <p class="eyebrow">デッキ共有</p>
                 <h4>デッキを共有デッキ化</h4>
                 <div class="stack-form">
                   <label>
@@ -434,8 +446,15 @@
                 <div class="stack-list" id="shareMemberList"></div>
               </section>
 
+              <section class="subpanel tip-card">
+                <p class="eyebrow">共有ガイド</p>
+                <h4>共有の使い分け</h4>
+                <p class="muted" id="shareGuideSummary">ローカル複製と共同編集の違いを、ここでいつでも確認できます。</p>
+                <div class="stack-list" id="shareGuideList"></div>
+              </section>
+
               <section class="subpanel">
-                <p class="eyebrow">Backup</p>
+                <p class="eyebrow">バックアップ</p>
                 <h4>JSON エクスポート / インポート</h4>
                 <div class="form-actions">
                   <button class="primary-button" id="exportJsonButton" type="button">JSONを書き出す</button>
@@ -453,7 +472,7 @@
         <section class="content" id="assistant">
           <div class="panel section-heading">
             <div>
-              <p class="eyebrow">Library</p>
+              <p class="eyebrow">ライブラリ</p>
               <h3>ライブラリと検索</h3>
             </div>
             <button class="ghost-button" id="clearAssistantButton" type="button">検索履歴を消す</button>
@@ -462,7 +481,7 @@
           <section class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Search</p>
+                <p class="eyebrow">検索</p>
                 <h3>保存済みカードを検索</h3>
               </div>
             </div>
@@ -504,7 +523,7 @@
           <section class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Filters</p>
+                <p class="eyebrow">絞り込み</p>
                 <h3>ライブラリを絞り込む</h3>
               </div>
             </div>
@@ -540,7 +559,7 @@
             <section class="panel">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">Cards</p>
+                  <p class="eyebrow">カード一覧</p>
                   <h3>登録済みカード</h3>
                 </div>
               </div>
@@ -550,7 +569,7 @@
             <section class="panel deck-detail-card" id="deckDetailCard">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">Deck Detail</p>
+                  <p class="eyebrow">デッキ詳細</p>
                   <h3 id="deckDetailTitle">デッキ詳細</h3>
                 </div>
                 <div class="button-row" id="deckDetailNav">
@@ -569,7 +588,7 @@
 
     <div class="modal-shell" id="onboardingModal" hidden>
       <div class="modal-card">
-        <p class="eyebrow">Welcome</p>
+        <p class="eyebrow">ようこそ</p>
         <h3>はじめての 3 ステップ</h3>
         <div class="onboarding-steps">
           <article>
@@ -594,7 +613,7 @@
 
     <div class="modal-shell" id="shareJoinModal" hidden>
       <div class="modal-card">
-        <p class="eyebrow">Shared Deck</p>
+        <p class="eyebrow">共有デッキ</p>
         <h3 id="shareJoinTitle">共有デッキに参加</h3>
         <p class="muted" id="shareJoinStatus">共有リンクを確認しています。</p>
         <label class="inline-select" id="shareJoinRoleField" hidden>

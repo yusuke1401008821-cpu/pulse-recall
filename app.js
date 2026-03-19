@@ -14,14 +14,14 @@ const CLOUD_SHARE_PARAM = "share";
 const TRACKS = [
   {
     id: "medical",
-    eyebrow: "Medical Track",
+    eyebrow: "医学トラック",
     title: "医学部コア学習",
     description: "解剖・生理・病態・臨床推論をテーマ別に回して、知識をつなげて定着させます。",
     recommendation: "解剖、生理、病態、症候のように階層を分けると医学系の復習効率が安定します。",
   },
   {
     id: "english",
-    eyebrow: "English Track",
+    eyebrow: "英語トラック",
     title: "英語学習トラック",
     description: "医学英語の語彙、英語長文、構文理解を分けて回し、英語の処理速度を上げます。",
     recommendation: "語彙と長文を別デッキにすると、英語学習の弱点が見えやすくなります。",
@@ -331,6 +331,10 @@ const createPanels = {
   import: document.getElementById("createImportPanel"),
   share: document.getElementById("createSharePanel"),
 };
+const createGuideTitle = document.getElementById("createGuideTitle");
+const createGuideSummary = document.getElementById("createGuideSummary");
+const createGuideSteps = document.getElementById("createGuideSteps");
+const createGuideActions = document.getElementById("createGuideActions");
 const authStatus = document.getElementById("authStatus");
 const authEmailInput = document.getElementById("authEmailInput");
 const signInMagicLinkButton = document.getElementById("signInMagicLinkButton");
@@ -348,6 +352,8 @@ const refreshCloudButton = document.getElementById("refreshCloudButton");
 const shareStatus = document.getElementById("shareStatus");
 const shareRequestList = document.getElementById("shareRequestList");
 const shareMemberList = document.getElementById("shareMemberList");
+const shareGuideSummary = document.getElementById("shareGuideSummary");
+const shareGuideList = document.getElementById("shareGuideList");
 const onboardingModal = document.getElementById("onboardingModal");
 const dismissOnboardingButton = document.getElementById("dismissOnboardingButton");
 const completeOnboardingButton = document.getElementById("completeOnboardingButton");
@@ -474,6 +480,8 @@ function bindEvents() {
   deckList.addEventListener("click", handleDeckActions);
   libraryList.addEventListener("click", handleLibraryActions);
   recentDeckList.addEventListener("click", handleLibraryActions);
+  homeQuickActions.addEventListener("click", handleHomeQuickActions);
+  createGuideActions.addEventListener("click", handleGuideActions);
   shareRequestList.addEventListener("click", handleDeckDetailActions);
   shareMemberList.addEventListener("click", handleDeckDetailActions);
   deckDetailContent.addEventListener("click", handleDeckDetailActions);
@@ -536,7 +544,7 @@ function renderStats() {
     stats.totalCards > 0
       ? `医学${stats.medicalCards}枚、英語${stats.englishCards}枚を管理中です。テーマ別に分けると復習の見通しが良くなります。`
       : "医学と英語のスターターを追加して、基礎の復習ルートから始めるのがおすすめです。";
-  deckCountLabel.textContent = `${state.decks.length} decks`;
+  deckCountLabel.textContent = `${state.decks.length}デッキ`;
 
   statsGrid.innerHTML = stats.cards
     .map(
@@ -655,6 +663,8 @@ function renderCreatePanels() {
   createModeButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.createMode === createMode);
   });
+
+  renderCreateGuide();
 }
 
 function setCreateMode(mode) {
@@ -666,6 +676,42 @@ function setCreateMode(mode) {
   renderCreatePanels();
   if (mode === "share") {
     renderSharePanel();
+  }
+}
+
+function openCreateMode(mode) {
+  setCreateMode(mode);
+  switchSection("manage");
+}
+
+function runUiShortcut(action, { focus = "", mode = "" } = {}) {
+  if (action === "study") {
+    switchSection("study");
+    return;
+  }
+
+  if (action === "create-mode") {
+    openCreateMode(mode || "deck");
+    return;
+  }
+
+  if (action === "install-starter") {
+    installStarterPack(focus || "medical");
+    return;
+  }
+
+  if (action === "share") {
+    openCreateMode("share");
+    return;
+  }
+
+  if (action === "onboarding") {
+    onboardingModal.hidden = false;
+    return;
+  }
+
+  if (action === "library") {
+    switchSection("assistant");
   }
 }
 
@@ -711,6 +757,248 @@ function applyTemplate(templateId) {
 
 function maybeOpenOnboarding() {
   onboardingModal.hidden = Boolean(state.settings?.onboardingCompleted);
+}
+
+function renderShortcutButtons(items) {
+  return (items || [])
+    .map(
+      (item) => `
+        <button
+          class="${escapeHtml(item.kind === "ghost" ? "ghost-button" : "primary-button")}"
+          data-ui-action="${escapeHtml(item.action)}"
+          data-ui-focus="${escapeHtml(item.focus || "")}"
+          data-ui-mode="${escapeHtml(item.mode || "")}"
+          type="button"
+        >
+          ${escapeHtml(item.label)}
+        </button>
+      `,
+    )
+    .join("");
+}
+
+function renderGuideSteps(items) {
+  return (items || [])
+    .map(
+      (item, index) => `
+        <article class="library-card">
+          <h4>${index + 1}. ${escapeHtml(item.title)}</h4>
+          <p class="muted">${escapeHtml(item.text)}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function buildHomeQuickActions() {
+  const stats = buildStats();
+  const pendingCount = cloudState.pendingRequests.length;
+  const hasMedicalDeck = state.decks.some((deck) => deck.focus === "medical");
+  const hasEnglishDeck = state.decks.some((deck) => deck.focus === "english");
+  const hasSharedDeck = state.decks.some((deck) => deck.storageMode === "shared");
+  const actions = [];
+
+  const pushAction = (item) => {
+    const key = `${item.action}:${item.focus || ""}:${item.mode || ""}`;
+    if (!actions.some((entry) => `${entry.action}:${entry.focus || ""}:${entry.mode || ""}` === key)) {
+      actions.push(item);
+    }
+  };
+
+  if (!state.cards.length) {
+    if (!hasMedicalDeck) {
+      pushAction({
+        title: "医学スターターを入れる",
+        text: "解剖・生理と病態の土台をすぐに追加して、最初の復習ルートを作れます。",
+        label: "医学スターター追加",
+        action: "install-starter",
+        focus: "medical",
+      });
+    }
+    if (!hasEnglishDeck) {
+      pushAction({
+        title: "英語スターターを入れる",
+        text: "医学英語と長文読解の土台を用意して、英語トラックをすぐ始められます。",
+        label: "英語スターター追加",
+        action: "install-starter",
+        focus: "english",
+      });
+    }
+    pushAction({
+      title: "PDFからまとめて作る",
+      text: "講義資料や配布ノートをそのまま読み込んで、カード候補を一気に作れます。",
+      label: "PDF取り込みへ",
+      action: "create-mode",
+      mode: "import",
+    });
+    pushAction({
+      title: "使い方を先に見る",
+      text: "3ステップのガイドを開いて、最初にどこを触るか確認できます。",
+      label: "使い方を見る",
+      action: "onboarding",
+      kind: "ghost",
+    });
+    return actions.slice(0, 3);
+  }
+
+  if (stats.dueCount > 0) {
+    pushAction({
+      title: `${stats.dueCount}枚の復習を進める`,
+      text: "まずは期限が来たカードから片づけると、学習サイクルが崩れにくくなります。",
+      label: "学習へ",
+      action: "study",
+    });
+  }
+
+  if (pendingCount > 0) {
+    pushAction({
+      title: "共有申請を確認する",
+      text: `${pendingCount}件の参加申請があります。owner なら共有タブで承認やロール選択ができます。`,
+      label: "共有を見る",
+      action: "share",
+    });
+  }
+
+  if (!hasSharedDeck) {
+    pushAction({
+      title: "デッキを仲間と共有する",
+      text: "まずは複製リンク、必要なら共同編集へと段階的に共有を始められます。",
+      label: "共有へ",
+      action: "share",
+    });
+  }
+
+  if (!hasEnglishDeck) {
+    pushAction({
+      title: "英語トラックを補強する",
+      text: "医学英語や読解のデッキがまだ少ないなら、英語スターターを足すと始めやすいです。",
+      label: "英語スターター追加",
+      action: "install-starter",
+      focus: "english",
+    });
+  }
+
+  if (!hasMedicalDeck) {
+    pushAction({
+      title: "医学トラックを補強する",
+      text: "基礎科目の復習が薄いときは、医学スターターから埋めると全体が安定します。",
+      label: "医学スターター追加",
+      action: "install-starter",
+      focus: "medical",
+    });
+  }
+
+  pushAction({
+    title: "PDFから一気に増やす",
+    text: "講義資料や英語本文からカード候補を作って、入力の手間を減らせます。",
+    label: "PDF取り込みへ",
+    action: "create-mode",
+    mode: "import",
+  });
+  pushAction({
+    title: "保存済みカードを検索する",
+    text: "今あるカードだけで要点を引きたいときは、ライブラリ内検索が早いです。",
+    label: "ライブラリへ",
+    action: "library",
+    kind: "ghost",
+  });
+
+  return actions.slice(0, 3);
+}
+
+function buildCreateGuideModel() {
+  const hasDecks = state.decks.length > 0;
+  const hasSharedDeck = state.decks.some((deck) => deck.storageMode === "shared");
+  const hasClientConfig = Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
+
+  if (createMode === "card") {
+    if (!hasDecks) {
+      return {
+        title: "カードの前にデッキを用意する",
+        summary: "カードは必ずどこかのデッキに入ります。まずは医学か英語のデッキを1つ作ると進めやすいです。",
+        steps: [
+          { title: "先にデッキを作る", text: "科目や目的ごとに箱を作ってからカードを入れると、復習範囲が整理されます。" },
+          { title: "そのあとカードへ戻る", text: "問題・答え・補足を短く入力して、1枚ずつ増やします。" },
+        ],
+        actions: [
+          { label: "デッキ作成へ", action: "create-mode", mode: "deck" },
+          { label: "医学スターター追加", action: "install-starter", focus: "medical", kind: "ghost" },
+        ],
+      };
+    }
+
+    return {
+      title: "1枚ずつ丁寧にカードを追加する",
+      summary: "重要度が高い内容や、PDFから拾い切れない細かい知識は手入力で補うのが向いています。",
+      steps: [
+        { title: "入れるデッキを選ぶ", text: "まず対象デッキを決めて、医学か英語かの文脈を揃えます。" },
+        { title: "問題と答えを短く分ける", text: "1カード1論点にすると、暗記と復習の効率が上がります。" },
+        { title: "補足や例文で定着させる", text: "臨床メモや例文を添えると、覚える場面が頭に残りやすくなります。" },
+      ],
+      actions: [
+        { label: "PDF取り込みへ", action: "create-mode", mode: "import" },
+        { label: "共有へ", action: "share", kind: "ghost" },
+      ],
+    };
+  }
+
+  if (createMode === "import") {
+    return {
+      title: "資料からまとめてカード候補を作る",
+      summary: "大量の講義資料や英語本文を扱うときは、まず取り込みで候補を作ってから必要なものだけ残すのが速いです。",
+      steps: [
+        { title: "PDFか本文を入れる", text: "講義PDF、配布ノート、英語本文などをそのまま投入できます。" },
+        { title: "候補を整理する", text: "重複統合、一括タグ付け、不要候補の削除で質を整えます。" },
+        { title: "新規または既存デッキへ保存", text: "まとめて新規デッキを作るか、既存デッキに追記できます。" },
+      ],
+      actions: [
+        { label: "カード作成へ", action: "create-mode", mode: "card" },
+        { label: "共有へ", action: "share", kind: "ghost" },
+      ],
+    };
+  }
+
+  if (createMode === "share") {
+    return {
+      title: hasSharedDeck ? "共有の運用を整える" : "共有は2段階で使い分ける",
+      summary: hasSharedDeck
+        ? "すでに共有中のデッキがあります。承認待ち、ロール変更、リンク再発行、共有終了をここでまとめて管理できます。"
+        : hasClientConfig
+          ? "まずはローカル複製リンクで試し、必要になったらログインして共同編集へ進めるのが一番わかりやすい流れです。"
+          : "Supabase 未設定でもローカル複製共有は使えます。共同編集が必要になった時だけ Supabase を接続すれば十分です。",
+      steps: [
+        { title: "まずは共有したいデッキを選ぶ", text: "学習中のデッキから1つ選んで、共有リンクを作ります。" },
+        { title: "軽い共有ならローカル複製", text: "相手は自分の端末へそのまま追加でき、ログインも不要です。" },
+        { title: "共同編集ならクラウド共有", text: "magic link でログインすると、viewer / editor を分けて運用できます。" },
+      ],
+      actions: [
+        { label: "デッキ作成へ", action: "create-mode", mode: "deck" },
+        { label: "使い方を見る", action: "onboarding", kind: "ghost" },
+      ],
+    };
+  }
+
+  return {
+    title: "まずは学習の箱を作る",
+    summary: "デッキは科目や用途ごとのまとまりです。あとから共有やPDF取り込みを使うときも、デッキ設計が土台になります。",
+    steps: [
+      { title: "デッキ名を決める", text: "解剖・生理、病態、医学英語、読解のように用途ごとに分けると管理しやすいです。" },
+      { title: "学習トラックと分野を入れる", text: "医学 / 英語と分野名を入れておくと、検索や絞り込みがしやすくなります。" },
+      { title: "次にカードかPDFへ進む", text: "箱を作ったら、手入力のカード追加か、資料からの一括取り込みに進みます。" },
+    ],
+    actions: [
+      { label: "カード作成へ", action: "create-mode", mode: "card" },
+      { label: "PDF取り込みへ", action: "create-mode", mode: "import", kind: "ghost" },
+    ],
+  };
+}
+
+function renderCreateGuide() {
+  const guide = buildCreateGuideModel();
+  createGuideTitle.textContent = guide.title;
+  createGuideSummary.textContent = guide.summary;
+  createGuideSteps.innerHTML = renderGuideSteps(guide.steps);
+  createGuideActions.innerHTML = renderShortcutButtons(guide.actions);
 }
 
 function completeOnboarding() {
@@ -964,10 +1252,46 @@ function getCurrentShareUrl(deck) {
   return "";
 }
 
+function renderShareGuidePanel(deck) {
+  const hasClientConfig = Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
+  const isSignedIn = Boolean(cloudState.session?.user);
+  const currentStateText = !deck
+    ? "まだ対象デッキがないので、まずはデッキ作成かスターター追加から始めるのがおすすめです。"
+    : deck.storageMode === "shared"
+      ? `今選んでいる「${deck.name}」は共同編集モードです。${canManageDeckShare(deck) ? "owner としてメンバー管理まで行えます。" : "あなたの学習進捗は個別に保持されます。"}`
+      : hasClientConfig
+        ? isSignedIn
+          ? `今選んでいる「${deck.name}」はローカルデッキです。共有リンクを作ると、複製共有か共同編集に進めます。`
+          : `今選んでいる「${deck.name}」はローカルデッキです。まずは複製共有を使い、共同編集したい時だけログインすると迷いにくいです。`
+        : `今選んでいる「${deck.name}」はローカルデッキです。現状でも複製共有は使えます。共同編集が必要になった時だけ Supabase を足せば十分です。`;
+
+  shareGuideSummary.textContent = currentStateText;
+  shareGuideList.innerHTML = `
+    <article class="library-card">
+      <h4>1. まずはローカル複製で共有</h4>
+      <p class="muted">ログイン不要です。相手はリンクを開いて、自分の端末にローカルデッキとして追加できます。</p>
+    </article>
+    <article class="library-card">
+      <h4>2. 共同編集が必要ならクラウド共有</h4>
+      <p class="muted">${
+        hasClientConfig
+          ? "magic link でログインすると、owner 承認制の editor / viewer 共有が使えます。"
+          : "Supabase を接続すると、owner 承認制の editor / viewer 共有が使えるようになります。"
+      }</p>
+    </article>
+    <article class="library-card">
+      <h4>3. 学習進捗は人ごとに分離</h4>
+      <p class="muted">共有されるのはカード内容だけです。復習間隔や学習履歴は各ユーザーで別々に保持します。</p>
+    </article>
+  `;
+}
+
 function renderSharePanel() {
   const deck = getSelectedShareDeck();
   const hasClientConfig = Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
   const isSignedIn = Boolean(cloudState.session?.user);
+
+  renderShareGuidePanel(deck);
 
   authStatus.textContent = !hasClientConfig
     ? "Supabase 未設定ならローカル専用のまま使えます。共有を使う時だけ接続してください。"
@@ -1247,8 +1571,8 @@ function renderDashboard() {
             <span class="meta-pill ${escapeHtml(deck.focus)}">${escapeHtml(formatDeckFocus(deck.focus))}</span>
             ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
             <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
-            <span class="meta-pill">${cardCount} cards</span>
-            <span class="meta-pill">${due} due</span>
+            <span class="meta-pill">${cardCount}枚</span>
+            <span class="meta-pill">復習待ち ${due}枚</span>
           </div>
         </article>
       `;
@@ -1260,6 +1584,7 @@ function renderDashboard() {
 
 function renderHomePanels() {
   const pendingCount = cloudState.pendingRequests.length;
+  const quickActions = buildHomeQuickActions();
   pendingShareLabel.textContent = pendingCount ? `${pendingCount}件` : "共有なし";
   pendingShareList.innerHTML = pendingCount
     ? cloudState.pendingRequests
@@ -1310,46 +1635,25 @@ function renderHomePanels() {
         </article>
       `;
 
-  homeQuickActions.innerHTML = [
-    {
-      title: "まずは学習を始める",
-      text: "期限が来たカードから回して、今日の復習を片づけます。",
-      buttonId: "homeActionStudy",
-      buttonLabel: "学習へ",
-    },
-    {
-      title: "PDFから一気に作る",
-      text: "講義資料や配布ノートからカード候補を自動で作ります。",
-      buttonId: "homeActionImport",
-      buttonLabel: "PDF取り込みへ",
-    },
-    {
-      title: "仲間と共有する",
-      text: "デッキを共有デッキ化して、リンクでメンバーを集められます。",
-      buttonId: "homeActionShare",
-      buttonLabel: "共有へ",
-    },
-  ]
+  homeQuickActions.innerHTML = quickActions
     .map(
       (item) => `
         <article class="library-card">
           <h4>${escapeHtml(item.title)}</h4>
           <p class="muted">${escapeHtml(item.text)}</p>
-          <button class="primary-button" id="${escapeHtml(item.buttonId)}" type="button">${escapeHtml(item.buttonLabel)}</button>
+          ${renderShortcutButtons([
+            {
+              label: item.label,
+              action: item.action,
+              focus: item.focus,
+              mode: item.mode,
+              kind: item.kind,
+            },
+          ])}
         </article>
       `,
     )
     .join("");
-
-  document.getElementById("homeActionStudy")?.addEventListener("click", () => switchSection("study"));
-  document.getElementById("homeActionImport")?.addEventListener("click", () => {
-    setCreateMode("import");
-    switchSection("manage");
-  });
-  document.getElementById("homeActionShare")?.addEventListener("click", () => {
-    setCreateMode("share");
-    switchSection("manage");
-  });
 }
 
 function renderLibraryFilterControls() {
@@ -1404,20 +1708,20 @@ function renderTrackGrid() {
             <p class="eyebrow">${escapeHtml(track.eyebrow)}</p>
             <h3>${escapeHtml(track.title)}</h3>
           </div>
-          <span class="meta-pill ${track.id}">${summary.deckCount} decks</span>
+          <span class="meta-pill ${track.id}">${summary.deckCount}デッキ</span>
         </div>
         <p class="muted">${escapeHtml(track.description)}</p>
         <div class="track-stats">
           <div class="track-stat">
-            <span class="eyebrow">Due</span>
+            <span class="eyebrow">復習待ち</span>
             <strong>${summary.dueCount}</strong>
           </div>
           <div class="track-stat">
-            <span class="eyebrow">Cards</span>
+            <span class="eyebrow">カード枚数</span>
             <strong>${summary.cardCount}</strong>
           </div>
           <div class="track-stat">
-            <span class="eyebrow">Focus</span>
+            <span class="eyebrow">分野</span>
             <strong>${escapeHtml(summary.subjectCountLabel)}</strong>
           </div>
         </div>
@@ -1683,8 +1987,8 @@ function renderDeckDetail() {
       <article class="library-card">
         <h4>学習状況</h4>
         <div class="card-row-meta">
-          <span class="meta-pill">${deckCards.length} cards</span>
-          <span class="meta-pill">${dueCount} due</span>
+          <span class="meta-pill">${deckCards.length}枚</span>
+          <span class="meta-pill">復習待ち ${dueCount}枚</span>
           <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
         </div>
         <p class="muted">共有デッキでも、学習進捗はユーザーごとに分離して保持します。</p>
@@ -2003,6 +2307,30 @@ function handleTrackActions(event) {
   if (installButton) {
     installStarterPack(installButton.dataset.installTrack);
   }
+}
+
+function handleHomeQuickActions(event) {
+  const actionButton = event.target.closest("[data-ui-action]");
+  if (!actionButton) {
+    return;
+  }
+
+  runUiShortcut(actionButton.dataset.uiAction, {
+    focus: actionButton.dataset.uiFocus || "",
+    mode: actionButton.dataset.uiMode || "",
+  });
+}
+
+function handleGuideActions(event) {
+  const actionButton = event.target.closest("[data-ui-action]");
+  if (!actionButton) {
+    return;
+  }
+
+  runUiShortcut(actionButton.dataset.uiAction, {
+    focus: actionButton.dataset.uiFocus || "",
+    mode: actionButton.dataset.uiMode || "",
+  });
 }
 
 function handleLibraryActions(event) {
@@ -2341,7 +2669,7 @@ function saveImportDraftAsDeck() {
   cardDeckId.value = deckId;
   shareDeckSelect.value = deckId;
   applyCardContextPlaceholders();
-  showToast(targetDeck ? `${deckName} に ${cardCount} 枚追加しました` : `${deckName} を作成しました（${cardCount} cards）`);
+  showToast(targetDeck ? `${deckName} に ${cardCount} 枚追加しました` : `${deckName} を作成しました（${cardCount}枚）`);
 }
 
 async function requestAssistantAnswer(question) {
@@ -2839,7 +3167,7 @@ function installStarterPack(focus) {
     applyCardContextPlaceholders();
   }
 
-  showToast(`${formatDeckFocus(focus)}スターターを追加しました（${addedDecks} deck / ${addedCards} cards）`);
+  showToast(`${formatDeckFocus(focus)}スターターを追加しました（${addedDecks}デッキ / ${addedCards}枚）`);
 }
 
 async function loadImportSource() {
