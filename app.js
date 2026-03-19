@@ -12,6 +12,44 @@ const CLOUD_CONFIG_ENDPOINT = "/api/client-config";
 const LOCAL_SHARE_PARAM = "deckshare";
 const CLOUD_SHARE_PARAM = "share";
 const DEMO_RESET_CONFIRM_TEXT = "サンプルを読み込む";
+const QUESTION_MAP_STOPWORDS = new Set([
+  "こと",
+  "もの",
+  "ため",
+  "よう",
+  "それぞれ",
+  "次の",
+  "以下",
+  "最も",
+  "正しい",
+  "誤り",
+  "選べ",
+  "選ぶ",
+  "どれ",
+  "ついて",
+  "について",
+  "含む",
+  "含ま",
+  "ない",
+  "ある",
+  "及び",
+  "また",
+  "where",
+  "which",
+  "what",
+  "when",
+  "with",
+  "from",
+  "that",
+  "this",
+  "these",
+  "those",
+  "into",
+  "only",
+  "most",
+  "least",
+  "except",
+]);
 const TRACKS = [
   {
     id: "medical",
@@ -212,6 +250,9 @@ let selectedDeckDetailId = "";
 let deckDetailTab = "overview";
 let shareLinkCache = "";
 let importSelection = new Set();
+let questionMapDraft = null;
+let isQuestionMapLoading = false;
+let questionMapErrorMessage = "";
 let cloudState = {
   status: "idle",
   config: null,
@@ -320,6 +361,17 @@ const removeSelectedImportButton = document.getElementById("removeSelectedImport
 const dedupeImportButton = document.getElementById("dedupeImportButton");
 const bulkImportTagsInput = document.getElementById("bulkImportTagsInput");
 const applyImportTagsButton = document.getElementById("applyImportTagsButton");
+const questionMapForm = document.getElementById("questionMapForm");
+const questionMapQuestionFileInput = document.getElementById("questionMapQuestionFileInput");
+const questionMapQuestionTextInput = document.getElementById("questionMapQuestionTextInput");
+const questionMapSlideFileInput = document.getElementById("questionMapSlideFileInput");
+const questionMapSlideTextInput = document.getElementById("questionMapSlideTextInput");
+const questionMapTopMatchesInput = document.getElementById("questionMapTopMatchesInput");
+const questionMapStatus = document.getElementById("questionMapStatus");
+const questionMapSummary = document.getElementById("questionMapSummary");
+const questionMapResults = document.getElementById("questionMapResults");
+const clearQuestionMapButton = document.getElementById("clearQuestionMapButton");
+const analyzeQuestionMapButton = document.getElementById("analyzeQuestionMapButton");
 const assistantMessages = document.getElementById("assistantMessages");
 const assistantStatus = document.getElementById("assistantStatus");
 const assistantForm = document.getElementById("assistantForm");
@@ -332,6 +384,7 @@ const createPanels = {
   deck: document.getElementById("createDeckPanel"),
   card: document.getElementById("createCardPanel"),
   import: document.getElementById("createImportPanel"),
+  locator: document.getElementById("createLocatorPanel"),
   share: document.getElementById("createSharePanel"),
 };
 const createGuideTitle = document.getElementById("createGuideTitle");
@@ -422,6 +475,7 @@ function bindEvents() {
   deckForm.addEventListener("submit", handleDeckSubmit);
   cardForm.addEventListener("submit", handleCardSubmit);
   importForm.addEventListener("submit", handleImportSubmit);
+  questionMapForm.addEventListener("submit", handleQuestionMapSubmit);
   assistantForm.addEventListener("submit", handleAssistantSubmit);
   cancelDeckEditButton.addEventListener("click", () => {
     clearDeckEditing();
@@ -456,6 +510,7 @@ function bindEvents() {
   removeSelectedImportButton.addEventListener("click", removeSelectedImportCandidates);
   dedupeImportButton.addEventListener("click", dedupeImportCandidates);
   applyImportTagsButton.addEventListener("click", applyBulkImportTags);
+  clearQuestionMapButton.addEventListener("click", clearQuestionMapDraft);
   assistantDeckFilter.addEventListener("change", handleAssistantSettingsChange);
   clearAssistantButton.addEventListener("click", clearAssistantHistory);
   shareDeckSelect.addEventListener("change", () => {
@@ -658,6 +713,7 @@ function renderForms() {
   syncDeckForm();
   syncCardForm();
   renderImportPanel();
+  renderQuestionMapPanel();
   syncAssistantControls();
 }
 
@@ -685,6 +741,9 @@ function setCreateMode(mode) {
   renderCreatePanels();
   if (mode === "share") {
     renderSharePanel();
+  }
+  if (mode === "locator") {
+    renderQuestionMapPanel();
   }
 }
 
@@ -967,7 +1026,23 @@ function buildCreateGuideModel() {
       ],
       actions: [
         { label: "カード作成へ", action: "create-mode", mode: "card" },
-        { label: "設定へ", action: "settings", kind: "ghost" },
+        { label: "過去問参照へ", action: "create-mode", mode: "locator", kind: "ghost" },
+      ],
+    };
+  }
+
+  if (createMode === "locator") {
+    return {
+      title: "過去問とスライドの対応表を作る",
+      summary: "過去問PDFと講義スライドPDFを同時に読むと、各設問がどのスライドに近いかを候補で確認できます。",
+      steps: [
+        { title: "過去問を入れる", text: "番号付きの設問を自動で区切り、設問文と選択肢を検索キーとして使います。" },
+        { title: "スライドを入れる", text: "講義PDFをページ単位で解析して、各ページから近い本文箇所を抜き出します。" },
+        { title: "候補を確認する", text: "設問ごとに関連スライド候補、ページ番号、該当抜粋が並ぶので、見直しの起点にできます。" },
+      ],
+      actions: [
+        { label: "PDF取り込みへ", action: "create-mode", mode: "import" },
+        { label: "ライブラリへ", action: "library", kind: "ghost" },
       ],
     };
   }
@@ -1563,6 +1638,123 @@ function renderImportPanel() {
             ${(card.tags || []).slice(0, 4).map((tag) => `<span class="meta-pill">${escapeHtml(tag)}</span>`).join("")}
           </div>
           <p class="import-source">出典: ${escapeHtml(card.sourceLine || importDraft.sourceName)}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderQuestionMapPanel() {
+  const topMatches = clampNumber(Number.parseInt(questionMapTopMatchesInput.value, 10), 1, 5, 3);
+  questionMapTopMatchesInput.value = String(topMatches);
+  clearQuestionMapButton.hidden = !questionMapDraft;
+  analyzeQuestionMapButton.disabled = isQuestionMapLoading;
+  questionMapQuestionFileInput.disabled = isQuestionMapLoading;
+  questionMapQuestionTextInput.disabled = isQuestionMapLoading;
+  questionMapSlideFileInput.disabled = isQuestionMapLoading;
+  questionMapSlideTextInput.disabled = isQuestionMapLoading;
+  questionMapTopMatchesInput.disabled = isQuestionMapLoading;
+
+  if (isQuestionMapLoading) {
+    questionMapStatus.textContent =
+      "過去問とスライドを解析しています。設問を区切りながら、関連スライド候補を探しています。";
+  }
+
+  if (!questionMapDraft) {
+    if (!isQuestionMapLoading && questionMapErrorMessage) {
+      questionMapStatus.textContent = questionMapErrorMessage;
+    } else if (!isQuestionMapLoading) {
+      questionMapStatus.textContent =
+        "過去問と講義スライドを入れると、設問ごとに関連スライド候補、ページ番号、該当箇所の抜粋を表示します。";
+    }
+    questionMapSummary.innerHTML = "";
+    questionMapResults.innerHTML = questionMapErrorMessage
+      ? `
+          <article class="library-card">
+            <h4>解析に失敗しました</h4>
+            <p class="muted">${escapeHtml(questionMapErrorMessage)}</p>
+          </article>
+        `
+      : `
+          <article class="library-card">
+            <h4>まだ対応表はありません</h4>
+            <p class="muted">過去問 PDF と講義スライド PDF を入れて解析すると、ここに設問ごとの参照候補が並びます。</p>
+          </article>
+        `;
+    return;
+  }
+
+  questionMapErrorMessage = "";
+  questionMapStatus.textContent = `${questionMapDraft.questionSourceName} と ${questionMapDraft.slideSourceLabel} から、${questionMapDraft.questions.length} 問の対応候補を作成しました。`;
+  questionMapSummary.innerHTML = [
+    { label: "解析した設問", value: `${questionMapDraft.questions.length}問` },
+    { label: "使ったスライド", value: `${questionMapDraft.slidePageCount}ページ` },
+    { label: "候補が見つかった設問", value: `${questionMapDraft.matchedQuestionCount}問` },
+    { label: "参照資料", value: questionMapDraft.slideSourceLabel },
+  ]
+    .map(
+      (item) => `
+        <article class="library-card">
+          <p class="eyebrow">${escapeHtml(item.label)}</p>
+          <h4>${escapeHtml(item.value)}</h4>
+        </article>
+      `,
+    )
+    .join("");
+
+  questionMapResults.innerHTML = questionMapDraft.questions
+    .map(
+      (question) => `
+        <article class="library-card question-map-card">
+          <div class="card-row-header">
+            <div>
+              <p class="eyebrow">設問 ${escapeHtml(question.label)}</p>
+              <h4>${escapeHtml(question.prompt)}</h4>
+            </div>
+            <span class="meta-pill">${question.matches.length ? `候補 ${question.matches.length}件` : "候補なし"}</span>
+          </div>
+          ${
+            question.options.length
+              ? `<p class="muted">選択肢: ${escapeHtml(question.options.slice(0, 5).join(" / "))}</p>`
+              : ""
+          }
+          ${
+            question.matches.length
+              ? `
+                <div class="stack-list">
+                  ${question.matches
+                    .map(
+                      (match, index) => `
+                        <article class="subpanel match-card">
+                          <div class="card-row-header">
+                            <div>
+                              <h4>${index + 1}. ${escapeHtml(match.sourceName)} / p.${match.pageNumber}</h4>
+                              <p class="muted">${escapeHtml(formatQuestionMatchConfidence(match))}</p>
+                            </div>
+                            <div class="card-row-meta">
+                              <span class="meta-pill">${escapeHtml(match.matchedTokens.length)}語一致</span>
+                              <span class="meta-pill">${escapeHtml(match.coverageLabel)}</span>
+                            </div>
+                          </div>
+                          <p class="flashcard-note">${escapeHtml(match.snippet)}</p>
+                          ${
+                            match.matchedTokens.length
+                              ? `<div class="card-row-meta">${renderPillRow(match.matchedTokens.slice(0, 6))}</div>`
+                              : ""
+                          }
+                        </article>
+                      `,
+                    )
+                    .join("")}
+                </div>
+              `
+              : `
+                <article class="subpanel">
+                  <h4>はっきりした候補が見つかりませんでした</h4>
+                  <p class="muted">設問文が短い場合は選択肢も入れ直すか、スライドPDFを科目ごとに分けると見つかりやすくなります。</p>
+                </article>
+              `
+          }
         </article>
       `,
     )
@@ -2320,6 +2512,43 @@ async function handleImportSubmit(event) {
     renderImportPanel();
     importStatus.textContent = error.message || "資料の分析に失敗しました。";
     showToast(error.message || "資料の分析に失敗しました");
+  }
+}
+
+async function handleQuestionMapSubmit(event) {
+  event.preventDefault();
+  if (isQuestionMapLoading) {
+    return;
+  }
+
+  questionMapDraft = null;
+  questionMapErrorMessage = "";
+  isQuestionMapLoading = true;
+  renderQuestionMapPanel();
+
+  try {
+    const topMatches = clampNumber(Number.parseInt(questionMapTopMatchesInput.value, 10), 1, 5, 3);
+    questionMapTopMatchesInput.value = String(topMatches);
+    const sources = await loadQuestionMapSources();
+    questionMapErrorMessage = "";
+    questionMapDraft = buildQuestionMapDraft({
+      questionSource: sources.questionSource,
+      slidePages: sources.slidePages,
+      topMatches,
+    });
+    renderQuestionMapPanel();
+    showToast(
+      questionMapDraft.matchedQuestionCount > 0
+        ? `${questionMapDraft.matchedQuestionCount}問で関連スライド候補を見つけました`
+        : "関連スライド候補は見つかりませんでした",
+    );
+  } catch (error) {
+    questionMapDraft = null;
+    questionMapErrorMessage = error.message || "過去問とスライドの対応づけに失敗しました。";
+    showToast(error.message || "過去問参照の解析に失敗しました");
+  } finally {
+    isQuestionMapLoading = false;
+    renderQuestionMapPanel();
   }
 }
 
@@ -3105,6 +3334,16 @@ function clearImportDraft() {
   renderImportPanel();
 }
 
+function clearQuestionMapDraft() {
+  questionMapDraft = null;
+  isQuestionMapLoading = false;
+  questionMapErrorMessage = "";
+  questionMapForm.reset();
+  questionMapTopMatchesInput.value = "3";
+  renderQuestionMapPanel();
+  showToast("過去問参照の結果を消しました");
+}
+
 function showToast(message) {
   window.clearTimeout(toastTimer);
   toast.textContent = message;
@@ -3313,7 +3552,138 @@ async function loadImportSource() {
   return { text: pastedText, sourceName: "貼り付けテキスト" };
 }
 
+async function loadQuestionMapSources() {
+  const questionFile = questionMapQuestionFileInput.files?.[0] || null;
+  const questionText = String(questionMapQuestionTextInput.value || "").trim();
+  const slideFiles = [...(questionMapSlideFileInput.files || [])];
+  const slideText = String(questionMapSlideTextInput.value || "").trim();
+
+  if (!questionFile && !questionText) {
+    throw new Error("まず過去問 PDF か過去問本文を入れてください");
+  }
+
+  if (!slideFiles.length && !slideText) {
+    throw new Error("次に講義スライド PDF かスライド本文を入れてください");
+  }
+
+  const questionSource = await loadQuestionMapQuestionSource(questionFile, questionText);
+  const slidePages = await loadQuestionMapSlidePages(slideFiles, slideText);
+
+  if (!slidePages.length) {
+    throw new Error("スライド側から文字を読み取れませんでした");
+  }
+
+  return { questionSource, slidePages };
+}
+
+async function loadQuestionMapQuestionSource(file, pastedText) {
+  if (file) {
+    const pages = await loadPagedSourceFromFile(file, { maxPages: 80, chunkSize: 2200 });
+    const text = pages.map((page) => page.text).join("\n\n");
+    if (!text.trim()) {
+      throw new Error("過去問から文字を読み取れませんでした");
+    }
+    return {
+      sourceName: file.name || "過去問",
+      text,
+    };
+  }
+
+  return {
+    sourceName: "貼り付け過去問",
+    text: normalizeImportedText(pastedText),
+  };
+}
+
+async function loadQuestionMapSlidePages(files, pastedText) {
+  const pages = [];
+
+  for (const file of files) {
+    const filePages = await loadPagedSourceFromFile(file, { maxPages: 140, chunkSize: 1200 });
+    pages.push(...filePages);
+  }
+
+  if (pastedText) {
+    pages.push(...buildTextPageEntries(pastedText, "貼り付けスライド", { chunkSize: 1200 }));
+  }
+
+  return pages.filter((page) => page.text && page.text.trim());
+}
+
+async function loadPagedSourceFromFile(file, { maxPages = 24, chunkSize = 1200 } = {}) {
+  if (isPdfFile(file)) {
+    return extractPdfPages(file, maxPages);
+  }
+
+  const text = await file.text();
+  if (!text.trim()) {
+    throw new Error(`${file.name || "ファイル"} から文字を読み取れませんでした`);
+  }
+
+  return buildTextPageEntries(text, file.name || "テキスト資料", { chunkSize });
+}
+
+function buildTextPageEntries(text, sourceName, { chunkSize = 1200 } = {}) {
+  const normalized = normalizeImportedText(text);
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map((item) => cleanImportedSegment(item))
+    .filter(Boolean);
+
+  const sourceLabel = sourceName || "テキスト資料";
+  if (!paragraphs.length) {
+    return normalized
+      ? [
+          {
+            sourceName: sourceLabel,
+            pageNumber: 1,
+            text: normalized,
+          },
+        ]
+      : [];
+  }
+
+  const pages = [];
+  let buffer = "";
+  let pageNumber = 1;
+
+  paragraphs.forEach((paragraph) => {
+    const next = buffer ? `${buffer}\n\n${paragraph}` : paragraph;
+    if (next.length > chunkSize && buffer) {
+      pages.push({
+        sourceName: sourceLabel,
+        pageNumber,
+        text: buffer,
+      });
+      pageNumber += 1;
+      buffer = paragraph;
+      return;
+    }
+
+    buffer = next;
+  });
+
+  if (buffer) {
+    pages.push({
+      sourceName: sourceLabel,
+      pageNumber,
+      text: buffer,
+    });
+  }
+
+  return pages;
+}
+
 async function extractTextFromPdf(file) {
+  const merged = (await extractPdfPages(file, 24)).map((page) => page.text).join("\n\n");
+  if (!merged.trim()) {
+    throw new Error("PDFから文字を抽出できませんでした。画像PDFの可能性があります");
+  }
+
+  return merged;
+}
+
+async function extractPdfPages(file, maxPages = 24) {
   let pdfjsLib;
 
   try {
@@ -3329,24 +3699,23 @@ async function extractTextFromPdf(file) {
     useWorkerFetch: true,
   });
   const pdf = await documentTask.promise;
-  const pageTexts = [];
-  const maxPages = Math.min(pdf.numPages, 24);
+  const pages = [];
+  const safeMaxPages = Math.min(pdf.numPages, maxPages);
 
-  for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
+  for (let pageNumber = 1; pageNumber <= safeMaxPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
     const textContent = await page.getTextContent();
     const pageText = textContent.items ? buildPageText(textContent.items) : "";
     if (pageText.trim()) {
-      pageTexts.push(pageText.trim());
+      pages.push({
+        sourceName: file.name || "PDF",
+        pageNumber,
+        text: pageText.trim(),
+      });
     }
   }
 
-  const merged = pageTexts.join("\n\n");
-  if (!merged.trim()) {
-    throw new Error("PDFから文字を抽出できませんでした。画像PDFの可能性があります");
-  }
-
-  return merged;
+  return pages;
 }
 
 async function getPdfJsModule() {
@@ -3422,6 +3791,267 @@ function buildImportDraft({ text, sourceName, deckName, focus, subject, instruct
       tags: dedupeTags([formatDeckFocus(focus), ...(card.tags || []), ...splitSubjectTags(subject)]),
     })),
   };
+}
+
+function buildQuestionMapDraft({ questionSource, slidePages, topMatches }) {
+  const questions = parseQuestionBlocks(questionSource.text);
+  if (!questions.length) {
+    throw new Error("過去問から設問を切り出せませんでした。番号付きの設問か、改行入りの本文を入れてください");
+  }
+
+  const enrichedQuestions = questions.map((question) => ({
+    ...question,
+    matches: matchQuestionToSlidePages(question, slidePages, topMatches),
+  }));
+  const sourceNames = [...new Set(slidePages.map((page) => page.sourceName).filter(Boolean))];
+
+  return {
+    id: crypto.randomUUID(),
+    questionSourceName: questionSource.sourceName,
+    slideSourceNames: sourceNames,
+    slideSourceLabel:
+      sourceNames.length <= 2 ? sourceNames.join(" / ") : `${sourceNames.slice(0, 2).join(" / ")} ほか${sourceNames.length - 2}件`,
+    slidePageCount: slidePages.length,
+    questions: enrichedQuestions,
+    matchedQuestionCount: enrichedQuestions.filter((question) => question.matches.length > 0).length,
+  };
+}
+
+function parseQuestionBlocks(text) {
+  const lines = normalizeImportedText(text)
+    .split("\n")
+    .map((line) => cleanImportedSegment(line))
+    .filter(Boolean)
+    .filter((line) => !/^page\s+\d+$/i.test(line));
+  const blocks = [];
+  let current = null;
+
+  lines.forEach((line) => {
+    const start = parseQuestionStart(line);
+    if (start) {
+      if (current?.lines?.length) {
+        blocks.push(current);
+      }
+
+      current = {
+        label: start.label,
+        lines: start.body ? [start.body] : [],
+      };
+      return;
+    }
+
+    if (!current) {
+      return;
+    }
+
+    current.lines.push(line);
+  });
+
+  if (current?.lines?.length) {
+    blocks.push(current);
+  }
+
+  const parsed = blocks
+    .map((block, index) => buildQuestionBlock(block.label || `問${index + 1}`, block.lines, index))
+    .filter((block) => block && block.searchText.length >= 8);
+
+  return parsed.length >= 2 ? parsed : buildFallbackQuestionBlocks(text);
+}
+
+function buildQuestionBlock(label, lines, index) {
+  const cleanedLines = (lines || []).map((line) => cleanImportedSegment(line)).filter(Boolean);
+  const optionLines = cleanedLines.filter(looksLikeQuestionOption).map(stripQuestionOptionPrefix);
+  const promptLines = cleanedLines.filter((line) => !looksLikeQuestionOption(line));
+  const prompt = cleanQuestionPrompt(promptLines.join(" "));
+  const fallbackPrompt = cleanQuestionPrompt(cleanedLines.join(" "));
+  const searchText = cleanImportedSegment([prompt, ...optionLines].filter(Boolean).join(" "));
+  const tokens = tokenizeQuestionMapText(searchText);
+  const optionTokens = tokenizeQuestionMapText(optionLines.join(" "));
+  const phrases = extractQuestionMapPhrases(searchText);
+
+  return {
+    id: crypto.randomUUID(),
+    label: label || `問${index + 1}`,
+    prompt: prompt || fallbackPrompt || `設問 ${index + 1}`,
+    options: optionLines,
+    searchText: searchText || fallbackPrompt,
+    tokens,
+    optionTokens,
+    phrases,
+  };
+}
+
+function buildFallbackQuestionBlocks(text) {
+  return normalizeImportedText(text)
+    .split(/\n{2,}/)
+    .map((paragraph) => cleanImportedSegment(paragraph))
+    .filter((paragraph) => paragraph.length >= 18)
+    .slice(0, 32)
+    .map((paragraph, index) =>
+      buildQuestionBlock(
+        `問${index + 1}`,
+        splitIntoSentences(paragraph).length > 1 ? splitIntoSentences(paragraph) : [paragraph],
+        index,
+      ),
+    )
+    .filter(Boolean);
+}
+
+function parseQuestionStart(line) {
+  const patterns = [
+    /^(問\s*\d+)\s*[.)．、:：]?\s*(.*)$/i,
+    /^(第\s*\d+\s*問)\s*[.)．、:：]?\s*(.*)$/i,
+    /^(Q\s*\d+)\s*[.)．、:：]?\s*(.*)$/i,
+    /^(\d{1,3})[.)．、]\s*(.*)$/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = String(line || "").match(pattern);
+    if (match) {
+      return {
+        label: String(match[1] || "").trim(),
+        body: cleanImportedSegment(match[2] || ""),
+      };
+    }
+  }
+
+  return null;
+}
+
+function looksLikeQuestionOption(line) {
+  return /^[\(（]?(?:[A-Ea-e]|[1-9]|[ア-オあ-お])[)）.．、:]\s*/.test(String(line || "").trim());
+}
+
+function stripQuestionOptionPrefix(line) {
+  return cleanImportedSegment(String(line || "").replace(/^[\(（]?(?:[A-Ea-e]|[1-9]|[ア-オあ-お])[)）.．、:]\s*/, ""));
+}
+
+function cleanQuestionPrompt(text) {
+  return cleanImportedSegment(String(text || "").replace(/\s+/g, " ")).slice(0, 220);
+}
+
+function tokenizeQuestionMapText(text) {
+  return tokenizeSearchText(text).filter(
+    (token) => token.length >= 2 && !QUESTION_MAP_STOPWORDS.has(token.toLowerCase()) && !/^\d+$/.test(token),
+  );
+}
+
+function extractQuestionMapPhrases(text) {
+  return [...new Set(
+    (String(text || "").match(/[A-Za-z]{4,}(?:\s+[A-Za-z]{2,})?|[ぁ-んァ-ヶー一-龠]{4,}/g) || [])
+      .map((phrase) => phrase.toLowerCase().trim())
+      .filter((phrase) => !QUESTION_MAP_STOPWORDS.has(phrase))
+      .slice(0, 8),
+  )];
+}
+
+function matchQuestionToSlidePages(question, slidePages, topMatches) {
+  const ranked = slidePages
+    .map((page) => scoreQuestionAgainstSlidePage(question, page))
+    .filter((match) => match.score > 0)
+    .sort((left, right) => right.score - left.score || left.pageNumber - right.pageNumber)
+    .slice(0, topMatches);
+
+  if (!ranked.length) {
+    return [];
+  }
+
+  const bestScore = ranked[0].score || 1;
+  return ranked
+    .filter((match, index) => index === 0 || match.score >= Math.max(2, Math.round(bestScore * 0.35)))
+    .map((match) => ({
+      ...match,
+      coverageLabel:
+        match.coverage >= 0.55 ? "一致度 高め" : match.coverage >= 0.28 ? "一致度 中くらい" : "一致度 参考",
+    }));
+}
+
+function scoreQuestionAgainstSlidePage(question, page) {
+  const promptMatch = scoreTextAgainstTokens(page.text, question.tokens);
+  const optionMatch = scoreTextAgainstTokens(page.text, question.optionTokens);
+  const phraseMatches = (question.phrases || []).filter((phrase) => String(page.text || "").toLowerCase().includes(phrase));
+  const matchedTokens = dedupeTags([...promptMatch.matchedTokens, ...optionMatch.matchedTokens, ...phraseMatches]);
+  const snippet = findBestQuestionMapSnippet(page.text, matchedTokens.length ? matchedTokens : question.tokens);
+  const score = promptMatch.score * 2 + optionMatch.score + phraseMatches.length * 3 + snippet.score;
+  const coverage = matchedTokens.length / Math.max(1, question.tokens.length || matchedTokens.length || 1);
+
+  return {
+    sourceName: page.sourceName,
+    pageNumber: page.pageNumber,
+    snippet: snippet.text,
+    matchedTokens,
+    coverage,
+    score,
+  };
+}
+
+function findBestQuestionMapSnippet(text, tokens) {
+  const candidates = extractMeaningfulLines(text).slice(0, 36);
+  if (!candidates.length) {
+    const fallbackText = cleanImportedSegment(String(text || "")).slice(0, 180);
+    return {
+      text: fallbackText || "該当箇所を表示できませんでした。",
+      score: 0,
+    };
+  }
+
+  let bestCandidate = candidates[0];
+  let bestScore = -1;
+
+  candidates.forEach((candidate) => {
+    const candidateScore = scoreTextAgainstTokens(candidate, tokens).score;
+    if (candidateScore > bestScore) {
+      bestScore = candidateScore;
+      bestCandidate = candidate;
+    }
+  });
+
+  return {
+    text: bestCandidate,
+    score: Math.max(0, bestScore),
+  };
+}
+
+function scoreTextAgainstTokens(text, tokens) {
+  const normalized = String(text || "").toLowerCase();
+  const matchedTokens = [];
+  let score = 0;
+
+  (tokens || []).forEach((token) => {
+    if (!token || !normalized.includes(String(token).toLowerCase())) {
+      return;
+    }
+
+    matchedTokens.push(token);
+    if (token.length >= 8) {
+      score += 6;
+      return;
+    }
+    if (token.length >= 5) {
+      score += 4;
+      return;
+    }
+    if (token.length >= 3) {
+      score += 3;
+      return;
+    }
+    score += 2;
+  });
+
+  return {
+    score,
+    matchedTokens: dedupeTags(matchedTokens),
+  };
+}
+
+function formatQuestionMatchConfidence(match) {
+  if (match.coverage >= 0.55) {
+    return "設問との重なりがかなり強い候補です";
+  }
+  if (match.coverage >= 0.28) {
+    return "設問との重なりが見つかった候補です";
+  }
+  return "設問との重なりは弱めですが、見直しの起点として使える候補です";
 }
 
 function buildDelimitedLineCards(lines, focus, subject) {

@@ -215,6 +215,7 @@
               <button class="chip-button is-active" data-create-mode="deck" type="button">デッキ</button>
               <button class="chip-button" data-create-mode="card" type="button">カード</button>
               <button class="chip-button" data-create-mode="import" type="button">PDF取り込み</button>
+              <button class="chip-button" data-create-mode="locator" type="button">過去問参照</button>
               <button class="chip-button" data-create-mode="share" type="button">共有</button>
             </div>
           </div>
@@ -397,6 +398,81 @@
               PDF または本文を入れると、自動でカード候補を作成します。スキャンPDFは文字抽出できないことがあります。
             </p>
             <div id="importPreview" class="library-list"></div>
+          </section>
+
+          <section class="panel import-panel create-panel" id="createLocatorPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">過去問参照</p>
+                <h3>過去問とスライドを対応づける</h3>
+              </div>
+              <button class="ghost-button" id="clearQuestionMapButton" type="button" hidden>結果を消す</button>
+            </div>
+            <p class="muted">
+              過去問PDFと講義スライドPDFを端末内だけで解析して、各設問がどのスライドのどの部分に近いかを候補表示します。
+            </p>
+            <form id="questionMapForm" class="stack-form">
+              <div class="forms-grid">
+                <section class="subpanel">
+                  <p class="eyebrow">過去問</p>
+                  <h4>設問を読み込む</h4>
+                  <label>
+                    <span>過去問 PDF / テキスト</span>
+                    <input id="questionMapQuestionFileInput" name="questionMapQuestionFile" type="file" accept=".pdf,.txt,.md,.text" />
+                  </label>
+                  <label>
+                    <span>または本文を貼り付け</span>
+                    <textarea
+                      id="questionMapQuestionTextInput"
+                      name="questionMapQuestionText"
+                      rows="7"
+                      maxlength="36000"
+                      placeholder="過去問本文をそのまま貼り付けても解析できます"
+                    ></textarea>
+                  </label>
+                </section>
+
+                <section class="subpanel">
+                  <p class="eyebrow">講義スライド</p>
+                  <h4>参照先を読み込む</h4>
+                  <label>
+                    <span>スライド PDF / テキスト</span>
+                    <input
+                      id="questionMapSlideFileInput"
+                      name="questionMapSlideFile"
+                      type="file"
+                      accept=".pdf,.txt,.md,.text"
+                      multiple
+                    />
+                  </label>
+                  <label>
+                    <span>または本文を貼り付け</span>
+                    <textarea
+                      id="questionMapSlideTextInput"
+                      name="questionMapSlideText"
+                      rows="7"
+                      maxlength="48000"
+                      placeholder="講義スライドや配布資料の本文を貼り付けても使えます"
+                    ></textarea>
+                  </label>
+                </section>
+              </div>
+
+              <div class="forms-grid">
+                <label>
+                  <span>表示する候補数</span>
+                  <input id="questionMapTopMatchesInput" name="questionMapTopMatches" type="number" min="1" max="5" value="3" />
+                </label>
+                <div class="button-row align-end">
+                  <button class="primary-button" id="analyzeQuestionMapButton" type="submit">問題とスライドを対応づける</button>
+                </div>
+              </div>
+            </form>
+            <p class="muted import-help" id="questionMapStatus">
+              過去問と講義スライドを入れると、設問ごとに関連スライド候補、ページ番号、該当箇所の抜粋を表示します。
+            </p>
+            <div class="action-grid question-map-summary" id="questionMapSummary"></div>
+            <div id="questionMapResults" class="library-list"></div>
           </section>
 
           <section class="panel create-panel" id="createSharePanel">

@@ -240,7 +240,7 @@ button:disabled {
   bottom: 16px;
   z-index: 30;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   padding: 12px;
   border-radius: 24px;
@@ -330,6 +330,10 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.align-end {
+  align-items: end;
 }
 
 .home-grid,
@@ -695,6 +699,18 @@ button:disabled {
 
 .import-help {
   margin-top: 16px;
+}
+
+.question-map-summary {
+  margin-top: 6px;
+}
+
+.question-map-card .stack-list {
+  margin-top: 6px;
+}
+
+.match-card {
+  gap: 12px;
 }
 
 .import-source {
