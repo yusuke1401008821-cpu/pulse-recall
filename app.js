@@ -277,6 +277,10 @@ let aiStudyDraft = null;
 let isAiStudyLoading = false;
 let aiStudyErrorMessage = "";
 let featureSearchVisible = false;
+let selectedEditDeckId = "";
+let editSubview = "deck";
+let editCardQuery = "";
+let editWorkspaceCardId = "";
 let cloudState = {
   status: "idle",
   config: null,
@@ -299,6 +303,7 @@ const createModeButtons = [...document.querySelectorAll("[data-create-mode]")];
 const studyModeButtons = [...document.querySelectorAll("[data-study-mode]")];
 const templateButtons = [...document.querySelectorAll("[data-template]")];
 const deckDetailTabButtons = [...document.querySelectorAll("[data-deck-detail-tab]")];
+const editSubviewButtons = [...document.querySelectorAll("[data-edit-subview]")];
 const openFeatureSearchButton = document.getElementById("openFeatureSearchButton");
 const dashboardSection = document.getElementById("dashboard");
 const dueCount = document.getElementById("dueCount");
@@ -464,12 +469,46 @@ const clearAssistantButton = document.getElementById("clearAssistantButton");
 const deckDetailTitle = document.getElementById("deckDetailTitle");
 const deckDetailContent = document.getElementById("deckDetailContent");
 const createPanels = {
+  edit: document.getElementById("createEditPanel"),
   deck: document.getElementById("createDeckPanel"),
   card: document.getElementById("createCardPanel"),
   import: document.getElementById("createImportPanel"),
   locator: document.getElementById("createLocatorPanel"),
   share: document.getElementById("createSharePanel"),
 };
+const editDeckSelect = document.getElementById("editDeckSelect");
+const editWorkspaceTitle = document.getElementById("editWorkspaceTitle");
+const editWorkspaceStatus = document.getElementById("editWorkspaceStatus");
+const editWorkspaceSummary = document.getElementById("editWorkspaceSummary");
+const editWorkspaceEmpty = document.getElementById("editWorkspaceEmpty");
+const editDeckSubview = document.getElementById("editDeckSubview");
+const editCardsSubview = document.getElementById("editCardsSubview");
+const editDeckForm = document.getElementById("editDeckForm");
+const editDeckIdInput = document.getElementById("editDeckIdInput");
+const editDeckNameInput = document.getElementById("editDeckName");
+const editDeckFocusInput = document.getElementById("editDeckFocus");
+const editDeckSubjectInput = document.getElementById("editDeckSubject");
+const editDeckDescriptionInput = document.getElementById("editDeckDescription");
+const editDeckSubmitButton = document.getElementById("editDeckSubmitButton");
+const resetEditDeckButton = document.getElementById("resetEditDeckButton");
+const deleteEditDeckButton = document.getElementById("deleteEditDeckButton");
+const editCardsTitle = document.getElementById("editCardsTitle");
+const editCardCreateButton = document.getElementById("editCardCreateButton");
+const editCardSearchInput = document.getElementById("editCardSearchInput");
+const editCardEditorTitle = document.getElementById("editCardEditorTitle");
+const editCardEditorStatus = document.getElementById("editCardEditorStatus");
+const editCardForm = document.getElementById("editCardForm");
+const editCardIdInput = document.getElementById("editCardIdInput");
+const editCardFrontInput = document.getElementById("editCardFrontInput");
+const editCardBackInput = document.getElementById("editCardBackInput");
+const editCardHintInput = document.getElementById("editCardHintInput");
+const editCardTopicInput = document.getElementById("editCardTopicInput");
+const editCardTagsInput = document.getElementById("editCardTagsInput");
+const editCardNoteInput = document.getElementById("editCardNoteInput");
+const editCardExampleInput = document.getElementById("editCardExampleInput");
+const editCardSubmitButton = document.getElementById("editCardSubmitButton");
+const cancelEditWorkspaceCardButton = document.getElementById("cancelEditWorkspaceCardButton");
+const editCardList = document.getElementById("editCardList");
 const createGuideTitle = document.getElementById("createGuideTitle");
 const createGuideSummary = document.getElementById("createGuideSummary");
 const createGuideSteps = document.getElementById("createGuideSteps");
@@ -584,6 +623,17 @@ const FEATURE_SEARCH_ITEMS = [
     action: "create-mode",
     createMode: "deck",
     targetId: "deckName",
+    featured: true,
+  },
+  {
+    id: "edit-deck",
+    title: "デッキを編集する",
+    sectionLabel: "作成",
+    description: "選んだデッキの名前変更、カード編集、削除をまとめて行います。",
+    keywords: ["編集", "デッキ名", "カード編集", "削除", "変更"],
+    action: "create-mode",
+    createMode: "edit",
+    targetId: "editDeckSelect",
     featured: true,
   },
   {
@@ -715,6 +765,9 @@ function bindEvents() {
   createModeButtons.forEach((button) => {
     button.addEventListener("click", () => setCreateMode(button.dataset.createMode));
   });
+  editSubviewButtons.forEach((button) => {
+    button.addEventListener("click", () => setEditSubview(button.dataset.editSubview));
+  });
   studyModeButtons.forEach((button) => {
     button.addEventListener("click", () => setStudyMode(button.dataset.studyMode));
   });
@@ -778,6 +831,8 @@ function bindEvents() {
 
   deckForm.addEventListener("submit", handleDeckSubmit);
   cardForm.addEventListener("submit", handleCardSubmit);
+  editDeckForm.addEventListener("submit", handleEditDeckSubmit);
+  editCardForm.addEventListener("submit", handleEditCardSubmit);
   importForm.addEventListener("submit", handleImportSubmit);
   questionMapForm.addEventListener("submit", handleQuestionMapSubmit);
   assistantForm.addEventListener("submit", handleAssistantSubmit);
@@ -789,6 +844,34 @@ function bindEvents() {
   cancelCardEditButton.addEventListener("click", () => {
     clearCardEditing();
     renderForms();
+    showToast("カード編集を終了しました");
+  });
+  editDeckSelect.addEventListener("change", () => {
+    selectedEditDeckId = editDeckSelect.value || "";
+    editSubview = "deck";
+    clearEditWorkspaceCardEditing({ silent: true });
+    renderEditWorkspace();
+  });
+  resetEditDeckButton.addEventListener("click", () => {
+    renderEditWorkspace();
+    showToast("デッキ編集の入力を戻しました");
+  });
+  deleteEditDeckButton.addEventListener("click", () => {
+    if (selectedEditDeckId) {
+      deleteDeck(selectedEditDeckId);
+    }
+  });
+  editCardCreateButton.addEventListener("click", () => {
+    openEditWorkspace(selectedEditDeckId, { subview: "cards" });
+    focusEditCardForm();
+  });
+  editCardSearchInput.addEventListener("input", () => {
+    editCardQuery = String(editCardSearchInput.value || "");
+    renderEditWorkspace();
+  });
+  editDeckFocusInput.addEventListener("change", applyEditDeckFocusPreset);
+  cancelEditWorkspaceCardButton.addEventListener("click", () => {
+    clearEditWorkspaceCardEditing();
     showToast("カード編集を終了しました");
   });
 
@@ -892,6 +975,7 @@ function bindEvents() {
   shareRequestList.addEventListener("click", handleDeckDetailActions);
   shareMemberList.addEventListener("click", handleDeckDetailActions);
   deckDetailContent.addEventListener("click", handleDeckDetailActions);
+  editCardList.addEventListener("click", handleEditCardListActions);
   studySmartListGrid.addEventListener("click", handleStudySmartListActions);
   importPreview.addEventListener("click", handleImportPreviewActions);
   assistantMessages.addEventListener("click", handleAssistantActions);
@@ -1325,6 +1409,7 @@ function renderDeckSelectors() {
 function renderForms() {
   syncDeckForm();
   syncCardForm();
+  renderEditWorkspace();
   renderImportPanel();
   renderQuestionMapPanel();
   syncAssistantControls();
@@ -1365,11 +1450,59 @@ function setCreateMode(mode) {
   if (mode === "locator") {
     renderQuestionMapPanel();
   }
+  if (mode === "edit") {
+    renderEditWorkspace();
+  }
 }
 
 function openCreateMode(mode) {
   setCreateMode(mode);
   switchSection("manage");
+}
+
+function setEditSubview(view) {
+  if (!["deck", "cards"].includes(view)) {
+    return;
+  }
+
+  editSubview = view;
+  renderEditWorkspace();
+}
+
+function openEditWorkspace(deckId, { subview = "deck", cardId = "", resetSearch = false } = {}) {
+  const deck = getDeckById(deckId);
+  if (!deck) {
+    showToast("対象デッキが見つかりません");
+    return;
+  }
+
+  if (!canEditDeckContent(deck)) {
+    showToast("この共有デッキは編集できません");
+    return;
+  }
+
+  const deckChanged = selectedEditDeckId !== deck.id;
+  selectedEditDeckId = deck.id;
+  editSubview = ["deck", "cards"].includes(subview) ? subview : "deck";
+  if (deckChanged || resetSearch) {
+    editCardQuery = "";
+  }
+  editWorkspaceCardId = cardId || "";
+  clearDeckEditing();
+  clearCardEditing();
+  setCreateMode("edit");
+  switchSection("manage");
+  renderEditWorkspace();
+
+  if (editSubview === "cards") {
+    window.requestAnimationFrame(() => {
+      if (editWorkspaceCardId) {
+        editCardFrontInput.focus();
+      } else {
+        editCardSearchInput.focus();
+      }
+    });
+  }
 }
 
 function openDeckComposer(focus = "medical") {
@@ -1765,6 +1898,36 @@ function buildCreateGuideModel() {
   const hasDecks = state.decks.length > 0;
   const hasSharedDeck = state.decks.some((deck) => deck.storageMode === "shared");
   const hasClientConfig = Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
+
+  if (createMode === "edit") {
+    const editableDecks = getEditableDecks();
+    return editableDecks.length
+      ? {
+          title: "1つのデッキをまとめて編集する",
+          summary: "デッキ名の変更、カードの検索、削除までをこのワークスペースで完結できます。ホームの各デッキから直接入るのが最短です。",
+          steps: [
+            { title: "まず対象デッキを選ぶ", text: "ローカルデッキか、owner / editor 権限の共有デッキを選びます。" },
+            { title: "デッキ情報を整える", text: "名前・分野・説明を更新したいときは「デッキ情報」を使います。" },
+            { title: "カード一覧で探して直す", text: "問題、答え、タグで絞り込んで、そのまま同じ画面でカードを編集できます。" },
+          ],
+          actions: [
+            { label: "カード一覧へ", action: "create-mode", mode: "edit" },
+            { label: "新規カード追加へ", action: "create-mode", mode: "card", kind: "ghost" },
+          ],
+        }
+      : {
+          title: "編集できるデッキを用意する",
+          summary: "編集ワークスペースはローカルデッキ、または owner / editor 権限の共有デッキで使えます。",
+          steps: [
+            { title: "新しいデッキを作る", text: "まだデッキがない場合は、先に科目デッキを1つ作ります。" },
+            { title: "共有なら権限を確認する", text: "閲覧のみの共有デッキは、この画面からは編集できません。" },
+          ],
+          actions: [
+            { label: "デッキ作成へ", action: "create-mode", mode: "deck" },
+            { label: "共有へ", action: "create-mode", mode: "share", kind: "ghost" },
+          ],
+        };
+  }
 
   if (createMode === "card") {
     if (!hasDecks) {
@@ -2363,6 +2526,249 @@ function syncCardForm() {
   applyCardContextPlaceholders();
 }
 
+function applyEditDeckFocusPreset() {
+  const focus = normalizeDeckFocus(editDeckFocusInput.value);
+
+  if (focus === "medical") {
+    editDeckSubjectInput.placeholder = "解剖 / 生理 / 病理 / 薬理 / 内科";
+    editDeckDescriptionInput.placeholder = "例: 症候から病態を引けるようにする復習デッキ";
+    return;
+  }
+
+  if (focus === "english") {
+    editDeckSubjectInput.placeholder = "医学英語 / 語彙 / 読解 / リスニング";
+    editDeckDescriptionInput.placeholder = "例: 医学英語と長文読解を分けて反復する";
+    return;
+  }
+
+  editDeckSubjectInput.placeholder = "テーマ / 分野";
+  editDeckDescriptionInput.placeholder = "用途やテーマを短く書く";
+}
+
+function applyEditCardContextPlaceholders(focus) {
+  if (focus === "medical") {
+    editCardHintInput.placeholder = "病態の流れや鑑別のヒント";
+    editCardTopicInput.placeholder = "解剖 / 生理 / 病理 / 薬理 / 症候";
+    editCardTagsInput.placeholder = "循環, 腎, 呼吸, 必修";
+    editCardNoteInput.placeholder = "臨床ポイント、鑑別、関連知識を残す";
+    editCardExampleInput.placeholder = "症例ベースの覚え方や所見のつなぎ方";
+    return;
+  }
+
+  if (focus === "english") {
+    editCardHintInput.placeholder = "語源、言い換え、読み方のヒント";
+    editCardTopicInput.placeholder = "医学英語 / 語彙 / 読解 / 構文";
+    editCardTagsInput.placeholder = "vocabulary, reading, phrase, medical english";
+    editCardNoteInput.placeholder = "語法メモ、似た表現、論文での使い分け";
+    editCardExampleInput.placeholder = "例文や英文のまま覚えたいフレーズ";
+    return;
+  }
+
+  editCardHintInput.placeholder = "例文や覚え方のヒント";
+  editCardTopicInput.placeholder = "テーマ";
+  editCardTagsInput.placeholder = "タグをカンマ区切りで入力";
+  editCardNoteInput.placeholder = "重要な関連知識や使い分けを記録";
+  editCardExampleInput.placeholder = "例文や症例ベースの覚え方";
+}
+
+function getEditableDecks() {
+  return sortDashboardDecks(state.decks.filter((deck) => canEditDeckContent(deck)));
+}
+
+function getSelectedEditDeck() {
+  const editableDecks = getEditableDecks();
+  if (!editableDecks.length) {
+    selectedEditDeckId = "";
+    editWorkspaceCardId = "";
+    return null;
+  }
+
+  if (!editableDecks.some((deck) => deck.id === selectedEditDeckId)) {
+    selectedEditDeckId = editableDecks[0].id;
+    editWorkspaceCardId = "";
+  }
+
+  return getDeckById(selectedEditDeckId) || editableDecks[0];
+}
+
+function buildEditCardSearchText(card) {
+  const deck = getDeckById(card.deckId);
+  return [
+    card.front,
+    card.back,
+    card.topic,
+    card.hint,
+    card.note,
+    card.example,
+    (card.tags || []).join(" "),
+    deck?.name || "",
+    deck?.subject || "",
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function clearEditWorkspaceCardEditing({ silent = false } = {}) {
+  editWorkspaceCardId = "";
+  if (!silent) {
+    renderEditWorkspace();
+  }
+}
+
+function focusEditCardForm() {
+  window.requestAnimationFrame(() => {
+    editCardFrontInput.focus();
+  });
+}
+
+function renderEditWorkspace() {
+  if (!editDeckSelect) {
+    return;
+  }
+
+  const editableDecks = getEditableDecks();
+  editDeckSelect.innerHTML = editableDecks.length
+    ? editableDecks
+        .map((deck) => `<option value="${deck.id}">${escapeHtml(deck.subject ? `${deck.subject} / ${deck.name}` : deck.name)}</option>`)
+        .join("")
+    : '<option value="">編集できるデッキがありません</option>';
+  editDeckSelect.disabled = !editableDecks.length;
+
+  const deck = getSelectedEditDeck();
+  if (deck && optionExists(editDeckSelect, deck.id)) {
+    editDeckSelect.value = deck.id;
+  }
+
+  editSubviewButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.editSubview === editSubview);
+    button.disabled = !deck;
+  });
+
+  if (!deck) {
+    editWorkspaceTitle.textContent = "デッキを編集する";
+    editWorkspaceStatus.textContent = "ローカルデッキか、owner / editor 権限の共有デッキを選ぶと編集できます。";
+    editWorkspaceSummary.innerHTML = "";
+    editWorkspaceEmpty.hidden = false;
+    editDeckSubview.hidden = true;
+    editCardsSubview.hidden = true;
+    editDeckForm.reset();
+    editCardForm.reset();
+    deleteEditDeckButton.disabled = true;
+    editCardCreateButton.disabled = true;
+    cancelEditWorkspaceCardButton.hidden = true;
+    editCardSubmitButton.textContent = "カードを保存";
+    return;
+  }
+
+  const deckCards = state.cards
+    .filter((card) => card.deckId === deck.id)
+    .slice()
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+  const canManageShare = canManageDeckShare(deck);
+
+  editWorkspaceTitle.textContent = `「${deck.name}」を編集`;
+  editWorkspaceStatus.textContent =
+    deck.storageMode === "shared"
+      ? canManageShare
+        ? "共同編集デッキの内容、カード一覧、共有前の整備をこの画面でまとめて行えます。"
+        : "共有デッキの内容を更新できます。メンバー管理は owner のみが共有画面から行えます。"
+      : "名前変更、説明更新、カード編集、削除をこの画面でまとめて行えます。";
+  editWorkspaceSummary.innerHTML = [
+    { label: "デッキ名", value: deck.name },
+    { label: "分野", value: deck.subject || "未設定" },
+    { label: "カード枚数", value: `${deckCards.length}枚` },
+    {
+      label: "保存先",
+      value: `${formatStorageMode(deck.storageMode)}${deck.storageMode === "shared" ? ` / ${formatRoleLabel(deck.role)}` : ""}`,
+    },
+  ]
+    .map(
+      (item) => `
+        <article class="stat-card edit-summary-card">
+          <p class="eyebrow">${escapeHtml(item.label)}</p>
+          <strong>${escapeHtml(item.value)}</strong>
+        </article>
+      `,
+    )
+    .join("");
+
+  editWorkspaceEmpty.hidden = true;
+  editDeckSubview.hidden = editSubview !== "deck";
+  editCardsSubview.hidden = editSubview !== "cards";
+
+  editDeckIdInput.value = deck.id;
+  editDeckNameInput.value = deck.name;
+  editDeckFocusInput.value = deck.focus || "medical";
+  editDeckSubjectInput.value = deck.subject || "";
+  editDeckDescriptionInput.value = deck.description || "";
+  deleteEditDeckButton.disabled = deck.storageMode === "shared";
+  applyEditDeckFocusPreset();
+
+  const safeQuery = String(editCardQuery || "").trim().toLowerCase();
+  const filteredCards = safeQuery
+    ? deckCards.filter((card) => buildEditCardSearchText(card).includes(safeQuery))
+    : deckCards;
+  const editingCard = editWorkspaceCardId ? getCardById(editWorkspaceCardId) : null;
+  const validEditingCard = editingCard?.deckId === deck.id ? editingCard : null;
+  if (editWorkspaceCardId && !validEditingCard) {
+    editWorkspaceCardId = "";
+  }
+
+  editCardsTitle.textContent = `「${deck.name}」のカードを探して編集する`;
+  editCardSearchInput.value = editCardQuery;
+  editCardEditorTitle.textContent = validEditingCard ? `「${validEditingCard.front}」を編集中` : "このデッキにカードを追加";
+  editCardEditorStatus.textContent = validEditingCard
+    ? "保存すると一覧へ反映されます。不要なら「編集をやめる」で追加モードに戻れます。"
+    : "必要なカードを手入力で追加したり、一覧から選んで同じ場所で修正できます。";
+  editCardIdInput.value = validEditingCard?.id || "";
+  editCardFrontInput.value = validEditingCard?.front || "";
+  editCardBackInput.value = validEditingCard?.back || "";
+  editCardHintInput.value = validEditingCard?.hint || "";
+  editCardTopicInput.value = validEditingCard?.topic || "";
+  editCardTagsInput.value = Array.isArray(validEditingCard?.tags) ? validEditingCard.tags.join(", ") : "";
+  editCardNoteInput.value = validEditingCard?.note || "";
+  editCardExampleInput.value = validEditingCard?.example || "";
+  editCardCreateButton.disabled = !canEditDeckContent(deck);
+  editCardSubmitButton.textContent = validEditingCard ? "カードを更新" : "カードを保存";
+  cancelEditWorkspaceCardButton.hidden = !validEditingCard;
+  applyEditCardContextPlaceholders(deck.focus);
+
+  editCardList.innerHTML = filteredCards.length
+    ? filteredCards
+        .map(
+          (card) => `
+            <article class="library-card edit-card-row">
+              <div class="card-row-header">
+                <div>
+                  <h4>${escapeHtml(card.front)}</h4>
+                  <p class="muted">${escapeHtml(card.back)}</p>
+                </div>
+                <div class="button-row">
+                  <button class="ghost-button" data-edit-workspace-card="${card.id}" type="button">編集</button>
+                  <button class="ghost-button danger-button" data-delete-edit-workspace-card="${card.id}" type="button">削除</button>
+                </div>
+              </div>
+              <div class="card-row-meta">
+                ${card.topic ? `<span class="meta-pill">${escapeHtml(card.topic)}</span>` : ""}
+                <span class="meta-pill">${escapeHtml(formatStudyMode(card.study))}</span>
+                ${(card.tags || []).slice(0, 4).map((tag) => `<span class="meta-pill">${escapeHtml(tag)}</span>`).join("")}
+              </div>
+            </article>
+          `,
+        )
+        .join("")
+    : `
+        <article class="library-card">
+          <h4>${deckCards.length ? "条件に合うカードがありません" : "このデッキにはカードがありません"}</h4>
+          <p class="muted">${
+            deckCards.length
+              ? "問題、答え、テーマ、タグを短く変えて探すと見つけやすいです。"
+              : "上のフォームから最初のカードを追加できます。"
+          }</p>
+        </article>
+      `;
+}
+
 function renderImportPanel() {
   applyImportFocusPreset();
   clearImportDraftButton.hidden = !importDraft;
@@ -2847,6 +3253,14 @@ function buildDashboardDeckRow(deck) {
       </button>
       <div class="board-deck-actions">
         <button class="ghost-button board-action-button" data-start-deck="${deck.id}" type="button">学習</button>
+        <button
+          class="ghost-button board-action-button"
+          data-open-deck-edit="${deck.id}"
+          type="button"
+          ${canEdit ? "" : "disabled"}
+        >
+          編集
+        </button>
         <button
           class="secondary-button board-action-button"
           data-open-deck-sheet="${deck.id}"
@@ -4060,6 +4474,124 @@ function renderDeckDetail() {
   `;
 }
 
+function saveDeckRecord({ deckId, name, focus, subject, description }) {
+  const safeName = String(name || "").trim();
+  if (!safeName) {
+    throw new Error("デッキ名を入力してください");
+  }
+
+  const now = Date.now();
+  if (deckId) {
+    const deck = getDeckById(deckId);
+    if (!deck) {
+      throw new Error("編集中のデッキが見つかりません");
+    }
+
+    if (!canEditDeckContent(deck)) {
+      throw new Error("この共有デッキは編集できません");
+    }
+
+    deck.name = safeName;
+    deck.focus = normalizeDeckFocus(focus);
+    deck.subject = String(subject || "").trim();
+    deck.description = String(description || "").trim();
+    deck.updatedAt = now;
+    markDeckDirty(deck.id);
+    return { deck, isNew: false };
+  }
+
+  const deck = normalizeDeck({
+    id: crypto.randomUUID(),
+    name: safeName,
+    focus,
+    subject,
+    description,
+    createdAt: now,
+    updatedAt: now,
+    storageMode: "local",
+    role: "owner",
+    syncState: "local-only",
+  });
+
+  state.decks.unshift(deck);
+  return { deck, isNew: true };
+}
+
+function saveCardRecord({ cardId, deckId, front, back, hint, topic, tags, note, example }) {
+  const safeDeckId = String(deckId || "").trim();
+  const safeFront = String(front || "").trim();
+  const safeBack = String(back || "").trim();
+
+  if (!safeDeckId || !safeFront || !safeBack) {
+    throw new Error("カードの必須項目を入力してください");
+  }
+
+  const targetDeck = getDeckById(safeDeckId);
+  if (!targetDeck) {
+    throw new Error("保存先デッキが見つかりません");
+  }
+
+  if (!canEditDeckContent(targetDeck)) {
+    throw new Error("この共有デッキにはカードを追加できません");
+  }
+
+  const now = Date.now();
+  const safeTags = Array.isArray(tags) ? tags : parseTags(String(tags || ""));
+
+  if (cardId) {
+    const card = getCardById(cardId);
+    if (!card) {
+      throw new Error("編集中のカードが見つかりません");
+    }
+
+    if (!canEditDeckContent(getDeckById(card.deckId))) {
+      throw new Error("この共有デッキのカードは編集できません");
+    }
+
+    const previousDeckId = card.deckId;
+    card.deckId = safeDeckId;
+    card.front = safeFront;
+    card.back = safeBack;
+    card.hint = String(hint || "").trim();
+    card.topic = String(topic || "").trim();
+    card.tags = safeTags;
+    card.note = String(note || "").trim();
+    card.example = String(example || "").trim();
+    card.updatedAt = now;
+    targetDeck.updatedAt = now;
+    if (previousDeckId && previousDeckId !== safeDeckId) {
+      const previousDeck = getDeckById(previousDeckId);
+      if (previousDeck) {
+        previousDeck.updatedAt = now;
+      }
+    }
+    markDeckDirty(previousDeckId);
+    markDeckDirty(safeDeckId);
+    return { card, isNew: false, deck: targetDeck };
+  }
+
+  const card = makeCard({
+    id: crypto.randomUUID(),
+    deckId: safeDeckId,
+    front: safeFront,
+    back: safeBack,
+    hint: String(hint || "").trim(),
+    topic: String(topic || "").trim(),
+    tags: safeTags,
+    note: String(note || "").trim(),
+    example: String(example || "").trim(),
+    createdAt: now,
+    dueAt: now,
+    intervalDays: 0,
+    sharedCardId: "",
+  });
+
+  state.cards.unshift(card);
+  targetDeck.updatedAt = now;
+  markDeckDirty(safeDeckId);
+  return { card, isNew: true, deck: targetDeck };
+}
+
 function handleDeckSubmit(event) {
   event.preventDefault();
   const formData = new FormData(deckForm);
@@ -4069,57 +4601,16 @@ function handleDeckSubmit(event) {
   const subject = String(formData.get("deckSubject") || "").trim();
   const description = String(formData.get("deckDescription") || "").trim();
 
-  if (!name) {
-    showToast("デッキ名を入力してください");
-    return;
-  }
-
-  if (deckId) {
-    const deck = getDeckById(deckId);
-    if (!deck) {
-      showToast("編集中のデッキが見つかりません");
-      clearDeckEditing();
-      render();
-      return;
-    }
-
-    if (!canEditDeckContent(deck)) {
-      showToast("この共有デッキは編集できません");
-      return;
-    }
-
-    deck.name = name;
-    deck.focus = normalizeDeckFocus(focus);
-    deck.subject = subject;
-    deck.description = description;
-    deck.updatedAt = Date.now();
-    markDeckDirty(deck.id);
+  try {
+    const { deck, isNew } = saveDeckRecord({ deckId, name, focus, subject, description });
     clearDeckEditing();
     persist();
     render();
-    showToast("デッキを更新しました");
-    return;
+    cardDeckId.value = deck.id;
+    showToast(isNew ? "デッキを追加しました" : "デッキを更新しました");
+  } catch (error) {
+    showToast(error.message || "デッキ保存に失敗しました");
   }
-
-  const deck = {
-    id: crypto.randomUUID(),
-    name,
-    focus: normalizeDeckFocus(focus),
-    subject,
-    description,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    storageMode: "local",
-    role: "owner",
-    syncState: "local-only",
-  };
-
-  state.decks.unshift(deck);
-  clearDeckEditing();
-  persist();
-  render();
-  cardDeckId.value = deck.id;
-  showToast("デッキを追加しました");
 }
 
 function handleCardSubmit(event) {
@@ -4135,90 +4626,91 @@ function handleCardSubmit(event) {
   const note = String(formData.get("cardNote") || "").trim();
   const example = String(formData.get("cardExample") || "").trim();
 
-  if (!deckId || !front || !back) {
-    showToast("カードの必須項目を入力してください");
-    return;
-  }
-
-  const targetDeck = getDeckById(deckId);
-  if (!targetDeck) {
-    showToast("保存先デッキが見つかりません");
-    return;
-  }
-
-  if (!canEditDeckContent(targetDeck)) {
-    showToast("この共有デッキにはカードを追加できません");
-    return;
-  }
-
-  const now = Date.now();
-
-  if (cardId) {
-    const card = getCardById(cardId);
-    if (!card) {
-      showToast("編集中のカードが見つかりません");
-      clearCardEditing();
-      render();
-      return;
-    }
-
-    if (!canEditDeckContent(getDeckById(card.deckId))) {
-      showToast("この共有デッキのカードは編集できません");
-      return;
-    }
-
-    const previousDeckId = card.deckId;
-    card.deckId = deckId;
-    card.front = front;
-    card.back = back;
-    card.hint = hint;
-    card.topic = topic;
-    card.tags = tags;
-    card.note = note;
-    card.example = example;
-    card.updatedAt = now;
-    markDeckDirty(previousDeckId);
-    markDeckDirty(deckId);
+  try {
+    const { card, isNew } = saveCardRecord({
+      cardId,
+      deckId,
+      front,
+      back,
+      hint,
+      topic,
+      tags,
+      note,
+      example,
+    });
     clearCardEditing();
     persist();
     render();
-    showToast("カードを更新しました");
+    cardDeckId.value = card.deckId;
+    showToast(isNew ? "カードを保存しました" : "カードを更新しました");
+  } catch (error) {
+    showToast(error.message || "カード保存に失敗しました");
+  }
+}
+
+function handleEditDeckSubmit(event) {
+  event.preventDefault();
+  const formData = new FormData(editDeckForm);
+
+  try {
+    const { deck } = saveDeckRecord({
+      deckId: String(formData.get("editDeckId") || "").trim(),
+      name: String(formData.get("editDeckName") || "").trim(),
+      focus: String(formData.get("editDeckFocus") || "medical").trim(),
+      subject: String(formData.get("editDeckSubject") || "").trim(),
+      description: String(formData.get("editDeckDescription") || "").trim(),
+    });
+    selectedEditDeckId = deck.id;
+    persist();
+    render();
+    showToast("デッキを更新しました");
+  } catch (error) {
+    showToast(error.message || "デッキ更新に失敗しました");
+  }
+}
+
+function handleEditCardSubmit(event) {
+  event.preventDefault();
+  const formData = new FormData(editCardForm);
+
+  try {
+    const { card, isNew } = saveCardRecord({
+      cardId: String(formData.get("editCardId") || "").trim(),
+      deckId: selectedEditDeckId,
+      front: String(formData.get("editCardFront") || "").trim(),
+      back: String(formData.get("editCardBack") || "").trim(),
+      hint: String(formData.get("editCardHint") || "").trim(),
+      topic: String(formData.get("editCardTopic") || "").trim(),
+      tags: parseTags(String(formData.get("editCardTags") || "")),
+      note: String(formData.get("editCardNote") || "").trim(),
+      example: String(formData.get("editCardExample") || "").trim(),
+    });
+    selectedEditDeckId = card.deckId;
+    editSubview = "cards";
+    editWorkspaceCardId = "";
+    persist();
+    render();
+    focusEditCardForm();
+    showToast(isNew ? "カードを追加しました" : "カードを更新しました");
+  } catch (error) {
+    showToast(error.message || "カード更新に失敗しました");
+  }
+}
+
+function handleEditCardListActions(event) {
+  const editButton = event.target.closest("[data-edit-workspace-card]");
+  if (editButton) {
+    editWorkspaceCardId = editButton.dataset.editWorkspaceCard;
+    editSubview = "cards";
+    renderEditWorkspace();
+    focusEditCardForm();
     return;
   }
 
-  state.cards.unshift({
-    id: crypto.randomUUID(),
-    deckId,
-    front,
-    back,
-    hint,
-    topic,
-    tags,
-    note,
-    example,
-    createdAt: now,
-    updatedAt: now,
-    study: {
-      dueAt: now,
-      intervalDays: 0,
-      ease: 2.3,
-      reps: 0,
-      lapses: 0,
-      lastReviewedAt: null,
-      mode: "new",
-      stepIndex: -1,
-      recoveryDays: 1,
-    },
-    sharedCardId: "",
-  });
-
-  targetDeck.updatedAt = now;
-  markDeckDirty(deckId);
-  clearCardEditing();
-  persist();
-  render();
-  cardDeckId.value = deckId;
-  showToast("カードを保存しました");
+  const deleteButton = event.target.closest("[data-delete-edit-workspace-card]");
+  if (deleteButton) {
+    deleteCard(deleteButton.dataset.deleteEditWorkspaceCard);
+  }
 }
 
 async function handleImportSubmit(event) {
@@ -5019,6 +5511,12 @@ function handleDeckActions(event) {
     return;
   }
 
+  const openEditButton = event.target.closest("[data-open-deck-edit]");
+  if (openEditButton) {
+    openEditWorkspace(openEditButton.dataset.openDeckEdit, { subview: "deck" });
+    return;
+  }
+
   const sheetButton = event.target.closest("[data-open-deck-sheet]");
   if (sheetButton) {
     openDeckActionModal(sheetButton.dataset.openDeckSheet);
@@ -5537,22 +6035,7 @@ function buildAssistantSourceLabel(card) {
 }
 
 function startDeckEditing(deckId) {
-  const deck = getDeckById(deckId);
-  if (!deck) {
-    showToast("デッキが見つかりません");
-    return;
-  }
-
-  if (!canEditDeckContent(deck)) {
-    showToast("この共有デッキは編集できません");
-    return;
-  }
-
-  clearCardEditing();
-  editingDeckId = deck.id;
-  setCreateMode("deck");
-  switchSection("manage");
-  renderForms();
+  openEditWorkspace(deckId, { subview: "deck" });
 }
 
 function startCardEditing(cardId) {
@@ -5567,11 +6050,7 @@ function startCardEditing(cardId) {
     return;
   }
 
-  clearDeckEditing();
-  editingCardId = card.id;
-  setCreateMode("card");
-  switchSection("manage");
-  renderForms();
+  openEditWorkspace(card.deckId, { subview: "cards", cardId: card.id });
 }
 
 function deleteDeck(deckId) {
@@ -5613,6 +6092,13 @@ function deleteDeck(deckId) {
     clearDeckEditing();
   }
 
+  if (selectedEditDeckId === deckId) {
+    selectedEditDeckId = "";
+    editWorkspaceCardId = "";
+    editCardQuery = "";
+    editSubview = "deck";
+  }
+
   if (editingCardId && !getCardById(editingCardId)) {
     clearCardEditing();
   }
@@ -5650,6 +6136,10 @@ function deleteCard(cardId) {
 
   if (editingCardId === cardId) {
     clearCardEditing();
+  }
+
+  if (editWorkspaceCardId === cardId) {
+    clearEditWorkspaceCardEditing({ silent: true });
   }
 
   if (currentCardId === cardId) {

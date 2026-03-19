@@ -493,7 +493,8 @@ button:disabled {
 }
 
 .board-action-button {
-  min-width: 104px;
+  flex: 1 1 88px;
+  min-width: 88px;
 }
 
 .board-status-dot {
@@ -577,6 +578,18 @@ button:disabled {
 .create-panel.is-active {
   display: grid;
   gap: 16px;
+}
+
+.edit-summary-card strong {
+  font-size: 1.24rem;
+}
+
+.edit-card-row {
+  gap: 12px;
+}
+
+.edit-card-row .button-row {
+  justify-content: end;
 }
 
 .bulk-toolbar {

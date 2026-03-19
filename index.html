@@ -335,6 +335,7 @@
               <h3>作成と共有</h3>
             </div>
             <div class="button-row" id="createNav">
+              <button class="chip-button" data-create-mode="edit" type="button">編集</button>
               <button class="chip-button is-active" data-create-mode="deck" type="button">デッキ</button>
               <button class="chip-button" data-create-mode="card" type="button">カード</button>
               <button class="chip-button" data-create-mode="import" type="button">PDF取り込み</button>
@@ -367,6 +368,120 @@
             <p class="muted" id="createGuideSummary">いま開いている作成モードに合わせて、迷わず進められる手順を表示します。</p>
             <div class="stack-list" id="createGuideSteps"></div>
             <div class="button-row" id="createGuideActions"></div>
+          </section>
+
+          <section class="panel create-panel" id="createEditPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">編集ワークスペース</p>
+                <h3 id="editWorkspaceTitle">デッキを編集する</h3>
+              </div>
+              <label class="inline-select">
+                <span>対象デッキ</span>
+                <select id="editDeckSelect"></select>
+              </label>
+            </div>
+            <p class="muted" id="editWorkspaceStatus">
+              ホームの各デッキから直接入り、名前変更やカード編集をまとめて行えます。
+            </p>
+            <div class="action-grid" id="editWorkspaceSummary"></div>
+            <div class="button-row" id="editSubviewNav">
+              <button class="chip-button is-active" data-edit-subview="deck" type="button">デッキ情報</button>
+              <button class="chip-button" data-edit-subview="cards" type="button">カード一覧</button>
+            </div>
+
+            <article class="library-card" id="editWorkspaceEmpty" hidden>
+              <h4>編集できるデッキがありません</h4>
+              <p class="muted">ローカルデッキか、owner / editor 権限の共有デッキを選ぶと編集できます。</p>
+            </article>
+
+            <section class="subpanel" id="editDeckSubview">
+              <p class="eyebrow">デッキ情報</p>
+              <h4>このデッキの名前や説明を変える</h4>
+              <form id="editDeckForm" class="stack-form">
+                <input id="editDeckIdInput" name="editDeckId" type="hidden" />
+                <label>
+                  <span>デッキ名</span>
+                  <input id="editDeckName" name="editDeckName" maxlength="40" placeholder="解剖・生理 / Medical English / 読解" required />
+                </label>
+                <label>
+                  <span>学習トラック</span>
+                  <select id="editDeckFocus" name="editDeckFocus">
+                    <option value="medical">医学</option>
+                    <option value="english">英語</option>
+                    <option value="general">汎用</option>
+                  </select>
+                </label>
+                <label>
+                  <span>分野</span>
+                  <input id="editDeckSubject" name="editDeckSubject" maxlength="60" placeholder="解剖 / 生理 / 医学英語 / 読解" />
+                </label>
+                <label>
+                  <span>説明</span>
+                  <textarea id="editDeckDescription" name="editDeckDescription" rows="3" maxlength="120" placeholder="用途やテーマを短く書く"></textarea>
+                </label>
+                <div class="form-actions">
+                  <button class="primary-button" id="editDeckSubmitButton" type="submit">変更を保存</button>
+                  <button class="ghost-button" id="resetEditDeckButton" type="button">入力を戻す</button>
+                  <button class="ghost-button danger-button" id="deleteEditDeckButton" type="button">このデッキを削除</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="subpanel" id="editCardsSubview" hidden>
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">カード一覧</p>
+                  <h4 id="editCardsTitle">このデッキのカードを編集する</h4>
+                </div>
+                <button class="primary-button" id="editCardCreateButton" type="button">このデッキへカード追加</button>
+              </div>
+              <label class="stack-form">
+                <span>カード検索</span>
+                <input id="editCardSearchInput" type="search" maxlength="80" placeholder="問題 / 答え / テーマ / タグ で検索" />
+              </label>
+              <article class="library-card" id="editCardEditorCard">
+                <p class="eyebrow">カード編集</p>
+                <h4 id="editCardEditorTitle">このデッキにカードを追加</h4>
+                <p class="muted" id="editCardEditorStatus">必要なカードを手入力で追加したり、既存カードを選んで修正できます。</p>
+                <form id="editCardForm" class="stack-form">
+                  <input id="editCardIdInput" name="editCardId" type="hidden" />
+                  <label>
+                    <span>問題</span>
+                    <textarea id="editCardFrontInput" name="editCardFront" rows="2" maxlength="160" placeholder="表に出す内容" required></textarea>
+                  </label>
+                  <label>
+                    <span>答え</span>
+                    <textarea id="editCardBackInput" name="editCardBack" rows="3" maxlength="240" placeholder="裏面の内容" required></textarea>
+                  </label>
+                  <label>
+                    <span>補足</span>
+                    <input id="editCardHintInput" name="editCardHint" maxlength="80" placeholder="例文や覚え方のヒント" />
+                  </label>
+                  <label>
+                    <span>分野 / テーマ</span>
+                    <input id="editCardTopicInput" name="editCardTopic" maxlength="60" placeholder="解剖 / 病理 / 語彙 / 読解" />
+                  </label>
+                  <label>
+                    <span>タグ</span>
+                    <input id="editCardTagsInput" name="editCardTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+                  </label>
+                  <label>
+                    <span>臨床ポイント / 語法メモ</span>
+                    <textarea id="editCardNoteInput" name="editCardNote" rows="3" maxlength="220" placeholder="重要な関連知識や使い分けを記録"></textarea>
+                  </label>
+                  <label>
+                    <span>例文 / 症例メモ</span>
+                    <textarea id="editCardExampleInput" name="editCardExample" rows="3" maxlength="220" placeholder="例文や症例ベースの覚え方"></textarea>
+                  </label>
+                  <div class="form-actions">
+                    <button class="primary-button" id="editCardSubmitButton" type="submit">カードを保存</button>
+                    <button class="ghost-button" id="cancelEditWorkspaceCardButton" type="button" hidden>編集をやめる</button>
+                  </div>
+                </form>
+              </article>
+              <div class="stack-list" id="editCardList"></div>
+            </section>
           </section>
 
           <section class="panel create-panel is-active" id="createDeckPanel">
