@@ -240,7 +240,7 @@ button:disabled {
   bottom: 16px;
   z-index: 30;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   padding: 12px;
   border-radius: 24px;
@@ -325,6 +325,65 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.assistant-toolbar,
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.assistant-toolbar {
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.toggle-row {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(24, 49, 83, 0.06);
+}
+
+.assistant-messages {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.assistant-message {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.assistant-message.user {
+  background: rgba(240, 138, 75, 0.12);
+}
+
+.assistant-message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.assistant-message-header h4,
+.assistant-message p {
+  margin: 0;
+}
+
+.assistant-sources {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.assistant-sources a {
+  color: var(--bg-strong);
+  word-break: break-word;
 }
 
 .stack-form input,
@@ -628,6 +687,12 @@ button:disabled {
 
   .track-stats {
     grid-template-columns: 1fr;
+  }
+
+  .assistant-toolbar,
+  .toggle-row {
+    display: grid;
+    justify-items: start;
   }
 
   .history-breakdown {

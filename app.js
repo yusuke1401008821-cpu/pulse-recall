@@ -200,6 +200,7 @@ let editingCardId = null;
 let toastTimer = null;
 let importDraft = null;
 let pdfjsModulePromise = null;
+let isAssistantLoading = false;
 
 const tabs = [...document.querySelectorAll(".tab")];
 const sections = [...document.querySelectorAll(".content")];
@@ -215,6 +216,7 @@ const historyChart = document.getElementById("historyChart");
 const historySummary = document.getElementById("historySummary");
 const historyBreakdown = document.getElementById("historyBreakdown");
 const studyDeckFilter = document.getElementById("studyDeckFilter");
+const assistantDeckFilter = document.getElementById("assistantDeckFilter");
 const libraryDeckFilter = document.getElementById("libraryDeckFilter");
 const cardDeckId = document.getElementById("cardDeckId");
 const emptyState = document.getElementById("emptyState");
@@ -270,6 +272,14 @@ const importStatus = document.getElementById("importStatus");
 const importPreview = document.getElementById("importPreview");
 const saveImportButton = document.getElementById("saveImportButton");
 const clearImportDraftButton = document.getElementById("clearImportDraftButton");
+const assistantMessages = document.getElementById("assistantMessages");
+const assistantStatus = document.getElementById("assistantStatus");
+const assistantForm = document.getElementById("assistantForm");
+const assistantInput = document.getElementById("assistantInput");
+const assistantSubmitButton = document.getElementById("assistantSubmitButton");
+const assistantUseDeckContext = document.getElementById("assistantUseDeckContext");
+const assistantUseWebSearch = document.getElementById("assistantUseWebSearch");
+const clearAssistantButton = document.getElementById("clearAssistantButton");
 
 bootstrap();
 
@@ -300,6 +310,7 @@ function bindEvents() {
   deckForm.addEventListener("submit", handleDeckSubmit);
   cardForm.addEventListener("submit", handleCardSubmit);
   importForm.addEventListener("submit", handleImportSubmit);
+  assistantForm.addEventListener("submit", handleAssistantSubmit);
   cancelDeckEditButton.addEventListener("click", () => {
     clearDeckEditing();
     renderForms();
@@ -323,6 +334,10 @@ function bindEvents() {
   importFileInput.addEventListener("change", syncImportDeckNameFromFile);
   saveImportButton.addEventListener("click", saveImportDraftAsDeck);
   clearImportDraftButton.addEventListener("click", clearImportDraft);
+  assistantDeckFilter.addEventListener("change", handleAssistantSettingsChange);
+  assistantUseDeckContext.addEventListener("change", handleAssistantSettingsChange);
+  assistantUseWebSearch.addEventListener("change", handleAssistantSettingsChange);
+  clearAssistantButton.addEventListener("click", clearAssistantHistory);
 
   document.querySelectorAll("[data-rating]").forEach((button) => {
     button.addEventListener("click", () => reviewCurrentCard(button.dataset.rating));
@@ -332,6 +347,7 @@ function bindEvents() {
   libraryList.addEventListener("click", handleLibraryActions);
   trackGrid.addEventListener("click", handleTrackActions);
   importPreview.addEventListener("click", handleImportPreviewActions);
+  assistantMessages.addEventListener("click", handleAssistantActions);
 }
 
 function switchSection(sectionId) {
@@ -348,6 +364,10 @@ function switchSection(sectionId) {
   if (sectionId === "study") {
     renderStudy();
   }
+
+  if (sectionId === "assistant") {
+    renderAssistant();
+  }
 }
 
 function render() {
@@ -357,6 +377,7 @@ function render() {
   renderDashboard();
   renderTrackGrid();
   renderStudy();
+  renderAssistant();
   renderLibrary();
 }
 
@@ -417,6 +438,7 @@ function buildStats() {
 
 function renderDeckSelectors() {
   const previousStudy = studyDeckFilter.value || "all";
+  const previousAssistant = assistantDeckFilter.value || state.assistant.deckFilter || "all";
   const previousLibrary = libraryDeckFilter.value || "all";
   const previousCardDeck = cardDeckId.value;
   const allOption = '<option value="all">すべてのデッキ</option>';
@@ -428,6 +450,7 @@ function renderDeckSelectors() {
     .join("");
 
   studyDeckFilter.innerHTML = allOption + focusOptions + deckOptions;
+  assistantDeckFilter.innerHTML = allOption + focusOptions + deckOptions;
   libraryDeckFilter.innerHTML = allOption + focusOptions + deckOptions;
   cardDeckId.innerHTML = deckOptions;
 
@@ -437,6 +460,10 @@ function renderDeckSelectors() {
 
   if (optionExists(libraryDeckFilter, previousLibrary)) {
     libraryDeckFilter.value = previousLibrary;
+  }
+
+  if (optionExists(assistantDeckFilter, previousAssistant)) {
+    assistantDeckFilter.value = previousAssistant;
   }
 
   if (optionExists(cardDeckId, previousCardDeck)) {
@@ -450,6 +477,7 @@ function renderForms() {
   syncDeckForm();
   syncCardForm();
   renderImportPanel();
+  syncAssistantControls();
 }
 
 function syncDeckForm() {
@@ -528,6 +556,89 @@ function renderImportPanel() {
         </article>
       `,
     )
+    .join("");
+}
+
+function syncAssistantControls() {
+  assistantUseDeckContext.checked = state.assistant.useDeckContext;
+  assistantUseWebSearch.checked = state.assistant.useWebSearch;
+
+  if (optionExists(assistantDeckFilter, state.assistant.deckFilter)) {
+    assistantDeckFilter.value = state.assistant.deckFilter;
+  }
+}
+
+function renderAssistant() {
+  syncAssistantControls();
+  assistantSubmitButton.disabled = isAssistantLoading;
+  clearAssistantButton.disabled = isAssistantLoading;
+
+  if (isAssistantLoading) {
+    assistantStatus.textContent = "AIが回答を考えています。";
+  }
+
+  if (!state.assistant.messages.length) {
+    if (!isAssistantLoading) {
+      assistantStatus.textContent =
+        "医学や英語の質問をすると、保存済みカードと必要ならWeb検索を使って回答します。";
+    }
+    assistantMessages.innerHTML = `
+      <article class="assistant-message">
+        <div class="assistant-message-header">
+          <h4>AI検索の使い方</h4>
+        </div>
+        <p>例: 「ネフローゼ症候群の鑑別を3つに絞って」「administer と prescribe の違いを例文付きで」</p>
+      </article>
+    `;
+    return;
+  }
+
+  const latestAssistant = [...state.assistant.messages].reverse().find((message) => message.role === "assistant");
+  if (!isAssistantLoading) {
+    assistantStatus.textContent = latestAssistant?.usedWebSearch
+      ? "最新の回答ではWeb検索を使いました。リンク付きで確認できます。"
+      : "最新の回答では、保存済みカードや会話履歴をもとに回答しています。";
+  }
+
+  assistantMessages.innerHTML = state.assistant.messages
+    .map((message) => {
+      const sourceMarkup =
+        message.role === "assistant" && message.sources?.length
+          ? `
+            <div class="assistant-sources">
+              ${message.sources
+                .map(
+                  (source) =>
+                    `<a href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(
+                      source.title || source.url,
+                    )}</a>`,
+                )
+                .join("")}
+            </div>
+          `
+          : "";
+
+      const actionMarkup =
+        message.role === "assistant"
+          ? `
+            <div class="button-row">
+              <button class="ghost-button" data-make-assistant-cards="${message.id}" type="button">回答からカード候補化</button>
+            </div>
+          `
+          : "";
+
+      return `
+        <article class="assistant-message ${message.role}">
+          <div class="assistant-message-header">
+            <h4>${escapeHtml(message.role === "assistant" ? "AI" : "あなた")}</h4>
+            <span class="muted">${escapeHtml(formatMessageTime(message.createdAt))}</span>
+          </div>
+          <p>${escapeHtml(message.text).replaceAll("\n", "<br />")}</p>
+          ${actionMarkup}
+          ${sourceMarkup}
+        </article>
+      `;
+    })
     .join("");
 }
 
@@ -893,6 +1004,52 @@ async function handleImportSubmit(event) {
   }
 }
 
+async function handleAssistantSubmit(event) {
+  event.preventDefault();
+  const question = String(assistantInput.value || "").trim();
+
+  if (!question || isAssistantLoading) {
+    return;
+  }
+
+  const userMessage = {
+    id: crypto.randomUUID(),
+    role: "user",
+    text: question,
+    createdAt: Date.now(),
+  };
+
+  state.assistant.messages.push(userMessage);
+  state.assistant.messages = state.assistant.messages.slice(-16);
+  assistantInput.value = "";
+  isAssistantLoading = true;
+  assistantStatus.textContent = "AIが回答を考えています。";
+  persist();
+  renderAssistant();
+
+  try {
+    const response = await requestAssistantAnswer(question);
+    state.assistant.messages.push({
+      id: crypto.randomUUID(),
+      role: "assistant",
+      text: response.answer,
+      createdAt: Date.now(),
+      sources: response.sources || [],
+      usedWebSearch: state.assistant.useWebSearch,
+    });
+    state.assistant.messages = state.assistant.messages.slice(-16);
+    persist();
+    renderAssistant();
+    showToast("AIの回答を追加しました");
+  } catch (error) {
+    assistantStatus.textContent = error.message || "AI検索に失敗しました。";
+    showToast(error.message || "AI検索に失敗しました");
+  } finally {
+    isAssistantLoading = false;
+    renderAssistant();
+  }
+}
+
 function handleDeckActions(event) {
   const startButton = event.target.closest("[data-start-deck]");
   if (startButton) {
@@ -962,6 +1119,55 @@ function handleImportPreviewActions(event) {
   showToast("候補を1枚外しました");
 }
 
+function handleAssistantSettingsChange() {
+  state.assistant.deckFilter = assistantDeckFilter.value || "all";
+  state.assistant.useDeckContext = assistantUseDeckContext.checked;
+  state.assistant.useWebSearch = assistantUseWebSearch.checked;
+  persist();
+  renderAssistant();
+}
+
+function clearAssistantHistory() {
+  state.assistant.messages = [];
+  persist();
+  renderAssistant();
+  showToast("AI検索の履歴を消しました");
+}
+
+function handleAssistantActions(event) {
+  const makeCardsButton = event.target.closest("[data-make-assistant-cards]");
+  if (!makeCardsButton) {
+    return;
+  }
+
+  const message = state.assistant.messages.find((item) => item.id === makeCardsButton.dataset.makeAssistantCards);
+  if (!message) {
+    showToast("対象の回答が見つかりません");
+    return;
+  }
+
+  try {
+    const focus = inferAssistantFocus(state.assistant.deckFilter);
+    const deckName = buildDeckNameFromSource(`AI検索 ${formatDateKey(new Date())}`);
+    importDraft = buildImportDraft({
+      text: message.text,
+      sourceName: "AI検索回答",
+      deckName,
+      focus,
+      subject: focus === "medical" ? "AI要点整理" : focus === "english" ? "AI English Notes" : "AI要点整理",
+      instructions: "AI検索の回答からカード候補化",
+      limit: 12,
+    });
+    importFocusInput.value = focus;
+    importDeckNameInput.value = deckName;
+    switchSection("manage");
+    render();
+    showToast("AI回答からカード候補を作成しました");
+  } catch (error) {
+    showToast(error.message || "カード候補化に失敗しました");
+  }
+}
+
 function saveImportDraftAsDeck() {
   if (!importDraft || !importDraft.cards.length) {
     showToast("保存できる候補がありません");
@@ -1013,6 +1219,90 @@ function saveImportDraftAsDeck() {
   cardDeckId.value = deckId;
   applyCardContextPlaceholders();
   showToast(`${deckName} を作成しました（${cardCount} cards）`);
+}
+
+async function requestAssistantAnswer(question) {
+  const history = state.assistant.messages
+    .slice(-9, -1)
+    .map((message) => ({ role: message.role, text: message.text }));
+  const deckContext = state.assistant.useDeckContext ? buildAssistantDeckContext(question, state.assistant.deckFilter) : "";
+  const response = await fetch("/api/assistant-search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      question,
+      history,
+      useWebSearch: state.assistant.useWebSearch,
+      deckContext,
+      deckFilter: state.assistant.deckFilter,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || "AI検索APIの呼び出しに失敗しました");
+  }
+
+  if (!payload.answer) {
+    throw new Error("AIの回答が空でした");
+  }
+
+  return payload;
+}
+
+function buildAssistantDeckContext(question, filter) {
+  const tokens = tokenizeSearchText(question);
+  const cards = state.cards
+    .filter((card) => matchesCardFilter(card, filter || "all"))
+    .map((card) => ({ card, score: scoreCardAgainstTokens(card, tokens) }))
+    .filter((item) => item.score > 0 || !tokens.length)
+    .sort((a, b) => b.score - a.score || b.card.updatedAt - a.card.updatedAt)
+    .slice(0, 12)
+    .map(({ card }) => {
+      const deck = getDeckById(card.deckId);
+      return [
+        `デッキ: ${deck?.name || "未分類"}`,
+        deck?.subject ? `分野: ${deck.subject}` : "",
+        card.topic ? `テーマ: ${card.topic}` : "",
+        card.tags?.length ? `タグ: ${card.tags.join(", ")}` : "",
+        `問題: ${card.front}`,
+        `答え: ${card.back}`,
+        card.note ? `補足: ${card.note}` : "",
+        card.example ? `例: ${card.example}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    });
+
+  return cards.join("\n\n---\n\n");
+}
+
+function tokenizeSearchText(text) {
+  const matches = String(text || "").match(/[A-Za-z0-9+\-]+|[ぁ-んァ-ヶー一-龠]{2,}/g) || [];
+  return [...new Set(matches.map((token) => token.toLowerCase()).filter((token) => token.length >= 2))];
+}
+
+function scoreCardAgainstTokens(card, tokens) {
+  const haystack = [
+    card.front,
+    card.back,
+    card.topic,
+    card.note,
+    card.example,
+    ...(card.tags || []),
+    getDeckName(card.deckId),
+    getDeckById(card.deckId)?.subject || "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (!tokens.length) {
+    return haystack.length > 0 ? 1 : 0;
+  }
+
+  return tokens.reduce((score, token) => (haystack.includes(token) ? score + 1 : score), 0);
 }
 
 function startDeckEditing(deckId) {
@@ -1808,6 +2098,12 @@ function createDemoState() {
       }),
     ],
     reviewLog: [],
+    assistant: {
+      messages: [],
+      deckFilter: "all",
+      useDeckContext: true,
+      useWebSearch: true,
+    },
   };
 }
 
@@ -2140,6 +2436,37 @@ function normalizeState(rawState) {
     decks: Array.isArray(rawState.decks) ? rawState.decks.map((deck) => normalizeDeck(deck)) : [],
     cards: Array.isArray(rawState.cards) ? rawState.cards.map((card) => normalizeCard(card)) : [],
     reviewLog: Array.isArray(rawState.reviewLog) ? rawState.reviewLog : [],
+    assistant: normalizeAssistantState(rawState.assistant),
+  };
+}
+
+function normalizeAssistantState(assistant) {
+  const safeAssistant = assistant || {};
+
+  return {
+    messages: Array.isArray(safeAssistant.messages)
+      ? safeAssistant.messages
+          .filter((message) => message && (message.role === "user" || message.role === "assistant"))
+          .map((message) => ({
+            id: String(message.id || crypto.randomUUID()),
+            role: message.role,
+            text: String(message.text || "").trim(),
+            createdAt: Number.isFinite(message.createdAt) ? message.createdAt : Date.now(),
+            sources: Array.isArray(message.sources)
+              ? message.sources
+                  .map((source) => ({
+                    title: String(source.title || "").trim(),
+                    url: String(source.url || "").trim(),
+                  }))
+                  .filter((source) => source.url)
+              : [],
+            usedWebSearch: Boolean(message.usedWebSearch),
+          }))
+          .slice(-16)
+      : [],
+    deckFilter: String(safeAssistant.deckFilter || "all"),
+    useDeckContext: safeAssistant.useDeckContext !== false,
+    useWebSearch: safeAssistant.useWebSearch !== false,
   };
 }
 
@@ -2368,6 +2695,15 @@ function buildDeckNameFromSource(sourceName) {
     .trim();
 }
 
+function inferAssistantFocus(filter) {
+  if (String(filter || "").startsWith("focus:")) {
+    return normalizeDeckFocus(String(filter).slice("focus:".length));
+  }
+
+  const deckFocus = getDeckFocus(filter);
+  return deckFocus === "general" ? "medical" : deckFocus;
+}
+
 function createUniqueDeckName(baseName) {
   const name = cleanImportedSegment(baseName) || "自動生成デッキ";
   if (!state.decks.some((deck) => deck.name === name)) {
@@ -2424,6 +2760,11 @@ function clampNumber(value, min, max, fallback) {
   }
 
   return Math.min(max, Math.max(min, value));
+}
+
+function formatMessageTime(timestamp) {
+  const date = new Date(timestamp);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 function normalizeDeckFocus(value) {
