@@ -85,6 +85,7 @@ button:disabled {
 
 .topbar h1,
 .hero h2,
+.board-hero h2,
 .panel h3,
 .flashcard h3 {
   margin: 0;
@@ -160,6 +161,35 @@ button:disabled {
 
 .hero-metric small {
   color: rgba(255, 255, 255, 0.72);
+}
+
+.hero-metric.compact {
+  min-width: 112px;
+  padding: 16px 14px;
+  border-radius: 22px;
+}
+
+.hero-metric.compact span {
+  font-size: clamp(1.8rem, 9vw, 2.8rem);
+}
+
+.board-hero {
+  display: grid;
+  gap: 18px;
+}
+
+.board-hero h2 {
+  font-size: clamp(1.8rem, 7vw, 2.5rem);
+}
+
+.board-hero-side {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+}
+
+.board-hero-actions {
+  width: 100%;
 }
 
 .stats-grid {
@@ -362,6 +392,113 @@ button:disabled {
 .stack-list {
   display: grid;
   gap: 12px;
+}
+
+.board-deck-list {
+  gap: 12px;
+}
+
+.board-deck-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid var(--line);
+}
+
+.board-deck-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.board-deck-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.board-deck-copy strong {
+  font-size: 1.04rem;
+}
+
+.board-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.board-deck-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: end;
+}
+
+.board-action-button {
+  min-width: 104px;
+}
+
+.board-status-dot {
+  width: 14px;
+  height: 14px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: rgba(24, 49, 83, 0.16);
+  box-shadow: 0 0 0 4px rgba(24, 49, 83, 0.06);
+}
+
+.board-status-dot.is-due {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px rgba(199, 81, 70, 0.14);
+}
+
+.board-status-dot.is-learning {
+  background: var(--warning);
+  box-shadow: 0 0 0 4px rgba(211, 139, 44, 0.14);
+}
+
+.board-status-dot.is-shared {
+  background: var(--bg-strong);
+  box-shadow: 0 0 0 4px rgba(24, 49, 83, 0.12);
+}
+
+.board-status-dot.is-resting {
+  background: var(--success);
+  box-shadow: 0 0 0 4px rgba(31, 122, 98, 0.12);
+}
+
+.board-empty-card {
+  gap: 12px;
+}
+
+.compact-history-card {
+  gap: 16px;
+}
+
+.compact-history-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.history-compact-item {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(24, 49, 83, 0.08);
+}
+
+.history-compact-item h4 {
+  margin: 0;
+  font-size: 1.1rem;
 }
 
 .subpanel {
@@ -846,6 +983,11 @@ button:disabled {
   margin: 16px 0 18px;
 }
 
+.modal-action-button {
+  justify-content: start;
+  text-align: left;
+}
+
 .onboarding-steps {
   display: grid;
   gap: 12px;
@@ -865,6 +1007,11 @@ button:disabled {
 }
 
 @media (min-width: 760px) {
+  .board-hero {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
   .forms-grid,
   .study-layout {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -885,7 +1032,6 @@ button:disabled {
     padding-inline: 14px;
   }
 
-  .hero,
   .split-panel,
   .section-heading,
   .topbar {
@@ -893,9 +1039,22 @@ button:disabled {
     align-items: start;
   }
 
-  .hero,
   .split-panel {
     display: grid;
+  }
+
+  .board-hero-side,
+  .board-deck-row {
+    grid-template-columns: 1fr;
+  }
+
+  .board-deck-actions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .compact-history-grid {
+    grid-template-columns: 1fr;
   }
 
   .rating-grid {

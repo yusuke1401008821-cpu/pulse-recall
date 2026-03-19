@@ -47,22 +47,6 @@
       </header>
 
       <main class="page">
-        <section class="hero panel">
-          <div>
-            <p class="eyebrow">今日の学習</p>
-            <h2 id="heroTitle">今日の復習を整える</h2>
-            <p id="heroText">
-              医学部の基礎科目と英語学習を、期限が来たカードから短く回して定着させます。
-            </p>
-          </div>
-          <div class="hero-metric">
-            <span id="dueCount">0</span>
-            <small>復習待ち</small>
-          </div>
-        </section>
-
-        <section class="stats-grid" id="statsGrid" aria-label="学習状況"></section>
-
         <nav class="tabbar" aria-label="メインナビゲーション">
           <button class="tab is-active" data-section="dashboard" type="button">ホーム</button>
           <button class="tab" data-section="study" type="button">学習</button>
@@ -72,82 +56,110 @@
         </nav>
 
         <section class="content is-active" id="dashboard">
-          <div class="panel split-panel">
+          <section class="panel board-hero">
             <div>
-              <p class="eyebrow">はじめの一手</p>
-              <h3>今日やること</h3>
-              <p id="quickSummary">
-                まずは期限の来たカードを確認し、その後に新しいカードを追加できます。
+              <p class="eyebrow">デッキ一覧</p>
+              <h2 id="heroTitle">科目別にデッキを管理する</h2>
+              <p id="heroText">
+                医学と英語のデッキを、科目ごとにすぐ見つけられる形で並べています。
+              </p>
+              <p class="muted" id="quickSummary">
+                まずは復習待ちを処理し、その後に資料やカードを追加して育てていけます。
               </p>
             </div>
-            <button class="primary-button" id="startReviewButton" type="button">復習を始める</button>
-          </div>
+            <div class="board-hero-side">
+              <div class="hero-metric compact">
+                <span id="dueCount">0</span>
+                <small>復習待ち</small>
+              </div>
+              <div class="button-row board-hero-actions">
+                <button class="primary-button" id="startReviewButton" type="button">今日の復習</button>
+                <button class="ghost-button" id="homeCreateDeckButton" type="button">新しい科目デッキを追加</button>
+              </div>
+            </div>
+          </section>
 
-          <div class="panel">
+          <section class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">使い方</p>
-                <h3>初心者向けガイド</h3>
+                <p class="eyebrow">医学</p>
+                <h3>医学のデッキ</h3>
               </div>
-              <button class="ghost-button" id="openOnboardingButton" type="button">使い方を見る</button>
+              <span class="muted" id="medicalDeckCount">0件</span>
             </div>
-            <div class="action-grid" id="homeQuickActions"></div>
-          </div>
+            <div class="stack-list board-deck-list" id="medicalDeckList"></div>
+          </section>
 
-          <section class="track-grid" id="trackGrid" aria-label="医学と英語の学習トラック"></section>
-
-          <div class="home-grid">
-            <section class="panel">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">共有</p>
-                  <h3>共有待ち</h3>
-                </div>
-                <span class="muted" id="pendingShareLabel">共有なし</span>
-              </div>
-              <div class="stack-list" id="pendingShareList"></div>
-            </section>
-
-            <section class="panel">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">最近使ったもの</p>
-                  <h3>最近のデッキ</h3>
-                </div>
-              </div>
-              <div class="stack-list" id="recentDeckList"></div>
-            </section>
-          </div>
-
-          <div class="panel">
+          <section class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">一覧</p>
-                <h3>デッキ一覧</h3>
+                <p class="eyebrow">英語</p>
+                <h3>英語のデッキ</h3>
               </div>
-              <span class="muted" id="deckCountLabel">0デッキ</span>
+              <span class="muted" id="englishDeckCount">0件</span>
             </div>
-            <div class="deck-list" id="deckList"></div>
-          </div>
+            <div class="stack-list board-deck-list" id="englishDeckList"></div>
+          </section>
 
-          <div class="panel">
+          <section class="panel" id="generalDeckSection" hidden>
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">その他</p>
+                <h3>その他のデッキ</h3>
+              </div>
+              <span class="muted" id="generalDeckCount">0件</span>
+            </div>
+            <div class="stack-list board-deck-list" id="generalDeckList"></div>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">共有</p>
+                <h3>自分が共有しているデッキ</h3>
+              </div>
+              <span class="muted" id="ownedSharedDeckCount">0件</span>
+            </div>
+            <div class="stack-list board-deck-list" id="ownedSharedDeckList"></div>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">共有</p>
+                <h3>共有で受け取ったデッキ</h3>
+              </div>
+              <span class="muted" id="joinedSharedDeckCount">0件</span>
+            </div>
+            <div class="stack-list board-deck-list" id="joinedSharedDeckList"></div>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">共有</p>
+                <h3>共有待ち</h3>
+              </div>
+              <span class="muted" id="pendingShareLabel">共有なし</span>
+            </div>
+            <div class="stack-list" id="pendingShareList"></div>
+          </section>
+
+          <section class="panel compact-history-card">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">履歴</p>
-                <h3>学習の流れ</h3>
+                <h3>学習の履歴</h3>
               </div>
-              <span class="muted" id="historySummary">まだ履歴がありません</span>
+              <button class="ghost-button" id="toggleHistoryDetailsButton" type="button">詳しく見る</button>
             </div>
-            <div class="history-chart" id="historyChart" aria-label="7日間の学習履歴"></div>
-            <div class="history-breakdown" id="historyBreakdown"></div>
-          </div>
-
-          <div class="panel tip-card">
-            <p class="eyebrow">iPhone ヒント</p>
-            <p>
-              Safari の共有メニューから「ホーム画面に追加」を使うと、アプリっぽく開けます。
-            </p>
-          </div>
+            <p class="muted" id="historySummary">まだ履歴がありません</p>
+            <div class="action-grid compact-history-grid" id="historyCompactList"></div>
+            <div id="historyDetailsPanel" hidden>
+              <div class="history-chart" id="historyChart" aria-label="7日間の学習履歴"></div>
+              <div class="history-breakdown" id="historyBreakdown"></div>
+            </div>
+          </section>
         </section>
 
         <section class="content" id="study">
@@ -857,6 +869,22 @@
         <div class="form-actions">
           <button class="ghost-button" id="closeShareJoinButton" type="button">閉じる</button>
           <button class="primary-button" id="requestShareAccessButton" type="button">参加を申請する</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-shell" id="deckActionModal" hidden>
+      <div class="modal-card">
+        <p class="eyebrow">資料追加</p>
+        <h3 id="deckActionTitle">このデッキに何を追加しますか？</h3>
+        <p class="muted" id="deckActionStatus">カード追加、PDF取り込み、過去問参照をここから始められます。</p>
+        <div class="stack-list">
+          <button class="ghost-button modal-action-button" id="deckActionCardButton" type="button">カードを追加</button>
+          <button class="ghost-button modal-action-button" id="deckActionImportButton" type="button">PDF取り込み</button>
+          <button class="ghost-button modal-action-button" id="deckActionLocatorButton" type="button">過去問参照</button>
+        </div>
+        <div class="form-actions">
+          <button class="ghost-button" id="closeDeckActionButton" type="button">閉じる</button>
         </div>
       </div>
     </div>

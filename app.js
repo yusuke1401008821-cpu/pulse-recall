@@ -242,6 +242,10 @@ let studyMode = "review";
 let studySourceKey = "due";
 let studySessionSize = 8;
 let studySession = null;
+let homeHistoryExpanded = false;
+let importContextDeckId = "";
+let questionMapContextDeckId = "";
+let deckActionDeckId = "";
 let editingDeckId = null;
 let editingCardId = null;
 let toastTimer = null;
@@ -279,22 +283,31 @@ const createModeButtons = [...document.querySelectorAll("[data-create-mode]")];
 const studyModeButtons = [...document.querySelectorAll("[data-study-mode]")];
 const templateButtons = [...document.querySelectorAll("[data-template]")];
 const deckDetailTabButtons = [...document.querySelectorAll("[data-deck-detail-tab]")];
-const statsGrid = document.getElementById("statsGrid");
+const dashboardSection = document.getElementById("dashboard");
 const dueCount = document.getElementById("dueCount");
 const heroTitle = document.getElementById("heroTitle");
 const heroText = document.getElementById("heroText");
 const quickSummary = document.getElementById("quickSummary");
-const homeQuickActions = document.getElementById("homeQuickActions");
+const homeCreateDeckButton = document.getElementById("homeCreateDeckButton");
+const medicalDeckList = document.getElementById("medicalDeckList");
+const medicalDeckCount = document.getElementById("medicalDeckCount");
+const englishDeckList = document.getElementById("englishDeckList");
+const englishDeckCount = document.getElementById("englishDeckCount");
+const generalDeckSection = document.getElementById("generalDeckSection");
+const generalDeckList = document.getElementById("generalDeckList");
+const generalDeckCount = document.getElementById("generalDeckCount");
+const ownedSharedDeckList = document.getElementById("ownedSharedDeckList");
+const ownedSharedDeckCount = document.getElementById("ownedSharedDeckCount");
+const joinedSharedDeckList = document.getElementById("joinedSharedDeckList");
+const joinedSharedDeckCount = document.getElementById("joinedSharedDeckCount");
 const pendingShareLabel = document.getElementById("pendingShareLabel");
 const pendingShareList = document.getElementById("pendingShareList");
-const recentDeckList = document.getElementById("recentDeckList");
-const openOnboardingButton = document.getElementById("openOnboardingButton");
-const trackGrid = document.getElementById("trackGrid");
-const deckCountLabel = document.getElementById("deckCountLabel");
-const deckList = document.getElementById("deckList");
 const historyChart = document.getElementById("historyChart");
 const historySummary = document.getElementById("historySummary");
 const historyBreakdown = document.getElementById("historyBreakdown");
+const historyCompactList = document.getElementById("historyCompactList");
+const historyDetailsPanel = document.getElementById("historyDetailsPanel");
+const toggleHistoryDetailsButton = document.getElementById("toggleHistoryDetailsButton");
 const studyDeckFilter = document.getElementById("studyDeckFilter");
 const studyModeSummary = document.getElementById("studyModeSummary");
 const studySessionSizeInput = document.getElementById("studySessionSizeInput");
@@ -459,6 +472,13 @@ const completeOnboardingButton = document.getElementById("completeOnboardingButt
 const settingsOpenGuideButton = document.getElementById("settingsOpenGuideButton");
 const settingsOverviewSummary = document.getElementById("settingsOverviewSummary");
 const settingsSnapshotList = document.getElementById("settingsSnapshotList");
+const deckActionModal = document.getElementById("deckActionModal");
+const deckActionTitle = document.getElementById("deckActionTitle");
+const deckActionStatus = document.getElementById("deckActionStatus");
+const deckActionCardButton = document.getElementById("deckActionCardButton");
+const deckActionImportButton = document.getElementById("deckActionImportButton");
+const deckActionLocatorButton = document.getElementById("deckActionLocatorButton");
+const closeDeckActionButton = document.getElementById("closeDeckActionButton");
 const shareJoinModal = document.getElementById("shareJoinModal");
 const shareJoinTitle = document.getElementById("shareJoinTitle");
 const shareJoinStatus = document.getElementById("shareJoinStatus");
@@ -498,17 +518,23 @@ function bindEvents() {
   });
 
   toggleAnswerButton.addEventListener("click", toggleAnswer);
-  startReviewButton.addEventListener("click", () => {
-    switchSection("study");
-  });
+  if (startReviewButton) {
+    startReviewButton.addEventListener("click", () => {
+      switchSection("study");
+    });
+  }
+  if (homeCreateDeckButton) {
+    homeCreateDeckButton.addEventListener("click", () => {
+      openDeckComposer("medical");
+    });
+  }
   demoResetConfirmInput.addEventListener("input", renderDemoRestorePanel);
   seedDemoButton.addEventListener("click", restoreDemoData);
-  openOnboardingButton.addEventListener("click", () => {
-    onboardingModal.hidden = false;
-  });
-  settingsOpenGuideButton.addEventListener("click", () => {
-    onboardingModal.hidden = false;
-  });
+  if (settingsOpenGuideButton) {
+    settingsOpenGuideButton.addEventListener("click", () => {
+      onboardingModal.hidden = false;
+    });
+  }
   dismissOnboardingButton.addEventListener("click", () => {
     onboardingModal.hidden = true;
   });
@@ -586,20 +612,41 @@ function bindEvents() {
   exportJsonButton.addEventListener("click", exportJsonBackup);
   importJsonFileInput.addEventListener("change", importJsonBackup);
   refreshCloudButton.addEventListener("click", refreshCloudData);
+  if (toggleHistoryDetailsButton) {
+    toggleHistoryDetailsButton.addEventListener("click", toggleHistoryDetails);
+  }
+  if (closeDeckActionButton) {
+    closeDeckActionButton.addEventListener("click", closeDeckActionModal);
+  }
+  if (deckActionModal) {
+    deckActionModal.addEventListener("click", (event) => {
+      if (event.target === deckActionModal) {
+        closeDeckActionModal();
+      }
+    });
+  }
+  if (deckActionCardButton) {
+    deckActionCardButton.addEventListener("click", () => openDeckActionTarget("card"));
+  }
+  if (deckActionImportButton) {
+    deckActionImportButton.addEventListener("click", () => openDeckActionTarget("import"));
+  }
+  if (deckActionLocatorButton) {
+    deckActionLocatorButton.addEventListener("click", () => openDeckActionTarget("locator"));
+  }
 
   document.querySelectorAll("[data-rating]").forEach((button) => {
     button.addEventListener("click", () => reviewCurrentCard(button.dataset.rating));
   });
 
-  deckList.addEventListener("click", handleDeckActions);
+  if (dashboardSection) {
+    dashboardSection.addEventListener("click", handleDeckActions);
+  }
   libraryList.addEventListener("click", handleLibraryActions);
-  recentDeckList.addEventListener("click", handleLibraryActions);
-  homeQuickActions.addEventListener("click", handleHomeQuickActions);
   createGuideActions.addEventListener("click", handleGuideActions);
   shareRequestList.addEventListener("click", handleDeckDetailActions);
   shareMemberList.addEventListener("click", handleDeckDetailActions);
   deckDetailContent.addEventListener("click", handleDeckDetailActions);
-  trackGrid.addEventListener("click", handleTrackActions);
   studySmartListGrid.addEventListener("click", handleStudySmartListActions);
   importPreview.addEventListener("click", handleImportPreviewActions);
   assistantMessages.addEventListener("click", handleAssistantActions);
@@ -646,41 +693,27 @@ function render() {
   renderForms();
   renderDemoRestorePanel();
   renderDashboard();
-  renderTrackGrid();
   renderStudy();
   renderAssistant();
   renderLibrary();
   renderDeckDetail();
   renderCreatePanels();
   renderSharePanel();
-  renderHomePanels();
   renderSettingsPanel();
 }
 
 function renderStats() {
   const stats = buildStats();
   dueCount.textContent = String(stats.dueCount);
-  heroTitle.textContent = stats.dueCount > 0 ? "今日の復習が待っています" : "今日の復習は落ち着いています";
+  heroTitle.textContent = state.decks.length ? "科目別にデッキを管理する" : "最初の科目デッキを作る";
   heroText.textContent =
-    stats.dueCount > 0
-      ? `医学${stats.medicalDue}枚・英語${stats.englishDue}枚が復習待ちです。優先したいトラックから短く回しましょう。`
-      : "復習待ちのカードはありません。医学と英語のデッキを整えて次の学習に備えられます。";
-  quickSummary.textContent =
     stats.totalCards > 0
-      ? `医学${stats.medicalCards}枚、英語${stats.englishCards}枚を管理中です。テーマ別に分けると復習の見通しが良くなります。`
-      : "医学と英語のスターターを追加して、基礎の復習ルートから始めるのがおすすめです。";
-  deckCountLabel.textContent = `${state.decks.length}デッキ`;
-
-  statsGrid.innerHTML = stats.cards
-    .map(
-      (stat) => `
-        <article class="stat-card">
-          <span class="eyebrow">${escapeHtml(stat.label)}</span>
-          <strong>${escapeHtml(String(stat.value))}</strong>
-        </article>
-      `,
-    )
-    .join("");
+      ? `医学${stats.medicalCards}枚・英語${stats.englishCards}枚を管理しながら、科目ごとにすぐ資料追加や復習へ進めます。`
+      : "医学や英語の科目ごとにデッキを分けておくと、カード追加やPDF整理がかなり楽になります。";
+  quickSummary.textContent =
+    stats.dueCount > 0
+      ? `いまは医学${stats.medicalDue}枚・英語${stats.englishDue}枚が復習待ちです。上から必要なデッキをそのまま開けます。`
+      : "復習待ちがないときは、科目ごとにカードや資料を追加して次の学習に備えられます。";
 }
 
 function buildStats() {
@@ -798,6 +831,13 @@ function setCreateMode(mode) {
     return;
   }
 
+  if (mode !== "import") {
+    importContextDeckId = "";
+  }
+  if (mode !== "locator") {
+    questionMapContextDeckId = "";
+  }
+
   createMode = mode;
   renderCreatePanels();
   if (mode === "share") {
@@ -811,6 +851,135 @@ function setCreateMode(mode) {
 function openCreateMode(mode) {
   setCreateMode(mode);
   switchSection("manage");
+}
+
+function openDeckComposer(focus = "medical") {
+  clearDeckEditing();
+  clearCardEditing();
+  setCreateMode("deck");
+  switchSection("manage");
+  deckFocusInput.value = normalizeDeckFocus(focus);
+  applyDeckFocusPreset();
+  deckSubjectInput.value = "";
+  deckNameInput.focus();
+}
+
+function openCardComposer(deckId) {
+  const deck = getDeckById(deckId);
+  if (!deck) {
+    showToast("対象デッキが見つかりません");
+    return;
+  }
+
+  if (!canEditDeckContent(deck)) {
+    showToast("このデッキにはカードを追加できません");
+    return;
+  }
+
+  clearDeckEditing();
+  clearCardEditing();
+  setCreateMode("card");
+  switchSection("manage");
+  if (optionExists(cardDeckId, deck.id)) {
+    cardDeckId.value = deck.id;
+  }
+  applyCardContextPlaceholders();
+  showToast(`「${deck.name}」にカードを追加します`);
+}
+
+function openImportComposer(deckId) {
+  const deck = getDeckById(deckId);
+  if (!deck) {
+    showToast("対象デッキが見つかりません");
+    return;
+  }
+
+  if (!canEditDeckContent(deck)) {
+    showToast("このデッキには資料を追加できません");
+    return;
+  }
+
+  importContextDeckId = deck.id;
+  clearImportDraft();
+  importSelection.clear();
+  setCreateMode("import");
+  switchSection("manage");
+  importFocusInput.value = normalizeDeckFocus(deck.focus);
+  applyImportFocusPreset();
+  importDeckNameInput.value = deck.name;
+  importSubjectInput.value = deck.subject || "";
+  importInstructionsInput.value = "";
+  renderImportPanel();
+  showToast(`「${deck.name}」へ追加する資料を選べます`);
+}
+
+function openQuestionMapComposer(deckId) {
+  const deck = getDeckById(deckId);
+  if (!deck) {
+    showToast("対象デッキが見つかりません");
+    return;
+  }
+
+  questionMapContextDeckId = deck.id;
+  setCreateMode("locator");
+  switchSection("manage");
+  renderQuestionMapPanel();
+  showToast(`「${deck.name}」向けに過去問参照を開きました`);
+}
+
+function openShareManager() {
+  setCreateMode("share");
+  switchSection("manage");
+}
+
+function openDeckActionModal(deckId) {
+  const deck = getDeckById(deckId);
+  if (!deck) {
+    showToast("対象デッキが見つかりません");
+    return;
+  }
+
+  deckActionDeckId = deck.id;
+  deckActionTitle.textContent = `「${deck.subject || deck.name}」に何を追加しますか？`;
+  deckActionStatus.textContent = canEditDeckContent(deck)
+    ? `カード追加、PDF取り込み、過去問参照を、いま見ているデッキに合わせて始められます。`
+    : "この共有デッキは閲覧のみです。過去問参照は使えますが、カードやPDFの追加はできません。";
+  deckActionCardButton.disabled = !canEditDeckContent(deck);
+  deckActionImportButton.disabled = !canEditDeckContent(deck);
+  deckActionLocatorButton.disabled = false;
+  deckActionModal.hidden = false;
+}
+
+function closeDeckActionModal() {
+  deckActionDeckId = "";
+  deckActionModal.hidden = true;
+}
+
+function openDeckActionTarget(target) {
+  if (!deckActionDeckId) {
+    closeDeckActionModal();
+    return;
+  }
+
+  if (target === "card") {
+    closeDeckActionModal();
+    openCardComposer(deckActionDeckId);
+    return;
+  }
+
+  if (target === "import") {
+    closeDeckActionModal();
+    openImportComposer(deckActionDeckId);
+    return;
+  }
+
+  closeDeckActionModal();
+  openQuestionMapComposer(deckActionDeckId);
+}
+
+function toggleHistoryDetails() {
+  homeHistoryExpanded = !homeHistoryExpanded;
+  renderHistoryPanel();
 }
 
 function setStudyMode(mode) {
@@ -1281,7 +1450,7 @@ function completeOnboarding() {
   state.settings.onboardingCompleted = true;
   onboardingModal.hidden = true;
   persist();
-  showToast("使い方ガイドを閉じました。必要なときはホームから開き直せます");
+  showToast("使い方ガイドを閉じました。必要なときは設定から開き直せます");
 }
 
 function formatStorageMode(mode) {
@@ -1684,13 +1853,19 @@ function renderImportPanel() {
   applyImportTagsButton.disabled = !importDraft;
 
   if (!importDraft) {
-    importStatus.textContent =
-      "PDF または本文を入れると、自動でカード候補を作成します。スキャンPDFは文字抽出できないことがあります。";
+    const contextDeck = getDeckById(importContextDeckId);
+    importStatus.textContent = contextDeck
+      ? `「${contextDeck.name}」へ追加する資料を選ぶと、自動でカード候補を作成します。スキャンPDFは文字抽出できないことがあります。`
+      : "PDF または本文を入れると、自動でカード候補を作成します。スキャンPDFは文字抽出できないことがあります。";
     saveImportButton.textContent = "この候補でデッキ作成";
     importPreview.innerHTML = `
       <article class="library-card">
         <h4>まだ自動生成の候補はありません</h4>
-        <p class="muted">講義PDF、英語の資料、配布ノートを読み込むとここに候補が並びます。</p>
+        <p class="muted">${
+          contextDeck
+            ? `講義PDF、英語の資料、配布ノートを読み込むと、「${escapeHtml(contextDeck.name)}」へ追加する候補がここに並びます。`
+            : "講義PDF、英語の資料、配布ノートを読み込むとここに候補が並びます。"
+        }</p>
       </article>
     `;
     return;
@@ -1753,11 +1928,13 @@ function renderQuestionMapPanel() {
   }
 
   if (!questionMapDraft) {
+    const contextDeck = getDeckById(questionMapContextDeckId);
     if (!isQuestionMapLoading && questionMapErrorMessage) {
       questionMapStatus.textContent = questionMapErrorMessage;
     } else if (!isQuestionMapLoading) {
-      questionMapStatus.textContent =
-        "過去問と講義スライドを入れると、設問ごとに関連スライド候補、ページ番号、該当箇所の抜粋を表示します。";
+      questionMapStatus.textContent = contextDeck
+        ? `「${contextDeck.name}」向けに、過去問と講義スライドを入れると設問ごとの関連候補を表示します。`
+        : "過去問と講義スライドを入れると、設問ごとに関連スライド候補、ページ番号、該当箇所の抜粋を表示します。";
     }
     questionMapSummary.innerHTML = "";
     questionMapResults.innerHTML = questionMapErrorMessage
@@ -1939,49 +2116,62 @@ function renderAssistant() {
 }
 
 function renderDashboard() {
-  const dueCounts = getDueCountByDeck();
-  const canDeleteDeck = state.decks.length > 1;
-
-  deckList.innerHTML = state.decks
-    .map((deck) => {
-      const cardCount = state.cards.filter((card) => card.deckId === deck.id).length;
-      const due = dueCounts.get(deck.id) || 0;
-      const canEdit = canEditDeckContent(deck);
-
-      return `
-        <article class="deck-card">
-          <div class="deck-card-header">
-            <div>
-              <h4>${escapeHtml(deck.name)}</h4>
-              <p class="muted">${escapeHtml(deck.description || "説明はまだありません")}</p>
-            </div>
-            <div class="button-row">
-              <button class="chip-button" data-start-deck="${deck.id}" type="button">このデッキを学習</button>
-              <button class="ghost-button" data-open-deck-detail="${deck.id}" type="button">詳細</button>
-              <button class="ghost-button" data-edit-deck="${deck.id}" type="button" ${canEdit ? "" : "disabled"}>編集</button>
-              <button class="ghost-button danger-button" data-delete-deck="${deck.id}" type="button" ${canDeleteDeck && canEdit && deck.storageMode !== "shared" ? "" : "disabled"}>
-                削除
-              </button>
-            </div>
-          </div>
-          <div class="deck-card-meta">
-            <span class="meta-pill ${escapeHtml(deck.focus)}">${escapeHtml(formatDeckFocus(deck.focus))}</span>
-            ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
-            <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
-            <span class="meta-pill">${cardCount}枚</span>
-            <span class="meta-pill">復習待ち ${due}枚</span>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-
-  renderHistoryPanel();
-}
-
-function renderHomePanels() {
+  const collections = buildDashboardDeckCollections();
   const pendingCount = cloudState.pendingRequests.length;
-  const quickActions = buildHomeQuickActions();
+
+  renderDashboardDeckSection({
+    decks: collections.medical,
+    listElement: medicalDeckList,
+    countElement: medicalDeckCount,
+    emptyTitle: "医学のデッキがまだありません",
+    emptyText: "解剖、生理、病態など、科目ごとにデッキを分けると管理しやすくなります。",
+    emptyButtonLabel: "医学のデッキを作る",
+    emptyFocus: "medical",
+  });
+  renderDashboardDeckSection({
+    decks: collections.english,
+    listElement: englishDeckList,
+    countElement: englishDeckCount,
+    emptyTitle: "英語のデッキがまだありません",
+    emptyText: "医学英語、語彙、長文読解などで分けておくと、後から探しやすくなります。",
+    emptyButtonLabel: "英語のデッキを作る",
+    emptyFocus: "english",
+  });
+
+  if (generalDeckSection) {
+    generalDeckSection.hidden = !collections.general.length;
+  }
+  renderDashboardDeckSection({
+    decks: collections.general,
+    listElement: generalDeckList,
+    countElement: generalDeckCount,
+    emptyTitle: "その他のデッキはありません",
+    emptyText: "医学と英語以外の汎用デッキは、ここにまとまります。",
+    emptyButtonLabel: "汎用デッキを作る",
+    emptyFocus: "general",
+  });
+
+  renderDashboardDeckSection({
+    decks: collections.ownedShared,
+    listElement: ownedSharedDeckList,
+    countElement: ownedSharedDeckCount,
+    emptyTitle: "まだ共有しているデッキはありません",
+    emptyText: "グループで使うデッキを作ると、ここから owner として管理できます。",
+    emptyButtonLabel: "共有を開く",
+    emptyFocus: "",
+    emptyAction: "share",
+  });
+  renderDashboardDeckSection({
+    decks: collections.joinedShared,
+    listElement: joinedSharedDeckList,
+    countElement: joinedSharedDeckCount,
+    emptyTitle: "受け取った共有デッキはまだありません",
+    emptyText: "共有リンクや招待されたデッキは、ここに並びます。",
+    emptyButtonLabel: "共有を開く",
+    emptyFocus: "",
+    emptyAction: "share",
+  });
+
   pendingShareLabel.textContent = pendingCount ? `${pendingCount}件` : "共有なし";
   pendingShareList.innerHTML = pendingCount
     ? cloudState.pendingRequests
@@ -1989,8 +2179,13 @@ function renderHomePanels() {
         .map(
           (request) => `
             <article class="library-card">
-              <h4>${escapeHtml(request.deckName || "共有デッキ")}</h4>
-              <p class="muted">${escapeHtml(request.requesterEmail || "参加申請")} / 承認待ち</p>
+              <div class="card-row-header">
+                <div>
+                  <h4>${escapeHtml(request.deckName || "共有デッキ")}</h4>
+                  <p class="muted">${escapeHtml(request.requesterEmail || "参加申請")} / 承認待ち</p>
+                </div>
+                <button class="ghost-button" data-open-share-panel="true" type="button">共有を開く</button>
+              </div>
             </article>
           `,
         )
@@ -1999,58 +2194,160 @@ function renderHomePanels() {
         <article class="library-card">
           <h4>いま承認待ちはありません</h4>
           <p class="muted">共有デッキを作ると、ここに参加申請が表示されます。</p>
+          <div class="button-row">
+            <button class="ghost-button" data-open-share-panel="true" type="button">共有を開く</button>
+          </div>
         </article>
       `;
 
-  recentDeckList.innerHTML = state.decks.length
-    ? [...state.decks]
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .slice(0, 4)
-        .map(
-          (deck) => `
-            <article class="library-card">
-              <div class="card-row-header">
-                <div>
-                  <h4>${escapeHtml(deck.name)}</h4>
-                  <p class="muted">${escapeHtml(deck.description || "説明はまだありません")}</p>
-                </div>
-                <button class="ghost-button" data-open-deck-detail="${deck.id}" type="button">詳細</button>
-              </div>
-              <div class="card-row-meta">
-                <span class="meta-pill ${escapeHtml(deck.focus)}">${escapeHtml(formatDeckFocus(deck.focus))}</span>
-                ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
-                <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
-              </div>
-            </article>
-          `,
-        )
-        .join("")
+  renderHistoryPanel();
+}
+
+function buildDashboardDeckCollections() {
+  const localDecks = state.decks.filter((deck) => deck.storageMode !== "shared");
+  return {
+    medical: sortDashboardDecks(localDecks.filter((deck) => deck.focus === "medical")),
+    english: sortDashboardDecks(localDecks.filter((deck) => deck.focus === "english")),
+    general: sortDashboardDecks(localDecks.filter((deck) => deck.focus === "general")),
+    ownedShared: sortDashboardDecks(state.decks.filter((deck) => deck.storageMode === "shared" && deck.role === "owner")),
+    joinedShared: sortDashboardDecks(
+      state.decks.filter((deck) => deck.storageMode === "shared" && ["editor", "viewer"].includes(deck.role)),
+    ),
+  };
+}
+
+function sortDashboardDecks(decks) {
+  return [...decks].sort((left, right) => {
+    const leftSubject = String(left.subject || "").trim();
+    const rightSubject = String(right.subject || "").trim();
+    if (leftSubject && !rightSubject) {
+      return -1;
+    }
+    if (!leftSubject && rightSubject) {
+      return 1;
+    }
+    const subjectDiff = leftSubject.localeCompare(rightSubject, "ja");
+    if (subjectDiff !== 0) {
+      return subjectDiff;
+    }
+    return left.name.localeCompare(right.name, "ja");
+  });
+}
+
+function renderDashboardDeckSection({
+  decks,
+  listElement,
+  countElement,
+  emptyTitle,
+  emptyText,
+  emptyButtonLabel,
+  emptyFocus = "",
+  emptyAction = "create",
+}) {
+  if (!listElement || !countElement) {
+    return;
+  }
+
+  countElement.textContent = `${decks.length}件`;
+  listElement.innerHTML = decks.length
+    ? decks.map((deck) => buildDashboardDeckRow(deck)).join("")
     : `
-        <article class="library-card">
-          <h4>デッキがまだありません</h4>
-          <p class="muted">「作成」タブで最初のデッキを作るか、スターターを追加すると始めやすいです。</p>
+        <article class="library-card board-empty-card">
+          <h4>${escapeHtml(emptyTitle)}</h4>
+          <p class="muted">${escapeHtml(emptyText)}</p>
+          <div class="button-row">
+            ${
+              emptyAction === "share"
+                ? '<button class="ghost-button" data-open-share-panel="true" type="button">共有を開く</button>'
+                : `<button class="ghost-button" data-home-create-deck-focus="${escapeHtml(emptyFocus)}" type="button">${escapeHtml(emptyButtonLabel)}</button>`
+            }
+          </div>
         </article>
       `;
+}
 
-  homeQuickActions.innerHTML = quickActions
-    .map(
-      (item) => `
-        <article class="library-card">
-          <h4>${escapeHtml(item.title)}</h4>
-          <p class="muted">${escapeHtml(item.text)}</p>
-          ${renderShortcutButtons([
-            {
-              label: item.label,
-              action: item.action,
-              focus: item.focus,
-              mode: item.mode,
-              kind: item.kind,
-            },
-          ])}
-        </article>
-      `,
-    )
-    .join("");
+function buildDashboardDeckRow(deck) {
+  const metrics = buildDashboardDeckMetrics(deck);
+  const primaryLabel = deck.subject || deck.name;
+  const supportingLine = [deck.subject ? deck.name : "", deck.description || ""].filter(Boolean).join(" / ");
+  const canEdit = canEditDeckContent(deck);
+
+  return `
+    <article class="board-deck-row">
+      <button class="board-deck-main" data-open-deck-detail="${deck.id}" type="button">
+        <span class="board-status-dot ${metrics.statusClass}" aria-hidden="true"></span>
+        <span class="board-deck-copy">
+          <strong>${escapeHtml(primaryLabel)}</strong>
+          <span class="muted">${escapeHtml(supportingLine || "説明はまだありません")}</span>
+          <span class="board-meta-row">
+            <span class="meta-pill">${metrics.cardCount}枚</span>
+            <span class="meta-pill">復習待ち ${metrics.dueCount}枚</span>
+            ${
+              metrics.learningCount
+                ? `<span class="meta-pill">学習中 ${metrics.learningCount}枚</span>`
+                : ""
+            }
+            ${
+              deck.storageMode === "shared"
+                ? `<span class="meta-pill">${escapeHtml(formatRoleLabel(deck.role))}</span>`
+                : ""
+            }
+          </span>
+        </span>
+      </button>
+      <div class="board-deck-actions">
+        <button class="ghost-button board-action-button" data-start-deck="${deck.id}" type="button">学習</button>
+        <button
+          class="secondary-button board-action-button"
+          data-open-deck-sheet="${deck.id}"
+          type="button"
+          ${canEdit ? "" : "disabled"}
+        >
+          資料追加
+        </button>
+      </div>
+    </article>
+  `;
+}
+
+function buildDashboardDeckMetrics(deck) {
+  const deckCards = state.cards.filter((card) => card.deckId === deck.id);
+  const dueCount = deckCards.filter((card) => card.study.dueAt <= Date.now()).length;
+  const learningCount = deckCards.filter((card) => card.study.mode === "learning" || card.study.mode === "relearning").length;
+
+  if (dueCount > 0) {
+    return {
+      cardCount: deckCards.length,
+      dueCount,
+      learningCount,
+      statusClass: "is-due",
+    };
+  }
+
+  if (learningCount > 0) {
+    return {
+      cardCount: deckCards.length,
+      dueCount,
+      learningCount,
+      statusClass: "is-learning",
+    };
+  }
+
+  if (deck.storageMode === "shared") {
+    return {
+      cardCount: deckCards.length,
+      dueCount,
+      learningCount,
+      statusClass: "is-shared",
+    };
+  }
+
+  return {
+    cardCount: deckCards.length,
+    dueCount,
+    learningCount,
+    statusClass: "is-resting",
+  };
 }
 
 function renderLibraryFilterControls() {
@@ -2095,6 +2392,10 @@ function renderLibraryFilterControls() {
 }
 
 function renderTrackGrid() {
+  if (typeof trackGrid === "undefined" || !trackGrid) {
+    return;
+  }
+
   trackGrid.innerHTML = TRACKS.map((track) => {
     const summary = buildTrackSummary(track.id);
 
@@ -3207,6 +3508,7 @@ async function handleImportSubmit(event) {
       instructions: String(importInstructionsInput.value || "").trim(),
       limit,
     });
+    importDraft.targetDeckId = importContextDeckId || "";
 
     renderImportPanel();
     showToast(`${importDraft.cards.length}枚の候補を作成しました`);
@@ -3309,6 +3611,18 @@ async function handleAssistantSubmit(event) {
 }
 
 function handleDeckActions(event) {
+  const createButton = event.target.closest("[data-home-create-deck-focus]");
+  if (createButton) {
+    openDeckComposer(createButton.dataset.homeCreateDeckFocus || "medical");
+    return;
+  }
+
+  const sharePanelButton = event.target.closest("[data-open-share-panel]");
+  if (sharePanelButton) {
+    openShareManager();
+    return;
+  }
+
   const detailButton = event.target.closest("[data-open-deck-detail]");
   if (detailButton) {
     selectedDeckDetailId = detailButton.dataset.openDeckDetail;
@@ -3323,6 +3637,12 @@ function handleDeckActions(event) {
     currentCardId = null;
     isAnswerVisible = false;
     switchSection("study");
+    return;
+  }
+
+  const sheetButton = event.target.closest("[data-open-deck-sheet]");
+  if (sheetButton) {
+    openDeckActionModal(sheetButton.dataset.openDeckSheet);
     return;
   }
 
@@ -4032,7 +4352,12 @@ function clearImportDraft() {
   importSelection.clear();
   importForm.reset();
   importLimitInput.value = "12";
-  importFocusInput.value = "medical";
+  const contextDeck = getDeckById(importContextDeckId);
+  importFocusInput.value = contextDeck ? normalizeDeckFocus(contextDeck.focus) : "medical";
+  if (contextDeck) {
+    importDeckNameInput.value = contextDeck.name;
+    importSubjectInput.value = contextDeck.subject || "";
+  }
   applyImportFocusPreset();
   renderImportPanel();
 }
@@ -6519,8 +6844,29 @@ function renderHistoryPanel() {
 
   historySummary.textContent =
     history.totalAnswers > 0
-      ? `直近7日で${history.totalAnswers}件回答・連続${history.streakDays}日`
+      ? `今日 ${history.todayAnswers}件回答 / 連続 ${history.streakDays}日 / 最終学習 ${history.lastAnsweredLabel}`
       : "まだ履歴がありません";
+  historyCompactList.innerHTML = [
+    { label: "今日の回答数", value: `${history.todayAnswers}件` },
+    { label: "連続日数", value: `${history.streakDays}日` },
+    { label: "最終学習日", value: history.lastAnsweredLabel },
+  ]
+    .map(
+      (item) => `
+        <article class="history-compact-item">
+          <p class="eyebrow">${escapeHtml(item.label)}</p>
+          <h4>${escapeHtml(item.value)}</h4>
+        </article>
+      `,
+    )
+    .join("");
+  historyDetailsPanel.hidden = !homeHistoryExpanded || history.totalAnswers === 0;
+  toggleHistoryDetailsButton.textContent = history.totalAnswers === 0
+    ? "履歴はまだありません"
+    : homeHistoryExpanded
+      ? "閉じる"
+      : "詳しく見る";
+  toggleHistoryDetailsButton.disabled = history.totalAnswers === 0;
 
   historyChart.innerHTML = history.days
     .map((day) => {
@@ -6561,6 +6907,7 @@ function buildHistorySummary() {
   const days = [];
   const countsByDay = new Map();
   const ratings = { again: 0, hard: 0, good: 0 };
+  let lastAnsweredAt = 0;
 
   state.reviewLog.forEach((entry) => {
     const date = new Date(entry.timestamp);
@@ -6569,6 +6916,9 @@ function buildHistorySummary() {
     countsByDay.set(key, (countsByDay.get(key) || 0) + 1);
     if (entry.rating in ratings) {
       ratings[entry.rating] += 1;
+    }
+    if (Number(entry.timestamp || 0) > lastAnsweredAt) {
+      lastAnsweredAt = Number(entry.timestamp || 0);
     }
   });
 
@@ -6596,9 +6946,17 @@ function buildHistorySummary() {
     days,
     ratings,
     totalAnswers: days.reduce((sum, day) => sum + day.count, 0),
+    todayAnswers: days[days.length - 1]?.count || 0,
     maxCount: Math.max(0, ...days.map((day) => day.count)),
     streakDays,
+    lastAnsweredAt,
+    lastAnsweredLabel: lastAnsweredAt ? formatHistoryDate(lastAnsweredAt) : "未学習",
   };
+}
+
+function formatHistoryDate(timestamp) {
+  const date = new Date(timestamp);
+  return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
 function renderRatingHints(card) {
