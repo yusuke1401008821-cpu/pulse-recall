@@ -11,6 +11,7 @@ const SUPABASE_MODULE_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/
 const CLOUD_CONFIG_ENDPOINT = "/api/client-config";
 const LOCAL_SHARE_PARAM = "deckshare";
 const CLOUD_SHARE_PARAM = "share";
+const DEMO_RESET_CONFIRM_TEXT = "サンプルを読み込む";
 const TRACKS = [
   {
     id: "medical",
@@ -278,6 +279,8 @@ const libraryList = document.getElementById("libraryList");
 const toast = document.getElementById("toast");
 const startReviewButton = document.getElementById("startReviewButton");
 const seedDemoButton = document.getElementById("seedDemoButton");
+const demoResetStatus = document.getElementById("demoResetStatus");
+const demoResetConfirmInput = document.getElementById("demoResetConfirmInput");
 const deckForm = document.getElementById("deckForm");
 const cardForm = document.getElementById("cardForm");
 const deckFormTitle = document.getElementById("deckFormTitle");
@@ -396,14 +399,8 @@ function bindEvents() {
   startReviewButton.addEventListener("click", () => {
     switchSection("study");
   });
-  seedDemoButton.addEventListener("click", () => {
-    state = normalizeState(clone(demoState));
-    clearDeckEditing();
-    clearCardEditing();
-    persist();
-    render();
-    showToast("サンプルデータを復元しました");
-  });
+  demoResetConfirmInput.addEventListener("input", renderDemoRestorePanel);
+  seedDemoButton.addEventListener("click", restoreDemoData);
   openOnboardingButton.addEventListener("click", () => {
     onboardingModal.hidden = false;
   });
@@ -521,6 +518,7 @@ function render() {
   renderStats();
   renderDeckSelectors();
   renderForms();
+  renderDemoRestorePanel();
   renderDashboard();
   renderTrackGrid();
   renderStudy();
@@ -999,6 +997,58 @@ function renderCreateGuide() {
   createGuideSummary.textContent = guide.summary;
   createGuideSteps.innerHTML = renderGuideSteps(guide.steps);
   createGuideActions.innerHTML = renderShortcutButtons(guide.actions);
+}
+
+function buildCurrentDataSummary() {
+  return `${state.decks.length}デッキ / ${state.cards.length}枚 / 学習履歴${state.reviewLog.length}件`;
+}
+
+function renderDemoRestorePanel() {
+  const typed = String(demoResetConfirmInput.value || "").trim();
+  const hasMeaningfulData = state.cards.length > 0 || state.reviewLog.length > 0 || state.decks.length > 0;
+
+  demoResetStatus.textContent = hasMeaningfulData
+    ? `現在の ${buildCurrentDataSummary()} をサンプルデータで置き換えます。必要なら先に JSON を書き出してください。`
+    : "使い方を試すためのサンプルデータを読み込めます。すでに入力がある場合は上書きされます。";
+  seedDemoButton.disabled = typed !== DEMO_RESET_CONFIRM_TEXT;
+}
+
+function restoreDemoData() {
+  const typed = String(demoResetConfirmInput.value || "").trim();
+  if (typed !== DEMO_RESET_CONFIRM_TEXT) {
+    showToast(`確認のため「${DEMO_RESET_CONFIRM_TEXT}」と入力してください`);
+    return;
+  }
+
+  const approved = window.confirm(
+    `現在の ${buildCurrentDataSummary()} をサンプルデータで置き換えます。必要なら先に JSON を書き出してください。続けますか？`,
+  );
+  if (!approved) {
+    return;
+  }
+
+  const preservedSettings = normalizeSettingsState(state.settings);
+  state = normalizeState({
+    ...clone(demoState),
+    settings: {
+      ...clone(demoState.settings),
+      ...preservedSettings,
+    },
+  });
+  currentCardId = null;
+  isAnswerVisible = false;
+  assistantErrorMessage = "";
+  selectedDeckDetailId = "";
+  deckDetailTab = "overview";
+  shareLinkCache = "";
+  clearDeckEditing();
+  clearCardEditing();
+  clearImportDraft();
+  demoResetConfirmInput.value = "";
+  persist();
+  render();
+  switchSection("dashboard");
+  showToast("サンプルデータを読み込みました");
 }
 
 function completeOnboarding() {

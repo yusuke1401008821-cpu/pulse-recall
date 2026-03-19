@@ -44,7 +44,6 @@
           <p class="eyebrow">医学部 / 英語 学習サポート</p>
           <h1>Pulse Recall</h1>
         </div>
-        <button class="ghost-button" id="seedDemoButton" type="button">サンプル復元</button>
       </header>
 
       <main class="page">
@@ -464,6 +463,23 @@
                   </label>
                 </div>
                 <p class="muted">ローカル専用でも、バックアップして別端末へ移せます。</p>
+              </section>
+
+              <section class="subpanel danger-panel">
+                <p class="eyebrow">危険操作</p>
+                <h4>サンプルデータを読み込む</h4>
+                <p class="muted" id="demoResetStatus">
+                  現在のデータをサンプルで置き換えます。必要なら先に JSON を書き出してください。
+                </p>
+                <label class="inline-select">
+                  <span>確認のため <code>サンプルを読み込む</code> と入力</span>
+                  <input id="demoResetConfirmInput" type="text" placeholder="サンプルを読み込む" autocomplete="off" />
+                </label>
+                <div class="form-actions">
+                  <button class="ghost-button danger-button" id="seedDemoButton" type="button" disabled>
+                    現在のデータを置き換える
+                  </button>
+                </div>
               </section>
             </div>
           </section>

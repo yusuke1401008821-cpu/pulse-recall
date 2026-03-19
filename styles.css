@@ -367,6 +367,15 @@ button:disabled {
   border: 1px solid var(--line);
 }
 
+.danger-panel {
+  background: rgba(199, 81, 70, 0.08);
+  border-color: rgba(199, 81, 70, 0.22);
+}
+
+.danger-panel .eyebrow {
+  color: var(--danger);
+}
+
 .subpanel h4,
 .subpanel p {
   margin-top: 0;
