@@ -146,6 +146,20 @@
             <div class="stack-list" id="pendingShareList"></div>
           </section>
 
+          <section class="panel tip-card" id="homeBackupPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">アカウント保存</p>
+                <h3>データの安心バックアップ</h3>
+              </div>
+              <button class="ghost-button" data-open-account-backup="true" type="button">設定で開く</button>
+            </div>
+            <p class="muted" id="homeBackupStatus">
+              まだアカウント保存は有効になっていません。必要なときだけログインして、自分のアカウントへバックアップできます。
+            </p>
+            <div class="button-row" id="homeBackupActions"></div>
+          </section>
+
           <section class="panel compact-history-card">
             <div class="section-heading">
               <div>
@@ -997,6 +1011,62 @@
             </section>
           </div>
 
+          <section class="panel" id="settingsAccountBackupPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">アカウント保存</p>
+                <h3>ログインして自分のアカウントへ保存</h3>
+              </div>
+              <button class="ghost-button" id="settingsRefreshBackupButton" type="button">状態を更新</button>
+            </div>
+            <p class="muted" id="settingsAccountBackupSummary">
+              ログインすると、この端末のデッキ・カード・画像・学習履歴・設定を自分のアカウントへ自動バックアップできます。
+            </p>
+            <div class="home-grid">
+              <section class="subpanel">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">ログイン</p>
+                    <h4>マジックリンクでログイン</h4>
+                  </div>
+                </div>
+                <p class="muted" id="settingsAccountBackupStatus">
+                  共有と同じアカウントで使えます。普段の学習はログイン不要です。
+                </p>
+                <div class="stack-form">
+                  <label>
+                    <span>メールアドレス</span>
+                    <input id="settingsAuthEmailInput" type="email" placeholder="you@example.com" />
+                  </label>
+                  <div class="form-actions">
+                    <button class="primary-button" id="settingsSendMagicLinkButton" type="button">マジックリンクを送る</button>
+                    <button class="ghost-button" id="settingsSignOutButton" type="button">ログアウト</button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="subpanel">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">自動バックアップ</p>
+                    <h4>この端末の変更を自動で保存</h4>
+                  </div>
+                </div>
+                <label class="toggle-row backup-toggle">
+                  <input id="settingsAutoBackupCheckbox" type="checkbox" />
+                  <span>ログイン中は変更から15秒後に自動バックアップする</span>
+                </label>
+                <p class="muted" id="settingsBackupLastSaved">
+                  まだクラウド保存はありません。必要なら今すぐバックアップできます。
+                </p>
+                <div class="form-actions">
+                  <button class="primary-button" id="settingsBackupNowButton" type="button">今すぐバックアップ</button>
+                </div>
+              </section>
+            </div>
+            <div class="stack-list" id="settingsBackupSnapshotList"></div>
+          </section>
+
           <section class="panel">
             <div class="section-heading">
               <div>
@@ -1043,18 +1113,22 @@
     <div class="modal-shell" id="onboardingModal" hidden>
       <div class="modal-card">
         <p class="eyebrow">ようこそ</p>
-        <h3>はじめての 3 ステップ</h3>
+        <h3>はじめての 4 ステップ</h3>
         <div class="onboarding-steps">
           <article>
             <strong>1. デッキを作る</strong>
             <p>「作成」タブで、医学用・英語用にデッキを分けると使いやすくなります。</p>
           </article>
           <article>
-            <strong>2. カードを追加する</strong>
+            <strong>2. アカウント保存を有効にする</strong>
+            <p>「設定」タブでログインすると、デッキ・カード・画像・学習履歴を自分のアカウントへ自動バックアップできます。</p>
+          </article>
+          <article>
+            <strong>3. カードを追加する</strong>
             <p>手入力でも PDF 取り込みでもOKです。まずは10枚前後から始めるのが楽です。</p>
           </article>
           <article>
-            <strong>3. 学習で回す</strong>
+            <strong>4. 学習で回す</strong>
             <p>「学習」タブで期限が来たカードを回すと、復習間隔が自動で整います。</p>
           </article>
         </div>

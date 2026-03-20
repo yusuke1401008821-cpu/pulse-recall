@@ -114,12 +114,27 @@ create table if not exists public.user_review_log (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.user_backup_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  kind text not null default 'manual' check (kind in ('auto', 'manual', 'pre_restore')),
+  snapshot_version integer not null default 4,
+  storage_path text not null unique,
+  summary_json jsonb not null default '{}'::jsonb,
+  is_latest boolean not null default false,
+  source_device text not null default '',
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create index if not exists idx_shared_cards_deck_id on public.shared_cards (deck_id);
 create index if not exists idx_shared_card_media_card_id on public.shared_card_media (shared_card_id, side, sort_index);
 create index if not exists idx_deck_members_user_id on public.deck_members (user_id);
 create index if not exists idx_access_requests_deck_id on public.deck_access_requests (deck_id);
 create index if not exists idx_progress_user_id on public.user_card_progress (user_id, deck_id);
 create index if not exists idx_review_log_user_id on public.user_review_log (user_id, deck_id);
+create index if not exists idx_backup_snapshots_user_id on public.user_backup_snapshots (user_id, created_at desc);
+create unique index if not exists idx_backup_snapshots_latest on public.user_backup_snapshots (user_id) where is_latest;
 
 drop trigger if exists set_profiles_updated_at on public.profiles;
 create trigger set_profiles_updated_at
@@ -149,6 +164,11 @@ for each row execute procedure public.set_updated_at();
 drop trigger if exists set_progress_updated_at on public.user_card_progress;
 create trigger set_progress_updated_at
 before update on public.user_card_progress
+for each row execute procedure public.set_updated_at();
+
+drop trigger if exists set_backup_snapshots_updated_at on public.user_backup_snapshots;
+create trigger set_backup_snapshots_updated_at
+before update on public.user_backup_snapshots
 for each row execute procedure public.set_updated_at();
 
 create or replace function public.is_deck_owner(target_deck_id uuid)
@@ -205,6 +225,7 @@ alter table public.deck_members enable row level security;
 alter table public.deck_access_requests enable row level security;
 alter table public.user_card_progress enable row level security;
 alter table public.user_review_log enable row level security;
+alter table public.user_backup_snapshots enable row level security;
 
 drop policy if exists "profiles_select_self" on public.profiles;
 create policy "profiles_select_self"
@@ -389,6 +410,35 @@ on public.user_review_log
 for insert
 to authenticated
 with check (user_id = auth.uid() and public.is_accepted_member(deck_id));
+
+drop policy if exists "user_backup_snapshots_select_self" on public.user_backup_snapshots;
+create policy "user_backup_snapshots_select_self"
+on public.user_backup_snapshots
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "user_backup_snapshots_insert_self" on public.user_backup_snapshots;
+create policy "user_backup_snapshots_insert_self"
+on public.user_backup_snapshots
+for insert
+to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists "user_backup_snapshots_update_self" on public.user_backup_snapshots;
+create policy "user_backup_snapshots_update_self"
+on public.user_backup_snapshots
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "user_backup_snapshots_delete_self" on public.user_backup_snapshots;
+create policy "user_backup_snapshots_delete_self"
+on public.user_backup_snapshots
+for delete
+to authenticated
+using (user_id = auth.uid());
 
 create or replace function public.get_share_preview(target_token text)
 returns table (
@@ -584,6 +634,11 @@ values ('shared-card-media', 'shared-card-media', true)
 on conflict (id) do update
 set public = excluded.public;
 
+insert into storage.buckets (id, name, public)
+values ('user-backup-snapshots', 'user-backup-snapshots', false)
+on conflict (id) do update
+set public = excluded.public;
+
 drop policy if exists "shared_card_media_public_read" on storage.objects;
 create policy "shared_card_media_public_read"
 on storage.objects
@@ -626,4 +681,48 @@ to authenticated
 using (
   bucket_id = 'shared-card-media'
   and public.can_edit_shared_deck((storage.foldername(name))[1]::uuid)
+);
+
+drop policy if exists "user_backup_snapshots_select_self" on storage.objects;
+create policy "user_backup_snapshots_select_self"
+on storage.objects
+for select
+to authenticated
+using (
+  bucket_id = 'user-backup-snapshots'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "user_backup_snapshots_insert_self" on storage.objects;
+create policy "user_backup_snapshots_insert_self"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'user-backup-snapshots'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "user_backup_snapshots_update_self" on storage.objects;
+create policy "user_backup_snapshots_update_self"
+on storage.objects
+for update
+to authenticated
+using (
+  bucket_id = 'user-backup-snapshots'
+  and (storage.foldername(name))[1] = auth.uid()::text
+)
+with check (
+  bucket_id = 'user-backup-snapshots'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "user_backup_snapshots_delete_self" on storage.objects;
+create policy "user_backup_snapshots_delete_self"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'user-backup-snapshots'
+  and (storage.foldername(name))[1] = auth.uid()::text
 );

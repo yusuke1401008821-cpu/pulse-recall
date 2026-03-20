@@ -571,6 +571,25 @@ button:disabled {
   margin-top: 0;
 }
 
+.backup-toggle {
+  align-items: center;
+}
+
+.backup-toggle input {
+  margin: 0;
+}
+
+.backup-snapshot-card {
+  gap: 10px;
+}
+
+#settingsAccountBackupStatus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .create-panel {
   display: none;
 }
@@ -1113,6 +1132,21 @@ button:disabled {
   background: rgba(24, 49, 83, 0.08);
   color: var(--text-soft);
   font-size: 0.86rem;
+}
+
+.meta-pill.success {
+  background: rgba(31, 122, 98, 0.14);
+  color: var(--success);
+}
+
+.meta-pill.caution {
+  background: rgba(211, 139, 44, 0.14);
+  color: var(--warning);
+}
+
+.meta-pill.danger {
+  background: rgba(199, 81, 70, 0.16);
+  color: var(--danger);
 }
 
 .meta-pill.medical {

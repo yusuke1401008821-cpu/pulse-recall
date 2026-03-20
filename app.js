@@ -13,6 +13,10 @@ const AI_GENERATE_ENDPOINT = "/api/ai/generate";
 const LOCAL_SHARE_PARAM = "deckshare";
 const CLOUD_SHARE_PARAM = "share";
 const SHARED_MEDIA_BUCKET = "shared-card-media";
+const BACKUP_SNAPSHOT_BUCKET = "user-backup-snapshots";
+const BACKUP_SNAPSHOT_VERSION = 4;
+const BACKUP_AUTO_DEBOUNCE_MS = 15 * 1000;
+const BACKUP_RESTORE_POINT_LIMIT = 5;
 const MEDIA_DB_NAME = "pulse-recall-media-v1";
 const MEDIA_DB_VERSION = 1;
 const MEDIA_STORE_NAME = "card-media";
@@ -304,6 +308,14 @@ let cloudState = {
   pendingRequests: [],
   membersByDeck: {},
   lastSharePreview: null,
+  backupSnapshots: [],
+  backupStatus: "idle",
+  backupError: "",
+  latestBackupAt: 0,
+  lastBackupFingerprint: "",
+  backupDirty: false,
+  backupTimer: null,
+  backupBusy: false,
 };
 const mediaPreviewUrlCache = new Map();
 
@@ -334,6 +346,8 @@ const joinedSharedDeckList = document.getElementById("joinedSharedDeckList");
 const joinedSharedDeckCount = document.getElementById("joinedSharedDeckCount");
 const pendingShareLabel = document.getElementById("pendingShareLabel");
 const pendingShareList = document.getElementById("pendingShareList");
+const homeBackupStatus = document.getElementById("homeBackupStatus");
+const homeBackupActions = document.getElementById("homeBackupActions");
 const historyChart = document.getElementById("historyChart");
 const historySummary = document.getElementById("historySummary");
 const historyBreakdown = document.getElementById("historyBreakdown");
@@ -566,6 +580,16 @@ const completeOnboardingButton = document.getElementById("completeOnboardingButt
 const settingsOpenGuideButton = document.getElementById("settingsOpenGuideButton");
 const settingsOverviewSummary = document.getElementById("settingsOverviewSummary");
 const settingsSnapshotList = document.getElementById("settingsSnapshotList");
+const settingsAccountBackupSummary = document.getElementById("settingsAccountBackupSummary");
+const settingsAccountBackupStatus = document.getElementById("settingsAccountBackupStatus");
+const settingsAuthEmailInput = document.getElementById("settingsAuthEmailInput");
+const settingsSendMagicLinkButton = document.getElementById("settingsSendMagicLinkButton");
+const settingsSignOutButton = document.getElementById("settingsSignOutButton");
+const settingsAutoBackupCheckbox = document.getElementById("settingsAutoBackupCheckbox");
+const settingsBackupLastSaved = document.getElementById("settingsBackupLastSaved");
+const settingsBackupNowButton = document.getElementById("settingsBackupNowButton");
+const settingsRefreshBackupButton = document.getElementById("settingsRefreshBackupButton");
+const settingsBackupSnapshotList = document.getElementById("settingsBackupSnapshotList");
 const deckActionModal = document.getElementById("deckActionModal");
 const deckActionTitle = document.getElementById("deckActionTitle");
 const deckActionStatus = document.getElementById("deckActionStatus");
@@ -754,6 +778,17 @@ const FEATURE_SEARCH_ITEMS = [
     action: "section",
     sectionId: "settings",
     targetId: "exportJsonButton",
+    featured: true,
+  },
+  {
+    id: "account-backup",
+    title: "アカウント保存を開く",
+    sectionLabel: "設定",
+    description: "ログイン、自動バックアップ、復元ポイントをまとめて管理します。",
+    keywords: ["アカウント", "バックアップ", "ログイン", "復元", "クラウド保存"],
+    action: "section",
+    sectionId: "settings",
+    targetId: "settingsAuthEmailInput",
     featured: true,
   },
   {
@@ -999,9 +1034,26 @@ function bindEvents() {
     renderSharePanel();
     renderDeckDetail();
   });
-  authEmailInput.addEventListener("input", renderSharePanel);
-  signInMagicLinkButton.addEventListener("click", sendMagicLink);
+  authEmailInput.addEventListener("input", () => {
+    syncAuthEmailInputs(authEmailInput.value, "share");
+    renderSharePanel();
+    renderSettingsPanel();
+  });
+  if (settingsAuthEmailInput) {
+    settingsAuthEmailInput.addEventListener("input", () => {
+      syncAuthEmailInputs(settingsAuthEmailInput.value, "settings");
+      renderSharePanel();
+      renderSettingsPanel();
+    });
+  }
+  signInMagicLinkButton.addEventListener("click", () => sendMagicLink(authEmailInput.value));
+  if (settingsSendMagicLinkButton) {
+    settingsSendMagicLinkButton.addEventListener("click", () => sendMagicLink(settingsAuthEmailInput?.value || ""));
+  }
   signOutButton.addEventListener("click", signOutCloud);
+  if (settingsSignOutButton) {
+    settingsSignOutButton.addEventListener("click", signOutCloud);
+  }
   shareDeckButton.addEventListener("click", shareDeck);
   copyShareLinkButton.addEventListener("click", copyShareLink);
   syncSharedDeckButton.addEventListener("click", syncSelectedSharedDeck);
@@ -1011,6 +1063,25 @@ function bindEvents() {
   exportJsonButton.addEventListener("click", exportJsonBackup);
   importJsonFileInput.addEventListener("change", importJsonBackup);
   refreshCloudButton.addEventListener("click", refreshCloudData);
+  if (settingsAutoBackupCheckbox) {
+    settingsAutoBackupCheckbox.addEventListener("change", handleAutoBackupToggle);
+  }
+  if (settingsBackupNowButton) {
+    settingsBackupNowButton.addEventListener("click", () => createCloudBackupSnapshot({ kind: "manual" }));
+  }
+  if (settingsRefreshBackupButton) {
+    settingsRefreshBackupButton.addEventListener("click", () => {
+      refreshCloudData({ silent: false }).catch((error) => {
+        console.warn("Failed to refresh cloud data:", error);
+      });
+      refreshCloudBackups({ silent: false }).catch((error) => {
+        console.warn("Failed to refresh cloud backups:", error);
+      });
+    });
+  }
+  if (settingsBackupSnapshotList) {
+    settingsBackupSnapshotList.addEventListener("click", handleBackupSnapshotActions);
+  }
   if (toggleHistoryDetailsButton) {
     toggleHistoryDetailsButton.addEventListener("click", toggleHistoryDetails);
   }
@@ -1054,6 +1125,8 @@ function bindEvents() {
   document.querySelectorAll("[data-short-quiz-grade]").forEach((button) => {
     button.addEventListener("click", () => gradeShortQuiz(button.dataset.shortQuizGrade));
   });
+  document.addEventListener("visibilitychange", handleDocumentVisibilityChange);
+  window.addEventListener("pagehide", handlePageHide);
 }
 
 function createEmptyMediaDraft() {
@@ -2283,6 +2356,11 @@ function openShareManager() {
   switchSection("manage");
 }
 
+function openAccountBackupSettings() {
+  switchSection("settings");
+  focusFeatureTarget("settingsAuthEmailInput");
+}
+
 function openDeckActionModal(deckId) {
   const deck = getDeckById(deckId);
   if (!deck) {
@@ -2740,13 +2818,210 @@ function buildCurrentDataSummary() {
   return `${state.decks.length}デッキ / ${state.cards.length}枚 / 画像${mediaCount}枚 / 学習履歴${state.reviewLog.length}件`;
 }
 
+function getLatestAutoBackupSnapshot() {
+  return cloudState.backupSnapshots.find((snapshot) => snapshot.isLatest) || null;
+}
+
+function getMostRecentBackupSnapshot() {
+  return [...cloudState.backupSnapshots].sort((left, right) => (right.createdAt || right.updatedAt) - (left.createdAt || left.updatedAt))[0] || null;
+}
+
+function getRestorePointSnapshots() {
+  return cloudState.backupSnapshots.filter((snapshot) => !snapshot.isLatest).slice(0, BACKUP_RESTORE_POINT_LIMIT);
+}
+
+function getAccountBackupStatusCode() {
+  if (!isCloudConfigured()) {
+    return "unconfigured";
+  }
+  if (!isCloudSignedIn()) {
+    return "signed-out";
+  }
+  if (cloudState.backupBusy || cloudState.backupStatus === "syncing") {
+    return "syncing";
+  }
+  if (cloudState.backupStatus === "error") {
+    return "error";
+  }
+  if (cloudState.backupDirty) {
+    return "dirty";
+  }
+  if (getMostRecentBackupSnapshot()) {
+    return "synced";
+  }
+  return "dirty";
+}
+
+function formatAccountBackupStatusLabel() {
+  const status = getAccountBackupStatusCode();
+  if (status === "syncing") {
+    return "保存中";
+  }
+  if (status === "synced") {
+    return "バックアップ済み";
+  }
+  if (status === "dirty") {
+    return "未保存の変更あり";
+  }
+  if (status === "error") {
+    return "保存失敗";
+  }
+  return "未設定";
+}
+
+function formatAccountBackupStatusClassName() {
+  const status = getAccountBackupStatusCode();
+  if (status === "synced") {
+    return "success";
+  }
+  if (status === "dirty" || status === "syncing") {
+    return "caution";
+  }
+  if (status === "error") {
+    return "danger";
+  }
+  return "";
+}
+
+function formatBackupDateTime(timestamp) {
+  if (!timestamp) {
+    return "まだありません";
+  }
+  return new Date(timestamp).toLocaleString("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function buildBackupSummaryText(summary = {}) {
+  return `${summary.deckCount || 0}デッキ / ${summary.cardCount || 0}枚 / 画像${summary.imageCount || 0}枚 / 履歴${summary.reviewLogCount || 0}件`;
+}
+
+function buildBackupSnapshotMarkup(snapshot) {
+  const summary = snapshot.summary || {};
+  const kindLabel =
+    snapshot.kind === "auto" ? "最新の自動バックアップ" : snapshot.kind === "pre_restore" ? "復元前の安全退避" : "手動バックアップ";
+  const pillClassName = snapshot.isLatest ? "success" : snapshot.kind === "pre_restore" ? "caution" : "";
+  return `
+    <article class="library-card backup-snapshot-card">
+      <div class="card-row-header">
+        <div>
+          <h4>${escapeHtml(kindLabel)}</h4>
+          <p class="muted">${escapeHtml(buildBackupSummaryText(summary))}</p>
+        </div>
+        <span class="meta-pill ${escapeHtml(pillClassName)}">${snapshot.isLatest ? "最新" : escapeHtml(snapshot.kind === "pre_restore" ? "退避" : "保存済み")}</span>
+      </div>
+      <p class="muted">
+        保存日時: ${escapeHtml(formatBackupDateTime(snapshot.createdAt || snapshot.updatedAt))}
+        ${snapshot.sourceDevice ? ` / 端末: ${escapeHtml(snapshot.sourceDevice)}` : ""}
+      </p>
+      <div class="button-row">
+        <button class="ghost-button" data-restore-backup-id="${escapeHtml(snapshot.id)}" type="button">この端末に復元</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderHomeBackupPanel() {
+  if (!homeBackupStatus || !homeBackupActions) {
+    return;
+  }
+
+  const latestAuto = getLatestAutoBackupSnapshot();
+  const latestSnapshot = latestAuto || getMostRecentBackupSnapshot();
+  const statusLabel = formatAccountBackupStatusLabel();
+  const canBackUpNow = isCloudConfigured() && isCloudSignedIn();
+
+  homeBackupStatus.textContent = !isCloudConfigured()
+    ? "Supabase を設定すると、ログイン後にこの端末のデッキ・カード・画像・履歴を自分のアカウントへ保存できます。"
+    : !isCloudSignedIn()
+      ? "ログインすると、自動バックアップが有効になり、別端末でも最新の保存状態から復元できます。"
+      : latestSnapshot
+        ? `${statusLabel}。最新は ${formatBackupDateTime(latestSnapshot.createdAt || latestSnapshot.updatedAt)} に ${buildBackupSummaryText(latestSnapshot.summary)} を保存しました。`
+        : `${statusLabel}。まだクラウド保存はありません。必要なら今すぐバックアップできます。`;
+
+  homeBackupActions.innerHTML = canBackUpNow
+    ? `
+        <button class="primary-button" data-trigger-backup-now="true" type="button" ${cloudState.backupBusy ? "disabled" : ""}>今すぐバックアップ</button>
+        <button class="ghost-button" data-open-account-backup="true" type="button">復元ポイントを見る</button>
+      `
+    : `
+        <button class="primary-button" data-open-account-backup="true" type="button">アカウント保存を開く</button>
+      `;
+}
+
+function renderSettingsAccountBackupPanel() {
+  if (!settingsAccountBackupSummary) {
+    return;
+  }
+
+  const hasClientConfig = isCloudConfigured();
+  const isSignedIn = isCloudSignedIn();
+  const latestAuto = getLatestAutoBackupSnapshot();
+  const latestSnapshot = latestAuto || getMostRecentBackupSnapshot();
+  const restorePoints = getRestorePointSnapshots();
+  const statusLabel = formatAccountBackupStatusLabel();
+  const statusClassName = formatAccountBackupStatusClassName();
+
+  if (settingsAutoBackupCheckbox) {
+    settingsAutoBackupCheckbox.checked = state.settings?.autoBackupEnabled !== false;
+  }
+
+  settingsAccountBackupSummary.textContent = !hasClientConfig
+    ? "Supabase を設定すると、ログイン後にこの端末のデッキ・カード・画像・学習履歴・設定を自分のアカウントへ自動バックアップできます。"
+    : isSignedIn
+      ? "共有と同じアカウントで使えます。ローカル優先のまま、変更を自分のクラウドバックアップへ安全に保存します。"
+      : "普段の学習はログイン不要です。バックアップを有効にしたいときだけ、ここからマジックリンクでログインします。";
+
+  settingsAccountBackupStatus.innerHTML = `
+    <span class="meta-pill ${escapeHtml(statusClassName)}">${escapeHtml(statusLabel)}</span>
+    <span>${escapeHtml(
+      !hasClientConfig
+        ? "現在はローカル専用です。"
+        : isSignedIn
+          ? `${cloudState.session.user.email || "ログイン中"} でアカウント保存を使えます。`
+          : "まだログインしていません。"
+    )}</span>
+    ${cloudState.backupError ? `<span class="muted">${escapeHtml(cloudState.backupError)}</span>` : ""}
+  `;
+
+  settingsBackupLastSaved.textContent = latestSnapshot
+    ? `最後の保存: ${formatBackupDateTime(latestSnapshot.createdAt || latestSnapshot.updatedAt)} / ${buildBackupSummaryText(latestSnapshot.summary)}`
+    : "まだクラウド保存はありません。初回バックアップを作ると、別端末から復元できるようになります。";
+
+  if (settingsSendMagicLinkButton) {
+    settingsSendMagicLinkButton.disabled = !hasClientConfig || !String(settingsAuthEmailInput?.value || authEmailInput?.value || "").trim();
+  }
+  if (settingsSignOutButton) {
+    settingsSignOutButton.disabled = !isSignedIn;
+  }
+  if (settingsBackupNowButton) {
+    settingsBackupNowButton.disabled = !hasClientConfig || !isSignedIn || cloudState.backupBusy;
+  }
+  if (settingsRefreshBackupButton) {
+    settingsRefreshBackupButton.disabled = !hasClientConfig;
+  }
+
+  settingsBackupSnapshotList.innerHTML = latestAuto || restorePoints.length
+    ? [latestAuto, ...restorePoints].filter(Boolean).map((snapshot) => buildBackupSnapshotMarkup(snapshot)).join("")
+    : `
+        <article class="library-card">
+          <h4>復元ポイントはまだありません</h4>
+          <p class="muted">ログインしてバックアップを作ると、ここからこの端末へ戻せます。</p>
+        </article>
+      `;
+}
+
 function renderSettingsPanel() {
   const sharedDeckCount = state.decks.filter((deck) => deck.storageMode === "shared").length;
   const localDeckCount = state.decks.length - sharedDeckCount;
   const latestDeck = [...state.decks].sort((left, right) => right.updatedAt - left.updatedAt)[0] || null;
+  const latestSnapshot = getLatestAutoBackupSnapshot() || getMostRecentBackupSnapshot();
 
   settingsOverviewSummary.textContent =
-    "バックアップ、ガイドの再表示、初期化のような誤操作に注意したい項目をここへまとめています。初期化は必ず確認を挟む安全な導線にしています。";
+    "アカウント保存、JSONバックアップ、ガイドの再表示、初期化のようなデータ保護まわりの項目をここへまとめています。初期化は必ず確認を挟む安全な導線にしています。";
   settingsSnapshotList.innerHTML = [
     {
       title: "データ量",
@@ -2766,6 +3041,12 @@ function renderSettingsPanel() {
         : "まだデッキがありません。スターター追加やデッキ作成から始められます。",
     },
     {
+      title: "アカウント保存の状態",
+      text: latestSnapshot
+        ? `${formatAccountBackupStatusLabel()}。最後の保存は ${formatBackupDateTime(latestSnapshot.createdAt || latestSnapshot.updatedAt)} です。`
+        : `${formatAccountBackupStatusLabel()}。まだクラウド保存はありません。`,
+    },
+    {
       title: "ガイドの状態",
       text: state.settings?.onboardingCompleted
         ? "初回ガイドは完了済みです。必要になったらこの設定画面からいつでも開き直せます。"
@@ -2781,6 +3062,8 @@ function renderSettingsPanel() {
       `,
     )
     .join("");
+
+  renderSettingsAccountBackupPanel();
 }
 
 function renderDemoRestorePanel() {
@@ -3139,10 +3422,10 @@ function renderSharePanel() {
   renderShareGuidePanel(deck);
 
   authStatus.textContent = !hasClientConfig
-    ? "Supabase 未設定ならローカル専用のまま使えます。共有を使う時だけ接続してください。"
+    ? "Supabase 未設定ならローカル専用のまま使えます。共有やアカウント保存を使う時だけ接続してください。"
     : isSignedIn
-      ? `${cloudState.session.user.email || "ログイン中"} で共有機能を使えます。`
-      : "共有リンクを使う時だけログインします。普段の学習はログイン不要です。";
+      ? `${cloudState.session.user.email || "ログイン中"} で共有機能を使えます。ログイン状態は設定の「アカウント保存」からも管理できます。`
+      : "共有やアカウント保存を使う時だけログインします。普段の学習はログイン不要です。";
   signOutButton.disabled = !isSignedIn;
   signInMagicLinkButton.disabled = !hasClientConfig || !String(authEmailInput.value || "").trim();
   refreshCloudButton.disabled = !hasClientConfig;
@@ -3889,6 +4172,7 @@ function renderDashboard() {
         </article>
       `;
 
+  renderHomeBackupPanel();
   renderHistoryPanel();
 }
 
@@ -6259,6 +6543,20 @@ function handleDeckActions(event) {
     return;
   }
 
+  const accountBackupButton = event.target.closest("[data-open-account-backup]");
+  if (accountBackupButton) {
+    openAccountBackupSettings();
+    return;
+  }
+
+  const backupNowButton = event.target.closest("[data-trigger-backup-now]");
+  if (backupNowButton) {
+    createCloudBackupSnapshot({ kind: "manual" }).catch((error) => {
+      console.warn("Failed to create manual backup:", error);
+    });
+    return;
+  }
+
   const sharePanelButton = event.target.closest("[data-open-share-panel]");
   if (sharePanelButton) {
     openShareManager();
@@ -7910,8 +8208,11 @@ function getDeckName(deckId) {
   return getDeckById(deckId)?.name || "未分類";
 }
 
-function persist() {
+function persist({ skipCloudBackup = false } = {}) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (!skipCloudBackup) {
+    markCloudBackupDirty();
+  }
 }
 
 function loadState() {
@@ -7930,6 +8231,105 @@ function loadState() {
     console.warn("Failed to parse saved state:", error);
     return normalizeState(clone(demoState));
   }
+}
+
+function isCloudConfigured() {
+  return Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
+}
+
+function isCloudSignedIn() {
+  return Boolean(cloudState.session?.user);
+}
+
+function buildBackupFingerprint(snapshotState = state) {
+  return JSON.stringify({
+    decks: snapshotState.decks || [],
+    cards: snapshotState.cards || [],
+    reviewLog: snapshotState.reviewLog || [],
+    assistant: snapshotState.assistant || {},
+    settings: snapshotState.settings || {},
+  });
+}
+
+function buildBackupSummary(snapshotState = state, assets = []) {
+  const decks = Array.isArray(snapshotState.decks) ? snapshotState.decks : [];
+  const cards = Array.isArray(snapshotState.cards) ? snapshotState.cards : [];
+  const reviewLog = Array.isArray(snapshotState.reviewLog) ? snapshotState.reviewLog : [];
+  const imageCount = cards.reduce((sum, card) => sum + (card.frontMedia || []).length + (card.backMedia || []).length, 0);
+  const sharedDeckCount = decks.filter((deck) => deck.storageMode === "shared").length;
+  const lastDeckUpdate = decks.reduce((max, deck) => Math.max(max, Number(deck.updatedAt || deck.createdAt || 0)), 0);
+  const lastCardUpdate = cards.reduce((max, card) => Math.max(max, Number(card.updatedAt || card.createdAt || 0)), 0);
+  const lastReviewUpdate = reviewLog.reduce((max, entry) => Math.max(max, Number(entry.timestamp || 0)), 0);
+  const lastActivityAt = Math.max(lastDeckUpdate, lastCardUpdate, lastReviewUpdate, Date.now());
+
+  return {
+    deckCount: decks.length,
+    cardCount: cards.length,
+    reviewLogCount: reviewLog.length,
+    imageCount,
+    assetCount: Array.isArray(assets) ? assets.length : 0,
+    sharedDeckCount,
+    lastActivityAt,
+    fingerprint: buildBackupFingerprint(snapshotState),
+  };
+}
+
+function normalizeBackupSnapshotRow(row = {}) {
+  const summary = row.summary_json && typeof row.summary_json === "object" ? row.summary_json : {};
+  return {
+    id: String(row.id || "").trim(),
+    kind: ["auto", "manual", "pre_restore"].includes(String(row.kind || "")) ? String(row.kind) : "manual",
+    snapshotVersion: Number(row.snapshot_version || BACKUP_SNAPSHOT_VERSION),
+    storagePath: String(row.storage_path || "").trim(),
+    isLatest: Boolean(row.is_latest),
+    summary: {
+      deckCount: Number(summary.deckCount || 0),
+      cardCount: Number(summary.cardCount || 0),
+      reviewLogCount: Number(summary.reviewLogCount || 0),
+      imageCount: Number(summary.imageCount || 0),
+      assetCount: Number(summary.assetCount || 0),
+      sharedDeckCount: Number(summary.sharedDeckCount || 0),
+      lastActivityAt: Number(summary.lastActivityAt || 0),
+      fingerprint: String(summary.fingerprint || "").trim(),
+    },
+    sourceDevice: String(row.source_device || "").trim(),
+    createdAt: parseCloudTimestamp(row.created_at),
+    updatedAt: parseCloudTimestamp(row.updated_at),
+  };
+}
+
+function getSourceDeviceLabel() {
+  const pieces = [];
+  const platform = String(navigator.platform || "").trim();
+  if (platform) {
+    pieces.push(platform);
+  }
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+    pieces.push("iPhone/iPad");
+  } else if (/mac/i.test(navigator.userAgent)) {
+    pieces.push("Mac");
+  }
+  if (/safari/i.test(navigator.userAgent) && !/chrome|crios|android/i.test(navigator.userAgent)) {
+    pieces.push("Safari");
+  }
+  return [...new Set(pieces)].join(" / ") || "この端末";
+}
+
+async function buildBackupSnapshotPayload() {
+  const snapshotState = normalizeState(clone(state));
+  const assets = await collectBackupAssets();
+  const summary = buildBackupSummary(snapshotState, assets);
+  return {
+    exportedAt: new Date().toISOString(),
+    version: BACKUP_SNAPSHOT_VERSION,
+    state: snapshotState,
+    assets,
+    backupMeta: {
+      summary,
+      sourceDevice: getSourceDeviceLabel(),
+      includesSharedDecks: true,
+    },
+  };
 }
 
 async function fetchCloudConfig() {
@@ -7985,6 +8385,9 @@ async function getSupabaseClient() {
 
   cloudState.client.auth.onAuthStateChange((_event, session) => {
     cloudState.session = session;
+    if (session?.user?.email) {
+      syncAuthEmailInputs(session.user.email, "cloud");
+    }
     if (session?.user) {
       ensureCloudProfile().catch((error) => {
         console.warn("Failed to ensure profile:", error);
@@ -7993,7 +8396,11 @@ async function getSupabaseClient() {
     refreshCloudData({ silent: true }).catch((error) => {
       console.warn("Failed to refresh cloud data:", error);
     });
+    refreshCloudBackups({ silent: true }).catch((error) => {
+      console.warn("Failed to refresh cloud backups:", error);
+    });
     renderSharePanel();
+    renderSettingsPanel();
   });
 
   return cloudState.client;
@@ -8030,9 +8437,13 @@ async function initializeCloud() {
   cloudState.session = session;
   if (session?.user) {
     await ensureCloudProfile();
+    if (session.user.email) {
+      syncAuthEmailInputs(session.user.email, "cloud");
+    }
   }
 
   await refreshCloudData({ silent: true });
+  await refreshCloudBackups({ silent: true });
   cleanupAuthUrl();
 }
 
@@ -8860,8 +9271,18 @@ function importLocalSharedDeck(payload) {
   showToast(`${deckName} を共有リンクから追加しました`);
 }
 
-async function sendMagicLink() {
-  const email = String(authEmailInput.value || "").trim();
+function syncAuthEmailInputs(value, source = "") {
+  const nextValue = String(value || "").trim();
+  if (source !== "share" && authEmailInput && authEmailInput.value !== nextValue) {
+    authEmailInput.value = nextValue;
+  }
+  if (source !== "settings" && settingsAuthEmailInput && settingsAuthEmailInput.value !== nextValue) {
+    settingsAuthEmailInput.value = nextValue;
+  }
+}
+
+async function sendMagicLink(emailValue = "") {
+  const email = String(emailValue || settingsAuthEmailInput?.value || authEmailInput.value || "").trim();
   const client = cloudState.client || (await getSupabaseClient());
 
   if (!client) {
@@ -8872,6 +9293,8 @@ async function sendMagicLink() {
     showToast("メールアドレスを入力してください");
     return;
   }
+
+  syncAuthEmailInputs(email, "cloud");
 
   const redirectUrl = cloudState.shareToken ? buildShareUrl(cloudState.shareToken) : `${window.location.origin}${window.location.pathname}`;
   const { error } = await client.auth.signInWithOtp({
@@ -8886,7 +9309,7 @@ async function sendMagicLink() {
     return;
   }
 
-  showToast("マジックリンクを送信しました。メールから戻ってください");
+  showToast("マジックリンクを送信しました。メールからこのアプリへ戻ってください");
 }
 
 async function signOutCloud() {
@@ -8900,8 +9323,427 @@ async function signOutCloud() {
   cloudState.profile = null;
   cloudState.pendingRequests = [];
   cloudState.membersByDeck = {};
+  cloudState.backupSnapshots = [];
+  cloudState.backupStatus = "signed-out";
+  cloudState.backupError = "";
+  cloudState.latestBackupAt = 0;
+  cloudState.lastBackupFingerprint = "";
+  cloudState.backupDirty = false;
+  if (cloudState.backupTimer) {
+    window.clearTimeout(cloudState.backupTimer);
+    cloudState.backupTimer = null;
+  }
   render();
-  showToast("共有アカウントからログアウトしました");
+  showToast("アカウントからログアウトしました");
+}
+
+function clearCloudBackupTimer() {
+  if (cloudState.backupTimer) {
+    window.clearTimeout(cloudState.backupTimer);
+    cloudState.backupTimer = null;
+  }
+}
+
+function handleAutoBackupToggle() {
+  state.settings.autoBackupEnabled = Boolean(settingsAutoBackupCheckbox?.checked);
+  persist({ skipCloudBackup: !state.settings.autoBackupEnabled });
+  if (!state.settings.autoBackupEnabled) {
+    clearCloudBackupTimer();
+  } else {
+    markCloudBackupDirty({ immediate: true });
+  }
+  render();
+  showToast(state.settings.autoBackupEnabled ? "自動バックアップを有効にしました" : "自動バックアップをオフにしました");
+}
+
+function handleBackupSnapshotActions(event) {
+  const restoreButton = event.target.closest("[data-restore-backup-id]");
+  if (!restoreButton) {
+    return;
+  }
+
+  restoreCloudBackupSnapshot(restoreButton.dataset.restoreBackupId).catch((error) => {
+    console.warn("Failed to restore cloud backup:", error);
+    showToast(error.message || "バックアップの復元に失敗しました");
+  });
+}
+
+function handleDocumentVisibilityChange() {
+  if (state.settings?.autoBackupEnabled === false) {
+    return;
+  }
+  if (document.visibilityState === "hidden") {
+    flushPendingCloudBackup({ showToast: false }).catch((error) => {
+      console.warn("Failed to flush backup on visibility change:", error);
+    });
+  }
+}
+
+function handlePageHide() {
+  if (state.settings?.autoBackupEnabled === false) {
+    return;
+  }
+  flushPendingCloudBackup({ showToast: false }).catch((error) => {
+    console.warn("Failed to flush backup on page hide:", error);
+  });
+}
+
+function markCloudBackupDirty({ immediate = false } = {}) {
+  const fingerprint = buildBackupFingerprint();
+  const isFresh = Boolean(fingerprint && fingerprint === cloudState.lastBackupFingerprint);
+  cloudState.backupDirty = !isFresh;
+
+  if (!isCloudConfigured()) {
+    cloudState.backupStatus = "unconfigured";
+    render();
+    return;
+  }
+  if (!isCloudSignedIn()) {
+    cloudState.backupStatus = "signed-out";
+    render();
+    return;
+  }
+  if (isFresh) {
+    cloudState.backupStatus = getLatestAutoBackupSnapshot() ? "synced" : "dirty";
+    render();
+    return;
+  }
+
+  cloudState.backupStatus = "dirty";
+  render();
+
+  if (state.settings?.autoBackupEnabled === false) {
+    return;
+  }
+
+  clearCloudBackupTimer();
+  if (immediate) {
+    flushPendingCloudBackup({ showToast: false }).catch((error) => {
+      console.warn("Failed to run auto backup:", error);
+    });
+    return;
+  }
+
+  cloudState.backupTimer = window.setTimeout(() => {
+    flushPendingCloudBackup({ showToast: false }).catch((error) => {
+      console.warn("Failed to run debounced backup:", error);
+    });
+  }, BACKUP_AUTO_DEBOUNCE_MS);
+}
+
+async function refreshCloudBackups({ silent = false } = {}) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client) {
+    cloudState.backupSnapshots = [];
+    cloudState.backupStatus = "unconfigured";
+    cloudState.backupError = "";
+    cloudState.latestBackupAt = 0;
+    cloudState.lastBackupFingerprint = "";
+    render();
+    return;
+  }
+
+  if (!cloudState.session?.user) {
+    cloudState.backupSnapshots = [];
+    cloudState.backupStatus = "signed-out";
+    cloudState.backupError = "";
+    cloudState.latestBackupAt = 0;
+    cloudState.lastBackupFingerprint = "";
+    render();
+    return;
+  }
+
+  try {
+    const { data, error } = await client
+      .from("user_backup_snapshots")
+      .select("*")
+      .eq("user_id", cloudState.session.user.id)
+      .order("is_latest", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(BACKUP_RESTORE_POINT_LIMIT + 3);
+
+    if (error) {
+      throw error;
+    }
+
+    cloudState.backupSnapshots = (data || []).map((row) => normalizeBackupSnapshotRow(row));
+    const latestAuto = getLatestAutoBackupSnapshot();
+    const latestSnapshot = latestAuto || getMostRecentBackupSnapshot();
+    cloudState.latestBackupAt = latestSnapshot ? latestSnapshot.createdAt || latestSnapshot.updatedAt : 0;
+    cloudState.lastBackupFingerprint =
+      latestAuto?.summary?.fingerprint || latestSnapshot?.summary?.fingerprint || cloudState.lastBackupFingerprint || "";
+    cloudState.backupError = "";
+
+    if (cloudState.backupDirty) {
+      cloudState.backupStatus = "dirty";
+    } else {
+      cloudState.backupStatus = latestSnapshot ? "synced" : "dirty";
+    }
+
+    render();
+
+    if (state.settings?.autoBackupEnabled !== false && buildBackupFingerprint() !== cloudState.lastBackupFingerprint) {
+      markCloudBackupDirty();
+    }
+  } catch (error) {
+    cloudState.backupStatus = "error";
+    cloudState.backupError = error.message || "バックアップ情報の読み込みに失敗しました";
+    render();
+    if (!silent) {
+      showToast(cloudState.backupError);
+    }
+  }
+}
+
+async function trimRestorePointSnapshots(client, userId) {
+  const { data, error } = await client
+    .from("user_backup_snapshots")
+    .select("id, storage_path")
+    .eq("user_id", userId)
+    .eq("is_latest", false)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  const staleRows = (data || []).slice(BACKUP_RESTORE_POINT_LIMIT);
+  if (!staleRows.length) {
+    return;
+  }
+
+  const stalePaths = staleRows.map((row) => String(row.storage_path || "").trim()).filter(Boolean);
+  if (stalePaths.length) {
+    await client.storage.from(BACKUP_SNAPSHOT_BUCKET).remove(stalePaths);
+  }
+
+  const { error: deleteError } = await client.from("user_backup_snapshots").delete().in("id", staleRows.map((row) => row.id));
+  if (deleteError) {
+    throw deleteError;
+  }
+}
+
+async function createCloudBackupSnapshot({ kind = "manual", showToast = true } = {}) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    throw new Error("アカウント保存を使うにはログインが必要です");
+  }
+  if (cloudState.backupBusy) {
+    return;
+  }
+
+  const isAuto = kind === "auto";
+  const fingerprint = buildBackupFingerprint();
+  if (isAuto && !cloudState.backupDirty && fingerprint === cloudState.lastBackupFingerprint) {
+    cloudState.backupStatus = getLatestAutoBackupSnapshot() ? "synced" : "dirty";
+    render();
+    return;
+  }
+
+  clearCloudBackupTimer();
+  cloudState.backupBusy = true;
+  cloudState.backupStatus = "syncing";
+  cloudState.backupError = "";
+  render();
+
+  try {
+    const snapshot = await buildBackupSnapshotPayload();
+    const summary = snapshot.backupMeta?.summary || buildBackupSummary(snapshot.state, snapshot.assets || []);
+    const userId = cloudState.session.user.id;
+    let storagePath = `${userId}/${kind}/${Date.now()}-${crypto.randomUUID()}.json`;
+    let targetId = crypto.randomUUID();
+
+    if (isAuto) {
+      const latestResponse = await client
+        .from("user_backup_snapshots")
+        .select("id, storage_path")
+        .eq("user_id", userId)
+        .eq("is_latest", true)
+        .limit(1);
+      if (latestResponse.error) {
+        throw latestResponse.error;
+      }
+      const latestRow = latestResponse.data?.[0] || null;
+      if (latestRow) {
+        targetId = String(latestRow.id || targetId);
+        storagePath = String(latestRow.storage_path || `${userId}/auto/latest.json`);
+      } else {
+        storagePath = `${userId}/auto/latest.json`;
+      }
+    }
+
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+    const { error: uploadError } = await client.storage.from(BACKUP_SNAPSHOT_BUCKET).upload(storagePath, blob, {
+      upsert: isAuto,
+      contentType: "application/json",
+    });
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const rowPayload = {
+      user_id: userId,
+      kind,
+      snapshot_version: snapshot.version || BACKUP_SNAPSHOT_VERSION,
+      storage_path: storagePath,
+      summary_json: summary,
+      is_latest: isAuto,
+      source_device: getSourceDeviceLabel(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (isAuto) {
+      const { error: clearLatestError } = await client
+        .from("user_backup_snapshots")
+        .update({ is_latest: false })
+        .eq("user_id", userId)
+        .eq("is_latest", true)
+        .neq("id", targetId);
+      if (clearLatestError) {
+        throw clearLatestError;
+      }
+
+      const latestResponse = await client.from("user_backup_snapshots").select("id").eq("id", targetId).limit(1);
+      if (latestResponse.error) {
+        throw latestResponse.error;
+      }
+
+      if (latestResponse.data?.length) {
+        const { error: updateError } = await client.from("user_backup_snapshots").update(rowPayload).eq("id", targetId);
+        if (updateError) {
+          throw updateError;
+        }
+      } else {
+        const { error: insertError } = await client.from("user_backup_snapshots").insert({
+          id: targetId,
+          created_at: new Date().toISOString(),
+          ...rowPayload,
+        });
+        if (insertError) {
+          throw insertError;
+        }
+      }
+    } else {
+      const { error: insertError } = await client.from("user_backup_snapshots").insert({
+        id: targetId,
+        created_at: new Date().toISOString(),
+        ...rowPayload,
+      });
+      if (insertError) {
+        throw insertError;
+      }
+      await trimRestorePointSnapshots(client, userId);
+    }
+
+    cloudState.backupDirty = false;
+    cloudState.lastBackupFingerprint = summary.fingerprint || fingerprint;
+    cloudState.latestBackupAt = Date.now();
+    cloudState.backupStatus = "synced";
+    cloudState.backupError = "";
+    await refreshCloudBackups({ silent: true });
+    render();
+    if (showToast) {
+      showToast(kind === "manual" ? "アカウントへ手動バックアップしました" : "アカウントへバックアップしました");
+    }
+  } catch (error) {
+    cloudState.backupStatus = "error";
+    cloudState.backupError = error.message || "アカウント保存に失敗しました";
+    render();
+    if (showToast || !isAuto) {
+      showToast(cloudState.backupError);
+    }
+    throw error;
+  } finally {
+    cloudState.backupBusy = false;
+    render();
+  }
+}
+
+async function flushPendingCloudBackup({ showToast = false } = {}) {
+  if (!isCloudConfigured() || !isCloudSignedIn()) {
+    return;
+  }
+  const fingerprint = buildBackupFingerprint();
+  if (!cloudState.backupDirty && fingerprint === cloudState.lastBackupFingerprint) {
+    return;
+  }
+  await createCloudBackupSnapshot({ kind: "auto", showToast });
+}
+
+async function readCloudBackupSnapshot(snapshot) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !snapshot?.storagePath) {
+    throw new Error("バックアップファイルを読み込めません");
+  }
+  const { data, error } = await client.storage.from(BACKUP_SNAPSHOT_BUCKET).download(snapshot.storagePath);
+  if (error) {
+    throw error;
+  }
+  const text = await data.text();
+  return JSON.parse(text);
+}
+
+async function applyStateSnapshot(snapshotPayload, { skipCloudBackup = false } = {}) {
+  const nextState = normalizeState(snapshotPayload.state || snapshotPayload);
+  if (!Array.isArray(nextState.decks) || !Array.isArray(nextState.cards)) {
+    throw new Error("バックアップ形式が正しくありません");
+  }
+
+  const assets = Array.isArray(snapshotPayload.assets) ? snapshotPayload.assets : [];
+  if (assets.length || state.cards.some((card) => hasCardMedia(card))) {
+    await clearAllMediaAssets();
+  }
+  for (const asset of assets) {
+    if (!asset?.assetId || !asset?.dataUrl) {
+      continue;
+    }
+    await putMediaBlob(String(asset.assetId), dataUrlToBlob(String(asset.dataUrl)));
+  }
+
+  state = nextState;
+  clearDeckEditing();
+  clearCardEditing();
+  clearEditWorkspaceCardEditing({ silent: true });
+  currentCardId = null;
+  isAnswerVisible = false;
+  assistantErrorMessage = "";
+  selectedDeckDetailId = "";
+  deckDetailTab = "overview";
+  shareLinkCache = "";
+  clearImportDraft();
+  clearQuestionMapDraft({ silent: true });
+  clearAiStudyDraft({ silent: true });
+  resetStudySession();
+  persist({ skipCloudBackup });
+  render();
+}
+
+async function restoreCloudBackupSnapshot(snapshotId) {
+  const snapshot = cloudState.backupSnapshots.find((item) => item.id === snapshotId);
+  if (!snapshot) {
+    throw new Error("復元対象のバックアップが見つかりません");
+  }
+
+  const approved = window.confirm(
+    `この端末の現在データを、${buildBackupSummaryText(snapshot.summary)} の保存状態へ置き換えます。\n保存日時: ${formatBackupDateTime(
+      snapshot.createdAt || snapshot.updatedAt,
+    )}\n復元前には現在データを安全退避します。続けますか？`,
+  );
+  if (!approved) {
+    return;
+  }
+
+  await createCloudBackupSnapshot({ kind: "pre_restore", showToast: false });
+  const payload = await readCloudBackupSnapshot(snapshot);
+  await applyStateSnapshot(payload, { skipCloudBackup: true });
+  cloudState.backupDirty = false;
+  cloudState.backupStatus = "synced";
+  cloudState.backupError = "";
+  cloudState.lastBackupFingerprint = snapshot.summary?.fingerprint || buildBackupFingerprint();
+  cloudState.latestBackupAt = snapshot.createdAt || snapshot.updatedAt || Date.now();
+  await refreshCloudData({ silent: true });
+  await refreshCloudBackups({ silent: true });
+  showToast("クラウドバックアップからこの端末へ復元しました");
 }
 
 async function shareDeck() {
@@ -9387,12 +10229,7 @@ function stopOrLeaveSelectedDeck() {
 
 async function exportJsonBackup() {
   try {
-    const snapshot = {
-      exportedAt: new Date().toISOString(),
-      version: 3,
-      state,
-      assets: await collectBackupAssets(),
-    };
+    const snapshot = await buildBackupSnapshotPayload();
     const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -9417,37 +10254,13 @@ async function importJsonBackup(event) {
   try {
     const text = await file.text();
     const parsed = JSON.parse(text);
-    const nextState = normalizeState(parsed.state || parsed);
-    if (!Array.isArray(nextState.decks) || !Array.isArray(nextState.cards)) {
-      throw new Error("バックアップ形式が正しくありません");
-    }
 
     const approved = window.confirm("現在のローカルデータを、この JSON バックアップで置き換えます。続けますか？");
     if (!approved) {
       importJsonFileInput.value = "";
       return;
     }
-
-    const assets = Array.isArray(parsed.assets) ? parsed.assets : [];
-    if (assets.length || state.cards.some((card) => hasCardMedia(card))) {
-      await clearAllMediaAssets();
-    }
-    for (const asset of assets) {
-      if (!asset?.assetId || !asset?.dataUrl) {
-        continue;
-      }
-      await putMediaBlob(String(asset.assetId), dataUrlToBlob(String(asset.dataUrl)));
-    }
-
-    state = nextState;
-    clearDeckEditing();
-    clearCardEditing();
-    currentCardId = null;
-    isAnswerVisible = false;
-    importDraft = null;
-    importSelection.clear();
-    persist();
-    render();
+    await applyStateSnapshot(parsed);
     showToast("JSON バックアップを読み込みました");
   } catch (error) {
     showToast(error.message || "JSON の読み込みに失敗しました");
@@ -9574,6 +10387,7 @@ function createDemoState() {
     },
     settings: {
       onboardingCompleted: false,
+      autoBackupEnabled: true,
     },
   };
 }
@@ -9968,6 +10782,7 @@ function normalizeSettingsState(settings) {
   const safeSettings = settings || {};
   return {
     onboardingCompleted: Boolean(safeSettings.onboardingCompleted),
+    autoBackupEnabled: safeSettings.autoBackupEnabled !== false,
   };
 }
 
