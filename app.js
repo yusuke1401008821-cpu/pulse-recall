@@ -1519,7 +1519,15 @@ function openDeckComposer(focus = "medical") {
 function openCardComposer(deckId) {
   const deck = getDeckById(deckId);
   if (!deck) {
-    showToast("対象デッキが見つかりません");
+    clearDeckEditing();
+    clearCardEditing();
+    setCreateMode("card");
+    switchSection("manage");
+    if (state.decks[0] && optionExists(cardDeckId, state.decks[0].id)) {
+      cardDeckId.value = state.decks[0].id;
+    }
+    applyCardContextPlaceholders();
+    showToast("対象デッキが見つからなかったため、通常のカード追加を開きました");
     return;
   }
 
@@ -1542,7 +1550,18 @@ function openCardComposer(deckId) {
 function openImportComposer(deckId) {
   const deck = getDeckById(deckId);
   if (!deck) {
-    showToast("対象デッキが見つかりません");
+    importContextDeckId = "";
+    clearImportDraft();
+    importSelection.clear();
+    setCreateMode("import");
+    switchSection("manage");
+    importFocusInput.value = "medical";
+    applyImportFocusPreset();
+    importDeckNameInput.value = "";
+    importSubjectInput.value = "";
+    importInstructionsInput.value = "";
+    renderImportPanel();
+    showToast("対象デッキが見つからなかったため、通常のPDF取り込みを開きました");
     return;
   }
 
@@ -1568,7 +1587,12 @@ function openImportComposer(deckId) {
 function openQuestionMapComposer(deckId) {
   const deck = getDeckById(deckId);
   if (!deck) {
-    showToast("対象デッキが見つかりません");
+    questionMapContextDeckId = "";
+    clearQuestionMapDraft({ silent: true });
+    setCreateMode("locator");
+    switchSection("manage");
+    renderQuestionMapPanel();
+    showToast("対象デッキが見つからなかったため、通常の過去問参照を開きました");
     return;
   }
 
@@ -1608,25 +1632,26 @@ function closeDeckActionModal() {
 }
 
 function openDeckActionTarget(target) {
-  if (!deckActionDeckId) {
+  const targetDeckId = deckActionDeckId;
+  if (!targetDeckId) {
     closeDeckActionModal();
     return;
   }
 
   if (target === "card") {
     closeDeckActionModal();
-    openCardComposer(deckActionDeckId);
+    openCardComposer(targetDeckId);
     return;
   }
 
   if (target === "import") {
     closeDeckActionModal();
-    openImportComposer(deckActionDeckId);
+    openImportComposer(targetDeckId);
     return;
   }
 
   closeDeckActionModal();
-  openQuestionMapComposer(deckActionDeckId);
+  openQuestionMapComposer(targetDeckId);
 }
 
 function toggleHistoryDetails() {
@@ -2797,7 +2822,7 @@ function renderImportPanel() {
     if (!isImportLoading) {
       importStatus.textContent = contextDeck
         ? `「${contextDeck.name}」へ追加する資料を選ぶと、自動でカード候補を作成します。AIボタンを押すと、Geminiの無料枠で高精度生成を試し、失敗時はローカル解析へ戻ります。`
-        : "PDF または本文を入れると、自動でカード候補を作成します。AIボタンを押すと、Geminiの無料枠で高精度生成を試し、失敗時はローカル解析へ戻ります。";
+        : "PDF または本文を入れると、自動でカード候補を作成します。どのデッキにも保存前レビューでき、AIボタンを押すと Gemini の無料枠で高精度生成を試し、失敗時はローカル解析へ戻ります。";
     }
     saveImportButton.textContent = "この候補でデッキ作成";
     importPreview.innerHTML = `
@@ -2806,7 +2831,7 @@ function renderImportPanel() {
         <p class="muted">${
           contextDeck
             ? `講義PDF、英語の資料、配布ノートを読み込むと、「${escapeHtml(contextDeck.name)}」へ追加する候補がここに並びます。`
-            : "講義PDF、英語の資料、配布ノートを読み込むとここに候補が並びます。"
+            : "講義PDF、英語の資料、配布ノートを読み込むとここに候補が並びます。あとから保存先デッキを選べます。"
         }</p>
       </article>
     `;
@@ -2882,7 +2907,7 @@ function renderQuestionMapPanel() {
     } else if (!isQuestionMapLoading) {
       questionMapStatus.textContent = contextDeck
         ? `「${contextDeck.name}」向けに、過去問と講義スライドを入れると設問ごとの関連候補を表示します。AIボタンを使うと根拠説明も補強できます。`
-        : "過去問と講義スライドを入れると、設問ごとに関連スライド候補、ページ番号、該当箇所の抜粋を表示します。AIボタンを使うと根拠説明も補強できます。";
+        : "過去問と講義スライドを入れると、設問ごとに関連スライド候補、ページ番号、該当箇所の抜粋を表示します。どのデッキにも紐づけず先に参照候補を確認でき、AIボタンを使うと根拠説明も補強できます。";
     }
     questionMapSummary.innerHTML = "";
     questionMapResults.innerHTML = questionMapErrorMessage
@@ -2895,7 +2920,11 @@ function renderQuestionMapPanel() {
       : `
           <article class="library-card">
             <h4>まだ対応表はありません</h4>
-            <p class="muted">過去問 PDF と講義スライド PDF を入れて解析すると、ここに設問ごとの参照候補が並びます。</p>
+            <p class="muted">${
+              contextDeck
+                ? `過去問 PDF と講義スライド PDF を入れて解析すると、「${escapeHtml(contextDeck.name)}」向けの設問参照候補がここに並びます。`
+                : "過去問 PDF と講義スライド PDF を入れて解析すると、ここに設問ごとの参照候補が並びます。"
+            }</p>
           </article>
         `;
     return;
@@ -6231,14 +6260,16 @@ function clearImportDraft() {
   renderImportPanel();
 }
 
-function clearQuestionMapDraft() {
+function clearQuestionMapDraft({ silent = false } = {}) {
   questionMapDraft = null;
   isQuestionMapLoading = false;
   questionMapErrorMessage = "";
   questionMapForm.reset();
   questionMapTopMatchesInput.value = "3";
   renderQuestionMapPanel();
-  showToast("過去問参照の結果を消しました");
+  if (!silent) {
+    showToast("過去問参照の結果を消しました");
+  }
 }
 
 function showToast(message) {
