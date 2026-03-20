@@ -497,6 +497,44 @@ button:disabled {
   min-width: 88px;
 }
 
+.is-unread-notification {
+  border-color: rgba(240, 138, 75, 0.42);
+  box-shadow: 0 18px 40px rgba(240, 138, 75, 0.14);
+}
+
+.share-permission-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.share-permission-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.share-permission-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.share-permission-toggle input {
+  accent-color: var(--bg-strong);
+}
+
+.is-locking-card {
+  border-color: rgba(211, 139, 44, 0.32);
+  background: rgba(255, 248, 236, 0.88);
+}
+
 .board-status-dot {
   width: 14px;
   height: 14px;

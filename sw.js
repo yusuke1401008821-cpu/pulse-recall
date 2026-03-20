@@ -1,4 +1,4 @@
-const CACHE_NAME = "pulse-recall-cache-v14";
+const CACHE_NAME = "pulse-recall-cache-v15";
 const APP_SHELL = [
   "./",
   "./index.html",

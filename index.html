@@ -146,6 +146,20 @@
             <div class="stack-list" id="pendingShareList"></div>
           </section>
 
+          <section class="panel tip-card" id="homeShareNotificationPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">共有通知</p>
+                <h3>共有の更新と承認待ち</h3>
+              </div>
+              <button class="ghost-button" data-open-share-panel="true" type="button">共有を開く</button>
+            </div>
+            <p class="muted" id="homeShareNotificationStatus">
+              共有デッキの更新や参加申請は、ここからすぐ確認できます。
+            </p>
+            <div class="stack-list" id="homeShareNotificationList"></div>
+          </section>
+
           <section class="panel tip-card" id="homeBackupPanel">
             <div class="section-heading">
               <div>
@@ -840,6 +854,7 @@
                   <div class="form-actions">
                     <button class="primary-button" id="shareDeckButton" type="button">共有リンクを作る</button>
                     <button class="ghost-button" id="copyShareLinkButton" type="button">リンクをコピー</button>
+                    <button class="ghost-button" id="copyPackageLinkButton" type="button">画像込みコピーリンク</button>
                     <button class="ghost-button" id="syncSharedDeckButton" type="button">同期する</button>
                     <button class="ghost-button" id="duplicateSharedDeckButton" type="button">自分用に複製</button>
                     <button class="ghost-button" id="refreshShareLinkButton" type="button">リンク再発行</button>
@@ -856,6 +871,30 @@
                 <h4>共有の使い分け</h4>
                 <p class="muted" id="shareGuideSummary">ローカル複製と共同編集の違いを、ここでいつでも確認できます。</p>
                 <div class="stack-list" id="shareGuideList"></div>
+              </section>
+            </div>
+            <div class="share-grid">
+              <section class="subpanel">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">通知</p>
+                    <h4>共有通知</h4>
+                  </div>
+                  <button class="ghost-button" id="markAllNotificationsReadButton" type="button">すべて既読</button>
+                </div>
+                <p class="muted" id="shareNotificationStatus">承認待ちや共有更新があると、ここに表示されます。</p>
+                <div class="stack-list" id="shareNotificationList"></div>
+              </section>
+
+              <section class="subpanel">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">更新履歴</p>
+                    <h4>共有デッキの変更履歴</h4>
+                  </div>
+                </div>
+                <p class="muted" id="shareEventStatus">誰がいつ何を変えたかを、共有デッキごとに追えます。</p>
+                <div class="stack-list" id="shareEventList"></div>
               </section>
             </div>
           </section>
