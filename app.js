@@ -335,6 +335,7 @@ let shareEmailAuthVisible = false;
 let cloudState = {
   status: "idle",
   config: null,
+  configError: "",
   client: null,
   module: null,
   session: null,
@@ -366,6 +367,7 @@ let cloudState = {
   lockHeartbeatTimer: null,
   authIntent: "",
   lastSessionUserId: "",
+  authIssue: null,
 };
 const mediaPreviewUrlCache = new Map();
 
@@ -649,6 +651,7 @@ const authStatus = document.getElementById("authStatus");
 const shareOpenAccountBackupButton = document.getElementById("shareOpenAccountBackupButton");
 const shareToggleEmailAuthButton = document.getElementById("shareToggleEmailAuthButton");
 const shareEmailAuthPanel = document.getElementById("shareEmailAuthPanel");
+const shareAuthReadinessList = document.getElementById("shareAuthReadinessList");
 const authEmailInput = document.getElementById("authEmailInput");
 const signInMagicLinkButton = document.getElementById("signInMagicLinkButton");
 const signOutButton = document.getElementById("signOutButton");
@@ -692,6 +695,8 @@ const settingsProfilePromptPanel = document.getElementById("settingsProfilePromp
 const settingsProfilePromptStatus = document.getElementById("settingsProfilePromptStatus");
 const settingsProfileDisplayNameInput = document.getElementById("settingsProfileDisplayNameInput");
 const settingsSaveProfileButton = document.getElementById("settingsSaveProfileButton");
+const settingsAuthReadinessSummary = document.getElementById("settingsAuthReadinessSummary");
+const settingsAuthReadinessList = document.getElementById("settingsAuthReadinessList");
 const settingsAutoBackupCheckbox = document.getElementById("settingsAutoBackupCheckbox");
 const settingsBackupLastSaved = document.getElementById("settingsBackupLastSaved");
 const settingsBackupNowButton = document.getElementById("settingsBackupNowButton");
@@ -3868,9 +3873,11 @@ function renderHomeBackupPanel() {
   const latestSnapshot = latestAuto || getMostRecentBackupSnapshot();
   const statusLabel = formatAccountBackupStatusLabel();
   const canBackUpNow = isCloudConfigured() && isCloudSignedIn();
+  const authDiagnostics = buildAuthDiagnosticItems();
+  const primaryAuthIssue = authDiagnostics.find((item) => item.level === "danger") || authDiagnostics[0];
 
   homeBackupStatus.textContent = !isCloudConfigured()
-    ? "Supabase を設定すると、ログイン後にこの端末のデッキ・カード・画像・履歴を自分のアカウントへ保存できます。"
+    ? primaryAuthIssue?.text || "Supabase を設定すると、ログイン後にこの端末のデッキ・カード・画像・履歴を自分のアカウントへ保存できます。"
     : !isCloudSignedIn()
       ? "Google / Apple / メールでアカウントを作ると、自動バックアップが有効になり、別端末でも最新の保存状態から復元できます。"
       : latestSnapshot
@@ -3902,6 +3909,8 @@ function renderSettingsAccountBackupPanel() {
   const restorePoints = getRestorePointSnapshots();
   const statusLabel = formatAccountBackupStatusLabel();
   const statusClassName = formatAccountBackupStatusClassName();
+  const authDiagnostics = buildAuthDiagnosticItems();
+  const primaryAuthIssue = authDiagnostics.find((item) => item.level === "danger") || authDiagnostics[0];
 
   if (settingsAutoBackupCheckbox) {
     settingsAutoBackupCheckbox.checked = state.settings?.autoBackupEnabled !== false;
@@ -3924,6 +3933,13 @@ function renderSettingsAccountBackupPanel() {
     )}</span>
     ${cloudState.backupError ? `<span class="muted">${escapeHtml(cloudState.backupError)}</span>` : ""}
   `;
+  if (settingsAuthReadinessSummary) {
+    settingsAuthReadinessSummary.textContent = primaryAuthIssue?.text
+      || "Supabase、Google、Apple、メールのどこが未設定かをここで確認できます。";
+  }
+  if (settingsAuthReadinessList) {
+    settingsAuthReadinessList.innerHTML = renderAuthDiagnosticMarkup(authDiagnostics);
+  }
 
   settingsBackupLastSaved.textContent = latestSnapshot
     ? `最後の保存: ${formatBackupDateTime(latestSnapshot.createdAt || latestSnapshot.updatedAt)} / ${buildBackupSummaryText(latestSnapshot.summary)}`
@@ -4653,16 +4669,18 @@ function renderSharePanel() {
   const isSignedIn = Boolean(cloudState.session?.user);
   const magicLinkEnabled = isMagicLinkEnabled();
   const supportsLocalShare = deck ? canUseLocalShare(deck) : false;
+  const authDiagnostics = buildAuthDiagnosticItems();
+  const primaryAuthIssue = authDiagnostics.find((item) => item.level === "danger") || authDiagnostics[0];
 
   renderShareGuidePanel(deck);
 
   authStatus.textContent = !hasClientConfig
-    ? "Supabase 未設定ならローカル専用のまま使えます。共有やアカウント保存を使う時だけ接続してください。"
+    ? primaryAuthIssue?.text || "Supabase 未設定ならローカル専用のまま使えます。共有やアカウント保存を使う時だけ接続してください。"
     : isSignedIn
       ? `${cloudState.session.user.email || "ログイン中"} で共有機能を使えます。Google / Apple / メールのログイン状態は設定の「アカウント保存」から管理できます。`
       : "共有機能を使う時だけログインします。Google / Apple / メールは設定の「アカウント保存」から選べます。";
   if (shareOpenAccountBackupButton) {
-    shareOpenAccountBackupButton.disabled = !hasClientConfig;
+    shareOpenAccountBackupButton.disabled = false;
     shareOpenAccountBackupButton.textContent = isSignedIn ? "設定で確認する" : "設定でログイン";
   }
   if (shareToggleEmailAuthButton) {
@@ -4671,6 +4689,9 @@ function renderSharePanel() {
     shareToggleEmailAuthButton.textContent = shareEmailAuthVisible ? "メール入力を閉じる" : "メールで続ける";
   }
   toggleEmailAuthPanel(shareEmailAuthPanel, shareEmailAuthVisible && !isSignedIn && magicLinkEnabled);
+  if (shareAuthReadinessList) {
+    shareAuthReadinessList.innerHTML = renderAuthDiagnosticMarkup(authDiagnostics.slice(0, 2));
+  }
   if (signOutButton) {
     signOutButton.disabled = !isSignedIn;
   }
@@ -10118,6 +10139,136 @@ function getAuthProviderLabel(provider) {
   return provider === "apple" ? "Apple" : provider === "google" ? "Google" : "メール";
 }
 
+function setCloudAuthIssue(kind = "", message = "", provider = "") {
+  const safeKind = String(kind || "").trim();
+  const safeMessage = String(message || "").trim();
+  if (!safeKind || !safeMessage) {
+    cloudState.authIssue = null;
+    return;
+  }
+  cloudState.authIssue = {
+    kind: safeKind,
+    message: safeMessage,
+    provider: String(provider || "").trim(),
+    updatedAt: Date.now(),
+  };
+}
+
+function clearCloudAuthIssue() {
+  cloudState.authIssue = null;
+}
+
+function buildAuthDiagnosticItems() {
+  const items = [];
+  const hasConfig = isCloudConfigured();
+  const googleEnabled = cloudState.config?.authGoogleEnabled !== false;
+  const appleEnabled = cloudState.config?.authAppleEnabled !== false;
+  const magicLinkEnabled = cloudState.config?.authMagicLinkEnabled !== false;
+
+  if (cloudState.configError) {
+    items.push({
+      level: "danger",
+      title: "設定読み込みに失敗",
+      text: `Vercel の client-config を読めませんでした。${cloudState.configError}`,
+    });
+  }
+
+  if (!hasConfig) {
+    items.push({
+      level: "danger",
+      title: "Supabase URL / anon key 未設定",
+      text: "この本番では SUPABASE_URL と SUPABASE_ANON_KEY が返っておらず、ログインは local-only に固定されています。Vercel に追加して再デプロイしてください。",
+    });
+  } else {
+    items.push({
+      level: "success",
+      title: "Supabase 接続情報は取得済み",
+      text: "このアプリは Supabase の URL と anon key を読めています。次は Auth の provider と redirect URL を確認します。",
+    });
+  }
+
+  if (hasConfig && !googleEnabled) {
+    items.push({
+      level: "caution",
+      title: "Google ログインはオフ",
+      text: "AUTH_GOOGLE_ENABLED か Supabase Auth の Google provider を見直してください。",
+    });
+  }
+  if (hasConfig && !appleEnabled) {
+    items.push({
+      level: "caution",
+      title: "Apple ログインはオフ",
+      text: "AUTH_APPLE_ENABLED か Supabase Auth の Apple provider を見直してください。",
+    });
+  }
+  if (hasConfig && !magicLinkEnabled) {
+    items.push({
+      level: "caution",
+      title: "メールログインはオフ",
+      text: "AUTH_MAGIC_LINK_ENABLED が false です。fallback に残すなら true に戻してください。",
+    });
+  }
+
+  if (cloudState.authIssue) {
+    const issueTitle =
+      cloudState.authIssue.kind === "redirect-misconfigured"
+        ? "認証の戻り先URLを確認"
+        : cloudState.authIssue.kind === "provider-disabled"
+          ? `${getAuthProviderLabel(cloudState.authIssue.provider)} provider 未有効化`
+          : "ログイン設定を確認";
+    items.push({
+      level: "danger",
+      title: issueTitle,
+      text: cloudState.authIssue.message,
+    });
+  }
+
+  if (hasConfig && !isCloudSignedIn()) {
+    items.push({
+      level: "caution",
+      title: "次に必要なこと",
+      text: "Supabase Auth の Site URL / Redirect URLs に https://pulse-recall.vercel.app を入れ、Google / Apple provider を有効化したあと、ここから再度ログインしてください。",
+    });
+  }
+
+  if (isCloudSignedIn()) {
+    items.push({
+      level: "success",
+      title: "ログイン利用可",
+      text: `${cloudState.session?.user?.email || "現在のアカウント"} でアカウント保存と共有を使えます。`,
+    });
+  }
+
+  return items;
+}
+
+function renderAuthDiagnosticMarkup(items = []) {
+  if (!items.length) {
+    return `
+      <article class="library-card">
+        <h4>診断情報はまだありません</h4>
+        <p class="muted">ログイン設定やエラーがあると、ここに原因と次の手順が表示されます。</p>
+      </article>
+    `;
+  }
+
+  return items
+    .map(
+      (item) => `
+        <article class="library-card">
+          <div class="card-row-header">
+            <h4>${escapeHtml(item.title)}</h4>
+            <span class="meta-pill ${escapeHtml(item.level === "success" ? "success" : item.level === "caution" ? "caution" : "danger")}">
+              ${escapeHtml(item.level === "success" ? "OK" : item.level === "caution" ? "確認" : "要対応")}
+            </span>
+          </div>
+          <p class="muted">${escapeHtml(item.text)}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
 function setStoredAuthIntent(intent = "") {
   cloudState.authIntent = String(intent || "").trim();
   if (!cloudState.authIntent) {
@@ -10197,20 +10348,37 @@ function shouldPromptProfileCompletion() {
   return isCloudSignedIn() && !String(cloudState.profile?.display_name || "").trim();
 }
 
-function translateAuthErrorMessage(error, provider = "") {
-  const safeProvider = getAuthProviderLabel(provider);
+function classifyAuthError(error, provider = "") {
   const message = String(error?.message || "").trim();
   const normalized = message.toLowerCase();
-  if (!message) {
-    return `${safeProvider} でのログインに失敗しました。`;
-  }
   if (normalized.includes("provider") && (normalized.includes("disabled") || normalized.includes("not enabled"))) {
-    return `${safeProvider} ログインはまだ Supabase 側で有効化されていません。`;
+    return {
+      kind: "provider-disabled",
+      provider,
+      message: `${getAuthProviderLabel(provider)} ログインはまだ Supabase 側で有効化されていません。`,
+    };
   }
-  if (normalized.includes("redirect")) {
-    return `${safeProvider} ログインの戻り先URL設定を確認してください。`;
+  if (
+    normalized.includes("redirect") ||
+    normalized.includes("callback") ||
+    normalized.includes("redirect_uri") ||
+    normalized.includes("site url")
+  ) {
+    return {
+      kind: "redirect-misconfigured",
+      provider,
+      message: `${getAuthProviderLabel(provider)} ログインの戻り先URL設定を確認してください。Supabase Auth の Site URL / Redirect URLs に本番URLを入れ直してください。`,
+    };
   }
-  return message;
+  return {
+    kind: "request-failed",
+    provider,
+    message: message || `${getAuthProviderLabel(provider)} でのログインに失敗しました。`,
+  };
+}
+
+function translateAuthErrorMessage(error, provider = "") {
+  return classifyAuthError(error, provider).message;
 }
 
 function buildBackupFingerprint(snapshotState = state) {
@@ -10312,11 +10480,13 @@ async function fetchCloudConfig() {
   try {
     const response = await fetch(CLOUD_CONFIG_ENDPOINT, { cache: "no-store" });
     if (!response.ok) {
+      cloudState.configError = `/api/client-config が HTTP ${response.status} を返しました`;
       cloudState.config = {};
       return cloudState.config;
     }
 
     const config = await response.json();
+    cloudState.configError = "";
     cloudState.config = {
       supabaseUrl: config && config.supabaseUrl ? String(config.supabaseUrl) : "",
       supabaseAnonKey: config && config.supabaseAnonKey ? String(config.supabaseAnonKey) : "",
@@ -10330,6 +10500,7 @@ async function fetchCloudConfig() {
     return cloudState.config;
   } catch (error) {
     console.warn("Failed to load cloud config:", error);
+    cloudState.configError = error.message || "client-config を取得できませんでした";
     cloudState.config = {};
     return cloudState.config;
   }
@@ -10407,7 +10578,7 @@ async function initializeCloud() {
     if (cloudState.shareToken) {
       shareJoinTitle.textContent = "共有デッキに参加";
       shareJoinStatus.textContent =
-        "この共有リンクを使うには、Supabase を接続してから設定の「アカウント保存」でログインしてください。";
+        "この共有リンクを使うには、まず Vercel に SUPABASE_URL / SUPABASE_ANON_KEY を設定し、そのあと設定の「アカウント保存」でログインしてください。";
       requestShareAccessButton.disabled = true;
       requestShareAccessButton.textContent = "参加を申請する";
       shareJoinModal.hidden = false;
@@ -12059,6 +12230,8 @@ async function handleSuccessfulCloudSignIn(event = "SIGNED_IN") {
     return;
   }
 
+  clearCloudAuthIssue();
+
   if (shouldPromptProfileCompletion() && settingsProfileDisplayNameInput && !settingsProfileDisplayNameInput.value) {
     settingsProfileDisplayNameInput.value = String(cloudState.profile?.email || cloudState.session?.user?.email || "")
       .split("@")[0]
@@ -12109,10 +12282,15 @@ async function signInWithProvider(provider, intent = "settings-backup") {
   });
 
   if (error) {
-    showToast(translateAuthErrorMessage(error, provider));
+    const issue = classifyAuthError(error, provider);
+    setCloudAuthIssue(issue.kind, issue.message, issue.provider);
+    renderSharePanel();
+    renderSettingsPanel();
+    showToast(issue.message);
     return;
   }
 
+  clearCloudAuthIssue();
   if (data?.url) {
     window.location.assign(data.url);
   }
@@ -12146,10 +12324,15 @@ async function sendMagicLink(emailValue = "") {
   });
 
   if (error) {
-    showToast(error.message || "マジックリンク送信に失敗しました");
+    const issue = classifyAuthError(error, "email");
+    setCloudAuthIssue(issue.kind, issue.message, issue.provider);
+    renderSharePanel();
+    renderSettingsPanel();
+    showToast(issue.message || "マジックリンク送信に失敗しました");
     return;
   }
 
+  clearCloudAuthIssue();
   showToast("メールを送信しました。初回でもそのままアカウントが作成され、リンクからこのアプリへ戻れます");
   settingsEmailAuthVisible = true;
   shareEmailAuthVisible = true;
@@ -12216,6 +12399,7 @@ async function signOutCloud() {
   cloudState.lastSessionUserId = "";
   shareEmailAuthVisible = false;
   settingsEmailAuthVisible = false;
+  clearCloudAuthIssue();
   clearStoredAuthIntent();
   if (cloudState.backupTimer) {
     window.clearTimeout(cloudState.backupTimer);
@@ -12850,7 +13034,7 @@ async function refreshShareJoinPreview() {
   if (!cloudState.config?.supabaseUrl) {
     shareJoinTitle.textContent = "共有デッキに参加";
     shareJoinStatus.textContent =
-      "このリンクを使うには Supabase の共有設定が必要です。接続後に共有タブからログインしてください。";
+      "このリンクを使うには Supabase の共有設定が必要です。まず Vercel に SUPABASE_URL / SUPABASE_ANON_KEY を入れ、そのあと設定の「アカウント保存」でログインしてください。";
     requestShareAccessButton.disabled = true;
     shareJoinModal.hidden = false;
     return;
