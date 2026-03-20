@@ -296,6 +296,7 @@ let studyMode = "review";
 let studySourceKey = "due";
 let studySessionSize = 8;
 let studySession = null;
+let studyQuickMinutes = state.settings?.studyPreferences?.defaultSessionMinutes || 5;
 let homeHistoryExpanded = false;
 let importContextDeckId = "";
 let questionMapContextDeckId = "";
@@ -325,7 +326,9 @@ let editSubview = "deck";
 let editCardQuery = "";
 let editWorkspaceCardId = "";
 let cardMediaDraft = createEmptyMediaDraft();
+let quickCaptureMediaDraft = createEmptyMediaDraft();
 let editCardMediaDraft = createEmptyMediaDraft();
+let studyAdvanceTimer = null;
 let cloudState = {
   status: "idle",
   config: null,
@@ -399,6 +402,10 @@ const historyCompactList = document.getElementById("historyCompactList");
 const historyDetailsPanel = document.getElementById("historyDetailsPanel");
 const toggleHistoryDetailsButton = document.getElementById("toggleHistoryDetailsButton");
 const studyDeckFilter = document.getElementById("studyDeckFilter");
+const studyQuickCaptureButton = document.getElementById("studyQuickCaptureButton");
+const studyQuickSummary = document.getElementById("studyQuickSummary");
+const studyMinuteButtons = [...document.querySelectorAll("[data-study-minutes]")];
+const studyQuickActionGrid = document.getElementById("studyQuickActionGrid");
 const studyModeSummary = document.getElementById("studyModeSummary");
 const studySessionSizeInput = document.getElementById("studySessionSizeInput");
 const startStudySessionButton = document.getElementById("startStudySessionButton");
@@ -495,6 +502,11 @@ const deckNameInput = document.getElementById("deckName");
 const deckFocusInput = document.getElementById("deckFocus");
 const deckSubjectInput = document.getElementById("deckSubject");
 const deckDescriptionInput = document.getElementById("deckDescription");
+const deckDefaultTopicInput = document.getElementById("deckDefaultTopic");
+const deckDefaultTagsInput = document.getElementById("deckDefaultTags");
+const deckFrontTemplateInput = document.getElementById("deckFrontTemplate");
+const deckBackTemplateInput = document.getElementById("deckBackTemplate");
+const deckPreferredCardStyleInput = document.getElementById("deckPreferredCardStyle");
 const cardFrontInput = document.getElementById("cardFrontInput");
 const cardBackInput = document.getElementById("cardBackInput");
 const cardFrontMediaInput = document.getElementById("cardFrontMediaInput");
@@ -528,6 +540,26 @@ const removeSelectedImportButton = document.getElementById("removeSelectedImport
 const dedupeImportButton = document.getElementById("dedupeImportButton");
 const bulkImportTagsInput = document.getElementById("bulkImportTagsInput");
 const applyImportTagsButton = document.getElementById("applyImportTagsButton");
+const quickCaptureForm = document.getElementById("quickCaptureForm");
+const quickCaptureDeckId = document.getElementById("quickCaptureDeckId");
+const quickCaptureFrontInput = document.getElementById("quickCaptureFrontInput");
+const quickCaptureBackInput = document.getElementById("quickCaptureBackInput");
+const quickCaptureFrontMediaInput = document.getElementById("quickCaptureFrontMediaInput");
+const quickCaptureBackMediaInput = document.getElementById("quickCaptureBackMediaInput");
+const quickCaptureFrontMediaStatus = document.getElementById("quickCaptureFrontMediaStatus");
+const quickCaptureBackMediaStatus = document.getElementById("quickCaptureBackMediaStatus");
+const quickCaptureFrontMediaList = document.getElementById("quickCaptureFrontMediaList");
+const quickCaptureBackMediaList = document.getElementById("quickCaptureBackMediaList");
+const quickCaptureTagsInput = document.getElementById("quickCaptureTagsInput");
+const quickCaptureStatus = document.getElementById("quickCaptureStatus");
+const quickCaptureResetButton = document.getElementById("quickCaptureResetButton");
+const bulkInputForm = document.getElementById("bulkInputForm");
+const bulkTargetDeckId = document.getElementById("bulkTargetDeckId");
+const bulkFocusInput = document.getElementById("bulkFocusInput");
+const bulkDeckNameInput = document.getElementById("bulkDeckNameInput");
+const bulkSubjectInput = document.getElementById("bulkSubjectInput");
+const bulkInputText = document.getElementById("bulkInputText");
+const bulkInputStatus = document.getElementById("bulkInputStatus");
 const questionMapForm = document.getElementById("questionMapForm");
 const questionMapQuestionFileInput = document.getElementById("questionMapQuestionFileInput");
 const questionMapQuestionTextInput = document.getElementById("questionMapQuestionTextInput");
@@ -545,10 +577,13 @@ const assistantStatus = document.getElementById("assistantStatus");
 const assistantForm = document.getElementById("assistantForm");
 const assistantInput = document.getElementById("assistantInput");
 const assistantSubmitButton = document.getElementById("assistantSubmitButton");
+const libraryQuickCaptureButton = document.getElementById("libraryQuickCaptureButton");
 const clearAssistantButton = document.getElementById("clearAssistantButton");
 const deckDetailTitle = document.getElementById("deckDetailTitle");
 const deckDetailContent = document.getElementById("deckDetailContent");
 const createPanels = {
+  quick: document.getElementById("createQuickPanel"),
+  bulk: document.getElementById("createBulkPanel"),
   edit: document.getElementById("createEditPanel"),
   deck: document.getElementById("createDeckPanel"),
   card: document.getElementById("createCardPanel"),
@@ -569,11 +604,17 @@ const editDeckNameInput = document.getElementById("editDeckName");
 const editDeckFocusInput = document.getElementById("editDeckFocus");
 const editDeckSubjectInput = document.getElementById("editDeckSubject");
 const editDeckDescriptionInput = document.getElementById("editDeckDescription");
+const editDeckDefaultTopicInput = document.getElementById("editDeckDefaultTopic");
+const editDeckDefaultTagsInput = document.getElementById("editDeckDefaultTags");
+const editDeckFrontTemplateInput = document.getElementById("editDeckFrontTemplate");
+const editDeckBackTemplateInput = document.getElementById("editDeckBackTemplate");
+const editDeckPreferredCardStyleInput = document.getElementById("editDeckPreferredCardStyle");
 const editDeckSubmitButton = document.getElementById("editDeckSubmitButton");
 const resetEditDeckButton = document.getElementById("resetEditDeckButton");
 const deleteEditDeckButton = document.getElementById("deleteEditDeckButton");
 const editCardsTitle = document.getElementById("editCardsTitle");
 const editCardCreateButton = document.getElementById("editCardCreateButton");
+const editCardQuickAddButton = document.getElementById("editCardQuickAddButton");
 const editCardSearchInput = document.getElementById("editCardSearchInput");
 const editCardEditorTitle = document.getElementById("editCardEditorTitle");
 const editCardEditorStatus = document.getElementById("editCardEditorStatus");
@@ -640,9 +681,16 @@ const settingsBackupLastSaved = document.getElementById("settingsBackupLastSaved
 const settingsBackupNowButton = document.getElementById("settingsBackupNowButton");
 const settingsRefreshBackupButton = document.getElementById("settingsRefreshBackupButton");
 const settingsBackupSnapshotList = document.getElementById("settingsBackupSnapshotList");
+const settingsQuickKeepDeckCheckbox = document.getElementById("settingsQuickKeepDeckCheckbox");
+const settingsQuickKeepTemplateCheckbox = document.getElementById("settingsQuickKeepTemplateCheckbox");
+const settingsStudyDefaultMinutes = document.getElementById("settingsStudyDefaultMinutes");
+const settingsStudyDefaultSpeedMode = document.getElementById("settingsStudyDefaultSpeedMode");
+const settingsStudyAutoRepeatCheckbox = document.getElementById("settingsStudyAutoRepeatCheckbox");
+const settingsStudyAutoAdvanceCheckbox = document.getElementById("settingsStudyAutoAdvanceCheckbox");
 const deckActionModal = document.getElementById("deckActionModal");
 const deckActionTitle = document.getElementById("deckActionTitle");
 const deckActionStatus = document.getElementById("deckActionStatus");
+const deckActionQuickButton = document.getElementById("deckActionQuickButton");
 const deckActionCardButton = document.getElementById("deckActionCardButton");
 const deckActionImportButton = document.getElementById("deckActionImportButton");
 const deckActionLocatorButton = document.getElementById("deckActionLocatorButton");
@@ -754,6 +802,28 @@ const FEATURE_SEARCH_ITEMS = [
     featured: true,
   },
   {
+    id: "quick-capture",
+    title: "クイック追加を開く",
+    sectionLabel: "作成",
+    description: "問題、答え、画像、タグだけで素早くカードを増やします。",
+    keywords: ["クイック追加", "連続追加", "すぐ追加", "カード作成", "最短"],
+    action: "create-mode",
+    createMode: "quick",
+    targetId: "quickCaptureFrontInput",
+    featured: true,
+  },
+  {
+    id: "bulk-input",
+    title: "一括入力から候補を作る",
+    sectionLabel: "作成",
+    description: "講義メモやQ/Aを貼り付けて、候補レビューへまとめて送ります。",
+    keywords: ["一括入力", "貼り付け", "Q/A", "メモ", "候補レビュー"],
+    action: "create-mode",
+    createMode: "bulk",
+    targetId: "bulkInputText",
+    featured: true,
+  },
+  {
     id: "import-pdf",
     title: "PDFからカード候補を作る",
     sectionLabel: "作成",
@@ -785,6 +855,42 @@ const FEATURE_SEARCH_ITEMS = [
     createMode: "locator",
     targetId: "questionMapQuestionFileInput",
     featured: true,
+  },
+  {
+    id: "speed-study",
+    title: "高速学習を始める",
+    sectionLabel: "学習",
+    description: "おすすめセッションから、短時間で多く回す学習を始めます。",
+    keywords: ["高速学習", "おすすめ", "スピード", "短時間", "5分学習"],
+    action: "quick-study",
+    quickStudyKind: "recommended",
+    quickStudyMinutes: 5,
+    targetId: "studyQuickActionGrid",
+    featured: true,
+  },
+  {
+    id: "mistake-study",
+    title: "ミスだけを回す",
+    sectionLabel: "学習",
+    description: "直近ミスやあいまいカードだけを小テストで回します。",
+    keywords: ["ミスだけ", "弱点", "直近ミス", "あいまい", "苦手"],
+    action: "quick-study",
+    quickStudyKind: "mistakes",
+    quickStudyMinutes: 5,
+    targetId: "studyQuickActionGrid",
+    featured: true,
+  },
+  {
+    id: "choice-speed",
+    title: "4択で高速確認する",
+    sectionLabel: "学習",
+    description: "4択クイズを短時間で流して、弱点をすぐ見つけます。",
+    keywords: ["4択で流す", "高速確認", "choice", "スピード", "4択"],
+    action: "quick-study",
+    quickStudyKind: "choice",
+    quickStudyMinutes: 5,
+    targetId: "studyQuickActionGrid",
+    featured: false,
   },
   {
     id: "question-map-ai",
@@ -965,11 +1071,23 @@ function bindEvents() {
   cardForm.addEventListener("submit", handleCardSubmit);
   editDeckForm.addEventListener("submit", handleEditDeckSubmit);
   editCardForm.addEventListener("submit", handleEditCardSubmit);
+  if (quickCaptureForm) {
+    quickCaptureForm.addEventListener("submit", handleQuickCaptureSubmit);
+  }
+  if (bulkInputForm) {
+    bulkInputForm.addEventListener("submit", handleBulkInputSubmit);
+  }
   if (cardFrontMediaInput) {
     cardFrontMediaInput.addEventListener("change", (event) => handleMediaInputChange(event, { formKey: "card", side: "front" }));
   }
   if (cardBackMediaInput) {
     cardBackMediaInput.addEventListener("change", (event) => handleMediaInputChange(event, { formKey: "card", side: "back" }));
+  }
+  if (quickCaptureFrontMediaInput) {
+    quickCaptureFrontMediaInput.addEventListener("change", (event) => handleMediaInputChange(event, { formKey: "quick", side: "front" }));
+  }
+  if (quickCaptureBackMediaInput) {
+    quickCaptureBackMediaInput.addEventListener("change", (event) => handleMediaInputChange(event, { formKey: "quick", side: "back" }));
   }
   if (editCardFrontMediaInput) {
     editCardFrontMediaInput.addEventListener("change", (event) => handleMediaInputChange(event, { formKey: "edit", side: "front" }));
@@ -1017,6 +1135,9 @@ function bindEvents() {
     renderEditWorkspace();
   });
   editDeckFocusInput.addEventListener("change", applyEditDeckFocusPreset);
+  if (editCardQuickAddButton) {
+    editCardQuickAddButton.addEventListener("click", () => openQuickCapture(selectedEditDeckId));
+  }
   cancelEditWorkspaceCardButton.addEventListener("click", () => {
     clearEditWorkspaceCardEditing();
     showToast("カード編集を終了しました");
@@ -1033,6 +1154,12 @@ function bindEvents() {
   if (editCardBackMediaList) {
     editCardBackMediaList.addEventListener("click", (event) => handleMediaListActions(event, { formKey: "edit", side: "back" }));
   }
+  if (quickCaptureFrontMediaList) {
+    quickCaptureFrontMediaList.addEventListener("click", (event) => handleMediaListActions(event, { formKey: "quick", side: "front" }));
+  }
+  if (quickCaptureBackMediaList) {
+    quickCaptureBackMediaList.addEventListener("click", (event) => handleMediaListActions(event, { formKey: "quick", side: "back" }));
+  }
 
   studyDeckFilter.addEventListener("change", () => {
     resetStudySession();
@@ -1041,6 +1168,15 @@ function bindEvents() {
     isAnswerVisible = false;
     renderStudy();
   });
+  if (studyQuickCaptureButton) {
+    studyQuickCaptureButton.addEventListener("click", () => openQuickCapture(studyDeckFilter.value?.startsWith("focus:") ? "" : studyDeckFilter.value || ""));
+  }
+  studyMinuteButtons.forEach((button) => {
+    button.addEventListener("click", () => setStudyQuickMinutes(Number(button.dataset.studyMinutes || 5)));
+  });
+  if (studyQuickActionGrid) {
+    studyQuickActionGrid.addEventListener("click", handleStudyQuickActions);
+  }
   studySessionSizeInput.addEventListener("input", () => {
     studySessionSize = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), 3, 20, 8);
     studySessionSizeInput.value = String(studySessionSize);
@@ -1068,8 +1204,23 @@ function bindEvents() {
   libraryStorageFilter.addEventListener("change", renderLibrary);
   libraryStudyStateFilter.addEventListener("change", renderLibrary);
   libraryTextFilter.addEventListener("input", renderLibrary);
+  if (libraryQuickCaptureButton) {
+    libraryQuickCaptureButton.addEventListener("click", () => openQuickCapture(libraryDeckFilter.value?.startsWith("focus:") ? "" : libraryDeckFilter.value || ""));
+  }
   cardDeckId.addEventListener("change", applyCardContextPlaceholders);
+  if (quickCaptureDeckId) {
+    quickCaptureDeckId.addEventListener("change", renderQuickCapturePanel);
+  }
+  if (quickCaptureResetButton) {
+    quickCaptureResetButton.addEventListener("click", () => resetQuickCaptureForm({ withToast: true }));
+  }
   deckFocusInput.addEventListener("change", applyDeckFocusPreset);
+  if (bulkTargetDeckId) {
+    bulkTargetDeckId.addEventListener("change", renderBulkInputPanel);
+  }
+  if (bulkFocusInput) {
+    bulkFocusInput.addEventListener("change", renderBulkInputPanel);
+  }
   importFocusInput.addEventListener("change", applyImportFocusPreset);
   importFileInput.addEventListener("change", syncImportDeckNameFromFile);
   saveImportButton.addEventListener("click", saveImportDraftAsDeck);
@@ -1126,6 +1277,24 @@ function bindEvents() {
   if (settingsAutoBackupCheckbox) {
     settingsAutoBackupCheckbox.addEventListener("change", handleAutoBackupToggle);
   }
+  if (settingsQuickKeepDeckCheckbox) {
+    settingsQuickKeepDeckCheckbox.addEventListener("change", handleQuickCapturePreferenceChange);
+  }
+  if (settingsQuickKeepTemplateCheckbox) {
+    settingsQuickKeepTemplateCheckbox.addEventListener("change", handleQuickCapturePreferenceChange);
+  }
+  if (settingsStudyDefaultMinutes) {
+    settingsStudyDefaultMinutes.addEventListener("change", handleStudyPreferenceChange);
+  }
+  if (settingsStudyDefaultSpeedMode) {
+    settingsStudyDefaultSpeedMode.addEventListener("change", handleStudyPreferenceChange);
+  }
+  if (settingsStudyAutoRepeatCheckbox) {
+    settingsStudyAutoRepeatCheckbox.addEventListener("change", handleStudyPreferenceChange);
+  }
+  if (settingsStudyAutoAdvanceCheckbox) {
+    settingsStudyAutoAdvanceCheckbox.addEventListener("change", handleStudyPreferenceChange);
+  }
   if (settingsBackupNowButton) {
     settingsBackupNowButton.addEventListener("click", () => createCloudBackupSnapshot({ kind: "manual" }));
   }
@@ -1157,6 +1326,9 @@ function bindEvents() {
   }
   if (deckActionCardButton) {
     deckActionCardButton.addEventListener("click", () => openDeckActionTarget("card"));
+  }
+  if (deckActionQuickButton) {
+    deckActionQuickButton.addEventListener("click", () => openDeckActionTarget("quick"));
   }
   if (deckActionImportButton) {
     deckActionImportButton.addEventListener("click", () => openDeckActionTarget("import"));
@@ -1196,7 +1368,32 @@ function createEmptyMediaDraft() {
 }
 
 function getMediaDraft(formKey) {
-  return formKey === "edit" ? editCardMediaDraft : cardMediaDraft;
+  if (formKey === "edit") {
+    return editCardMediaDraft;
+  }
+  if (formKey === "quick") {
+    return quickCaptureMediaDraft;
+  }
+  return cardMediaDraft;
+}
+
+function getMediaDraftUi(formKey, side) {
+  if (formKey === "edit") {
+    return {
+      listElement: side === "front" ? editCardFrontMediaList : editCardBackMediaList,
+      statusElement: side === "front" ? editCardFrontMediaStatus : editCardBackMediaStatus,
+    };
+  }
+  if (formKey === "quick") {
+    return {
+      listElement: side === "front" ? quickCaptureFrontMediaList : quickCaptureBackMediaList,
+      statusElement: side === "front" ? quickCaptureFrontMediaStatus : quickCaptureBackMediaStatus,
+    };
+  }
+  return {
+    listElement: side === "front" ? cardFrontMediaList : cardBackMediaList,
+    statusElement: side === "front" ? cardFrontMediaStatus : cardBackMediaStatus,
+  };
 }
 
 function resetMediaDraft(formKey) {
@@ -1210,6 +1407,8 @@ function resetMediaDraft(formKey) {
   });
   if (formKey === "edit") {
     editCardMediaDraft = createEmptyMediaDraft();
+  } else if (formKey === "quick") {
+    quickCaptureMediaDraft = createEmptyMediaDraft();
   } else {
     cardMediaDraft = createEmptyMediaDraft();
   }
@@ -1488,20 +1687,7 @@ function buildMediaDraftCard(item, index, { formKey, side }) {
 
 function renderMediaDraftList(formKey, side) {
   const draft = getMediaDraft(formKey)[side];
-  const listElement = formKey === "edit"
-    ? side === "front"
-      ? editCardFrontMediaList
-      : editCardBackMediaList
-    : side === "front"
-      ? cardFrontMediaList
-      : cardBackMediaList;
-  const statusElement = formKey === "edit"
-    ? side === "front"
-      ? editCardFrontMediaStatus
-      : editCardBackMediaStatus
-    : side === "front"
-      ? cardFrontMediaStatus
-      : cardBackMediaStatus;
+  const { listElement, statusElement } = getMediaDraftUi(formKey, side);
 
   if (!listElement || !statusElement) {
     return;
@@ -1527,6 +1713,8 @@ function renderMediaDraftList(formKey, side) {
 function renderAllMediaDraftLists() {
   renderMediaDraftList("card", "front");
   renderMediaDraftList("card", "back");
+  renderMediaDraftList("quick", "front");
+  renderMediaDraftList("quick", "back");
   renderMediaDraftList("edit", "front");
   renderMediaDraftList("edit", "back");
 }
@@ -1686,6 +1874,206 @@ function canUseLocalShare(deck) {
   return Boolean(deck) && !hasDeckMedia(deck.id);
 }
 
+function getDeckDefaults(deckOrId) {
+  const deck = typeof deckOrId === "string" ? getDeckById(deckOrId) : deckOrId;
+  return normalizeDeckDefaults(deck?.defaults, normalizeDeckFocus(deck?.focus));
+}
+
+function getPreferredCardStyle(card, deck = getDeckById(card?.deckId || "")) {
+  return getDeckDefaults(deck).preferredCardStyle || "balanced";
+}
+
+function buildTagString(tags) {
+  return dedupeTags(Array.isArray(tags) ? tags : parseTags(String(tags || ""))).join(", ");
+}
+
+function mergeTagString(...inputs) {
+  return buildTagString(inputs.flatMap((input) => (Array.isArray(input) ? input : parseTags(String(input || "")))));
+}
+
+function getDefaultCardTextPlaceholders(focus) {
+  if (focus === "medical") {
+    return {
+      front: "例: ネフローゼ症候群の4徴は？",
+      back: "例: 高度蛋白尿、低アルブミン血症、浮腫、高脂血症。",
+    };
+  }
+
+  if (focus === "english") {
+    return {
+      front: "例: administer",
+      back: "例: 投与する / to give a drug or treatment",
+    };
+  }
+
+  return {
+    front: "表に出す内容",
+    back: "裏面の内容",
+  };
+}
+
+function applyDeckDefaultsToCardFields(deck, fields, { force = false } = {}) {
+  if (!deck || !fields) {
+    return;
+  }
+
+  const defaults = getDeckDefaults(deck);
+  const placeholders = getDefaultCardTextPlaceholders(deck.focus);
+  const shouldApplyTemplates = state.settings?.quickCapture?.keepTemplate !== false;
+
+  if (fields.frontInput) {
+    fields.frontInput.placeholder = defaults.frontPromptTemplate || placeholders.front;
+  }
+  if (fields.backInput) {
+    fields.backInput.placeholder = defaults.backPromptTemplate || placeholders.back;
+  }
+
+  if (!shouldApplyTemplates) {
+    return;
+  }
+
+  if (fields.topicInput && (force || !String(fields.topicInput.value || "").trim())) {
+    fields.topicInput.value = defaults.defaultTopic || "";
+  }
+
+  if (fields.tagsInput) {
+    const nextTags = mergeTagString(defaults.defaultTags, force ? "" : fields.tagsInput.value || "");
+    if (force || !String(fields.tagsInput.value || "").trim()) {
+      fields.tagsInput.value = nextTags;
+    } else if (defaults.defaultTags) {
+      fields.tagsInput.value = mergeTagString(fields.tagsInput.value, defaults.defaultTags);
+    }
+  }
+}
+
+function buildQuickCaptureDeckOptions() {
+  return sortDashboardDecks(state.decks.filter((deck) => canAddCardsToDeck(deck)));
+}
+
+function syncQuickCaptureDeckOptions() {
+  if (!quickCaptureDeckId) {
+    return [];
+  }
+
+  const decks = buildQuickCaptureDeckOptions();
+  const previousValue = quickCaptureDeckId.value || state.settings?.quickCapture?.lastDeckId || "";
+  quickCaptureDeckId.innerHTML = decks.length
+    ? decks.map((deck) => `<option value="${deck.id}">${escapeHtml(deck.subject ? `${deck.subject} / ${deck.name}` : deck.name)}</option>`).join("")
+    : '<option value="">保存できるデッキがありません</option>';
+  quickCaptureDeckId.disabled = !decks.length;
+
+  if (optionExists(quickCaptureDeckId, previousValue)) {
+    quickCaptureDeckId.value = previousValue;
+  } else if (decks[0]) {
+    quickCaptureDeckId.value = decks[0].id;
+  } else {
+    quickCaptureDeckId.value = "";
+  }
+  return decks;
+}
+
+function renderQuickCapturePanel() {
+  const decks = syncQuickCaptureDeckOptions();
+  const deck = getDeckById(quickCaptureDeckId?.value || "");
+  const hasDeck = Boolean(deck);
+  const canCreate = Boolean(deck && canAddCardsToDeck(deck));
+  const canUploadMedia = Boolean(deck && canUploadMediaForDeck(deck));
+
+  if (quickCaptureFrontInput) {
+    quickCaptureFrontInput.disabled = !canCreate;
+  }
+  if (quickCaptureBackInput) {
+    quickCaptureBackInput.disabled = !canCreate;
+  }
+  if (quickCaptureTagsInput) {
+    quickCaptureTagsInput.disabled = !canCreate;
+  }
+  if (quickCaptureFrontMediaInput) {
+    quickCaptureFrontMediaInput.disabled = !canCreate || !canUploadMedia;
+  }
+  if (quickCaptureBackMediaInput) {
+    quickCaptureBackMediaInput.disabled = !canCreate || !canUploadMedia;
+  }
+  if (quickCaptureSaveNextButton) {
+    quickCaptureSaveNextButton.disabled = !canCreate;
+  }
+  if (quickCaptureSaveButton) {
+    quickCaptureSaveButton.disabled = !canCreate;
+  }
+  if (quickCaptureResetButton) {
+    quickCaptureResetButton.disabled = !canCreate && !decks.length;
+  }
+
+  if (!hasDeck) {
+    if (quickCaptureStatus) {
+      quickCaptureStatus.textContent = decks.length
+        ? "保存先デッキを選ぶと、問題と答えだけで素早く追加できます。"
+        : "まずはカードを入れるデッキを作ると、ここから連続追加できるようになります。";
+    }
+    renderMediaDraftList("quick", "front");
+    renderMediaDraftList("quick", "back");
+    return;
+  }
+
+  const defaults = getDeckDefaults(deck);
+  const rememberedTags =
+    state.settings?.quickCapture?.lastDeckId === deck.id ? state.settings?.quickCapture?.lastTags || "" : "";
+  if (state.settings?.quickCapture?.keepTemplate !== false && !String(quickCaptureTagsInput?.value || "").trim()) {
+    quickCaptureTagsInput.value = mergeTagString(rememberedTags, defaults.defaultTags);
+  }
+  applyDeckDefaultsToCardFields(
+    deck,
+    {
+      frontInput: quickCaptureFrontInput,
+      backInput: quickCaptureBackInput,
+      tagsInput: quickCaptureTagsInput,
+    },
+    { force: false },
+  );
+
+  const styleLabel =
+    defaults.preferredCardStyle === "image-first"
+      ? "画像中心"
+      : defaults.preferredCardStyle === "text-first"
+        ? "文字中心"
+        : "バランス";
+  quickCaptureStatus.textContent = `追加先: ${deck.name}${deck.subject ? ` / ${deck.subject}` : ""}。タグやテンプレはこのデッキの既定値を使えます。現在のおすすめ表示: ${styleLabel}。`;
+  renderMediaDraftList("quick", "front");
+  renderMediaDraftList("quick", "back");
+}
+
+function renderBulkInputPanel() {
+  if (!bulkTargetDeckId) {
+    return;
+  }
+
+  const editableDecks = sortDashboardDecks(state.decks.filter((deck) => canAddCardsToDeck(deck)));
+  const previousValue = bulkTargetDeckId.value || "";
+  bulkTargetDeckId.innerHTML =
+    '<option value="">新しいデッキを作る</option>' +
+    editableDecks
+      .map((deck) => `<option value="${deck.id}">${escapeHtml(deck.subject ? `${deck.subject} / ${deck.name}` : deck.name)}</option>`)
+      .join("");
+  if (optionExists(bulkTargetDeckId, previousValue)) {
+    bulkTargetDeckId.value = previousValue;
+  }
+
+  const targetDeck = getDeckById(bulkTargetDeckId.value || "");
+  if (targetDeck) {
+    bulkFocusInput.value = normalizeDeckFocus(targetDeck.focus);
+    if (!String(bulkDeckNameInput.value || "").trim()) {
+      bulkDeckNameInput.value = targetDeck.name;
+    }
+    if (!String(bulkSubjectInput.value || "").trim()) {
+      bulkSubjectInput.value = targetDeck.subject || "";
+    }
+    bulkInputStatus.textContent = `保存先: 「${targetDeck.name}」。Q/Aや箇条書きを貼ると、既存デッキへ追加する候補レビューを作れます。`;
+  } else {
+    bulkInputStatus.textContent =
+      "Q/A、箇条書き、番号付きメモを貼り付けると、候補レビューへまとめて送れます。新しいデッキにするか、あとから保存先を選べます。";
+  }
+}
+
 async function persistDraftMediaItems(items) {
   const savedItems = [];
   for (const item of normalizeCardMediaList(items)) {
@@ -1793,6 +2181,9 @@ async function handleOpenMediaViewerClick(event) {
 
 function switchSection(sectionId) {
   activeSection = sectionId;
+  if (sectionId !== "study") {
+    clearStudyAdvanceTimer();
+  }
 
   tabs.forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.section === sectionId);
@@ -2071,6 +2462,10 @@ function executeFeatureSearchItem(itemId) {
   if (item.action === "study-mode") {
     switchSection("study");
     setStudyMode(item.studyMode || "review");
+  } else if (item.action === "quick-study") {
+    switchSection("study");
+    setStudyQuickMinutes(item.quickStudyMinutes || state.settings?.studyPreferences?.defaultSessionMinutes || 5);
+    startQuickStudy(item.quickStudyKind || "recommended");
   } else if (item.action === "create-mode") {
     openCreateMode(item.createMode || "deck");
   } else if (item.action === "section") {
@@ -2218,6 +2613,8 @@ function renderDeckSelectors() {
 function renderForms() {
   syncDeckForm();
   syncCardForm();
+  renderQuickCapturePanel();
+  renderBulkInputPanel();
   renderEditWorkspace();
   renderImportPanel();
   renderQuestionMapPanel();
@@ -2262,6 +2659,12 @@ function setCreateMode(mode) {
   }
   if (mode === "edit") {
     renderEditWorkspace();
+  }
+  if (mode === "quick") {
+    renderQuickCapturePanel();
+  }
+  if (mode === "bulk") {
+    renderBulkInputPanel();
   }
 }
 
@@ -2463,6 +2866,31 @@ function openDeckComposer(focus = "medical") {
   deckNameInput.focus();
 }
 
+function openQuickCapture(deckId = "", options = {}) {
+  const requestedDeckId =
+    String(deckId || "").trim() ||
+    (state.settings?.quickCapture?.keepDeckContext !== false ? state.settings?.quickCapture?.lastDeckId || "" : "");
+  clearDeckEditing();
+  clearCardEditing();
+  clearImportDraft();
+  resetMediaDraft("quick");
+  quickCaptureForm?.reset();
+  setCreateMode("quick");
+  switchSection("manage");
+  syncQuickCaptureDeckOptions();
+
+  if (requestedDeckId && optionExists(quickCaptureDeckId, requestedDeckId)) {
+    quickCaptureDeckId.value = requestedDeckId;
+  }
+  if (options.tags && !String(quickCaptureTagsInput.value || "").trim()) {
+    quickCaptureTagsInput.value = mergeTagString(options.tags);
+  }
+  renderQuickCapturePanel();
+  window.requestAnimationFrame(() => {
+    quickCaptureFrontInput?.focus();
+  });
+}
+
 function openCardComposer(deckId) {
   const deck = getDeckById(deckId);
   if (!deck) {
@@ -2571,8 +2999,9 @@ function openDeckActionModal(deckId) {
   deckActionTitle.textContent = `「${deck.subject || deck.name}」に何を追加しますか？`;
   const canAddContent = canAddCardsToDeck(deck) || canUploadMediaForDeck(deck);
   deckActionStatus.textContent = canAddContent
-    ? `カード追加、PDF取り込み、過去問参照を、いま見ているデッキに合わせて始められます。`
+    ? `クイック追加、カード追加、PDF取り込み、過去問参照を、いま見ているデッキに合わせて始められます。`
     : "この共有デッキは閲覧のみです。過去問参照は使えますが、カードやPDFの追加はできません。";
+  deckActionQuickButton.disabled = !canAddCardsToDeck(deck);
   deckActionCardButton.disabled = !canAddCardsToDeck(deck);
   deckActionImportButton.disabled = !(canAddCardsToDeck(deck) || canUploadMediaForDeck(deck));
   deckActionLocatorButton.disabled = false;
@@ -2586,24 +3015,23 @@ function closeDeckActionModal() {
 
 function openDeckActionTarget(target) {
   const targetDeckId = deckActionDeckId;
-  if (!targetDeckId) {
-    closeDeckActionModal();
+  closeDeckActionModal();
+
+  if (target === "quick") {
+    openQuickCapture(targetDeckId);
     return;
   }
 
   if (target === "card") {
-    closeDeckActionModal();
     openCardComposer(targetDeckId);
     return;
   }
 
   if (target === "import") {
-    closeDeckActionModal();
     openImportComposer(targetDeckId);
     return;
   }
 
-  closeDeckActionModal();
   openQuestionMapComposer(targetDeckId);
 }
 
@@ -2639,10 +3067,220 @@ function setStudySource(key) {
 }
 
 function resetStudySession() {
+  clearStudyAdvanceTimer();
   studySession = null;
   shortQuizAnswerInput.value = "";
   shortQuizAnswerArea.classList.add("is-hidden");
   choiceQuizAnswerArea.classList.add("is-hidden");
+}
+
+function clearStudyAdvanceTimer() {
+  if (studyAdvanceTimer) {
+    window.clearTimeout(studyAdvanceTimer);
+    studyAdvanceTimer = null;
+  }
+}
+
+function setStudyQuickMinutes(minutes) {
+  const safeMinutes = [5, 10, 20].includes(Number(minutes)) ? Number(minutes) : state.settings?.studyPreferences?.defaultSessionMinutes || 5;
+  studyQuickMinutes = safeMinutes;
+  renderStudy();
+}
+
+function estimateStudySessionSize(mode, minutes, availableCount) {
+  const perCardMinutes = mode === "test" ? 1 : mode === "choice" ? 0.5 : 0.33;
+  const estimated = Math.max(3, Math.round((Number(minutes || 5) / perCardMinutes)));
+  return clampNumber(Math.min(estimated, availableCount || estimated), 3, 20, Math.min(8, availableCount || 8));
+}
+
+function getQuickStudyCandidateGroup(groups, key) {
+  return groups[key] || groups.due;
+}
+
+function buildQuickStudyPlans(groups) {
+  const recommendedPlan = groups.due.cards.length
+    ? { key: "recommended", title: "5分だけ回す", mode: "review", sourceKey: "due", cards: groups.due.cards, description: "期限切れを優先して、最短で今日の復習を進めます。" }
+    : groups.again.cards.length
+      ? { key: "recommended", title: "おすすめの弱点補強", mode: "test", sourceKey: "again", cards: groups.again.cards, description: "直近で間違えたカードから、短い小テストを作ります。" }
+      : groups.hard.cards.length
+        ? { key: "recommended", title: "あいまいを固める", mode: "test", sourceKey: "hard", cards: groups.hard.cards, description: "惜しかったカードをもう一度だけ回して、理解を安定させます。" }
+        : { key: "recommended", title: "4択で流す", mode: "choice", sourceKey: "weak", cards: groups.weak.cards, description: "4択でテンポよく確認して、弱点を洗い出します。" };
+
+  return [
+    recommendedPlan,
+    {
+      key: "mistakes",
+      title: "ミスだけ潰す",
+      mode: "test",
+      sourceKey: groups.again.cards.length ? "again" : "hard",
+      cards: groups.again.cards.length ? groups.again.cards : groups.hard.cards,
+      description: "直近ミスやあいまいカードを、小テストで短く回します。",
+    },
+    {
+      key: "choice",
+      title: "4択で流す",
+      mode: "choice",
+      sourceKey: groups.weak.cards.length ? "weak" : "all",
+      cards: groups.weak.cards.length ? groups.weak.cards : groups.all.cards,
+      description: "選択式でテンポよく確認したいときの高速モードです。",
+    },
+  ];
+}
+
+function renderStudyQuickPanel(groups) {
+  if (!studyMinuteButtons.length || !studyQuickActionGrid || !studyQuickSummary) {
+    return;
+  }
+
+  const preferredMinutes = state.settings?.studyPreferences?.defaultSessionMinutes || 5;
+  if (![5, 10, 20].includes(studyQuickMinutes)) {
+    studyQuickMinutes = preferredMinutes;
+  }
+
+  studyMinuteButtons.forEach((button) => {
+    button.classList.toggle("is-active", Number(button.dataset.studyMinutes || 5) === studyQuickMinutes);
+  });
+
+  const plans = buildQuickStudyPlans(groups);
+  const recommended = plans[0];
+  const recommendedCount = recommended.mode === "choice"
+    ? recommended.cards.filter((card) => canBuildChoiceOptions(card, recommended.cards)).length
+    : recommended.cards.length;
+  studyQuickSummary.textContent = recommendedCount
+    ? `${studyQuickMinutes}分なら ${recommended.title} で約${estimateStudySessionSize(recommended.mode, studyQuickMinutes, recommendedCount)}問回せます。`
+    : "いまは復習待ちが少ないので、カードを追加するか、対象デッキを切り替えると始めやすくなります。";
+
+  studyQuickActionGrid.innerHTML = plans
+    .map((plan) => {
+      const availableCount = plan.mode === "choice"
+        ? plan.cards.filter((card) => canBuildChoiceOptions(card, plan.cards)).length
+        : plan.cards.length;
+      const estimatedSize = estimateStudySessionSize(plan.mode, studyQuickMinutes, availableCount);
+      const canStart = availableCount >= 1;
+      return `
+        <article class="study-quick-action-card">
+          <div>
+            <p class="eyebrow">${escapeHtml(plan.mode === "review" ? "高速復習" : plan.mode === "choice" ? "4択" : "小テスト")}</p>
+            <h4>${escapeHtml(plan.title)}</h4>
+            <p class="muted">${escapeHtml(plan.description)}</p>
+          </div>
+          <div class="card-row-meta">
+            <span class="meta-pill">${availableCount}枚対象</span>
+            <span class="meta-pill">${estimatedSize}問想定</span>
+          </div>
+          <div class="button-row">
+            <button
+              class="${canStart ? "primary-button" : "ghost-button"}"
+              data-start-quick-study="${escapeHtml(plan.key)}"
+              type="button"
+              ${canStart ? "" : "disabled"}
+            >
+              ${canStart ? "この内容で開始" : "対象不足"}
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function handleStudyQuickActions(event) {
+  const button = event.target.closest("[data-start-quick-study]");
+  if (!button) {
+    return;
+  }
+  startQuickStudy(button.dataset.startQuickStudy);
+}
+
+function buildReviewStudySession(cards, size, sourceKey) {
+  const selectedCards = shuffleList([...cards]).slice(0, Math.min(size, cards.length));
+  return {
+    id: crypto.randomUUID(),
+    mode: "review",
+    sourceKey,
+    quickKind: "review",
+    items: selectedCards.map((card) => ({
+      cardId: card.id,
+      answered: false,
+      revealed: false,
+      rating: "",
+      repeatQueued: false,
+      isRepeat: false,
+    })),
+    index: 0,
+  };
+}
+
+function startQuickStudy(kind) {
+  const groups = buildStudySourceGroups();
+  const plan = buildQuickStudyPlans(groups).find((item) => item.key === kind)
+    || buildQuickStudyPlans(groups).find((item) => item.key === state.settings?.studyPreferences?.defaultSpeedMode)
+    || buildQuickStudyPlans(groups)[0];
+
+  if (!plan) {
+    showToast("始められる学習セットがありません");
+    return;
+  }
+
+  studySourceKey = plan.sourceKey;
+  studyMode = plan.mode;
+  currentCardId = null;
+  isAnswerVisible = false;
+  clearAiStudyDraft({ silent: true });
+  clearStudyAdvanceTimer();
+
+  if (plan.mode === "review") {
+    const size = estimateStudySessionSize("review", studyQuickMinutes, plan.cards.length);
+    studySession = buildReviewStudySession(plan.cards, size, plan.sourceKey);
+    studySessionSize = size;
+    studySessionSizeInput.value = String(size);
+    renderStudy();
+    showToast(`${studyQuickMinutes}分の高速復習を始めます`);
+    return;
+  }
+
+  const availableCards = plan.mode === "choice"
+    ? plan.cards.filter((card) => canBuildChoiceOptions(card, plan.cards))
+    : plan.cards;
+  if (!availableCards.length) {
+    showToast("この条件で使えるカードがまだありません");
+    renderStudy();
+    return;
+  }
+
+  const size = estimateStudySessionSize(plan.mode, studyQuickMinutes, availableCards.length);
+  studySessionSize = size;
+  studySessionSizeInput.value = String(size);
+  studySession = buildStudySession(plan.mode, availableCards, size, { sourceKey: plan.sourceKey, quickKind: kind });
+  renderStudy();
+  showToast(`${plan.title} を始めます`);
+}
+
+function queueStudySessionRepeat(item) {
+  if (!studySession || !item || item.repeatQueued || item.isRepeat) {
+    return;
+  }
+  item.repeatQueued = true;
+  const repeatItem = {
+    ...clone(item),
+    id: crypto.randomUUID(),
+    answered: false,
+    revealed: false,
+    rating: "",
+    selectedOptionId: "",
+    typedAnswer: "",
+    isRepeat: true,
+    repeatQueued: true,
+  };
+  studySession.items.push(repeatItem);
+}
+
+function scheduleStudyAdvance(delayMs = 900) {
+  clearStudyAdvanceTimer();
+  studyAdvanceTimer = window.setTimeout(() => {
+    studyAdvanceTimer = null;
+    advanceStudySession();
+  }, delayMs);
 }
 
 function runUiShortcut(action, { focus = "", mode = "" } = {}) {
@@ -2905,6 +3543,38 @@ function buildCreateGuideModel() {
             { label: "共有へ", action: "create-mode", mode: "share", kind: "ghost" },
           ],
         };
+  }
+
+  if (createMode === "quick") {
+    return {
+      title: "短時間で連続追加する",
+      summary: "1枚ずつじっくり書くよりも、講義中や復習中に気づいた内容をすぐ足したいときの最短導線です。",
+      steps: [
+        { title: "保存先デッキを選ぶ", text: "今の科目デッキを選ぶと、タグやテンプレもその文脈に寄ります。" },
+        { title: "問題と答えだけ入れる", text: "画像やタグは必要なときだけ足せば十分です。空欄でもあとから編集できます。" },
+        { title: "保存して次へを繰り返す", text: "入力欄を保ったまま連続で増やせるので、講義メモの整理が速くなります。" },
+      ],
+      actions: [
+        { label: "一括入力へ", action: "create-mode", mode: "bulk" },
+        { label: "詳細カードへ", action: "create-mode", mode: "card", kind: "ghost" },
+      ],
+    };
+  }
+
+  if (createMode === "bulk") {
+    return {
+      title: "貼り付けメモをまとめて候補化する",
+      summary: "Q/A、箇条書き、番号付きメモを一気にカード候補へ変えるので、講義直後の整理時間を減らせます。",
+      steps: [
+        { title: "保存先を決める", text: "既存デッキへ追記するか、新しいデッキ名を入れてまとめて作るか選びます。" },
+        { title: "メモをそのまま貼る", text: "Q: / A: 形式でも、箇条書きでも、番号付きでも大丈夫です。" },
+        { title: "候補レビューで整える", text: "不要候補を外してから保存できるので、あとから見返しやすい形に整えられます。" },
+      ],
+      actions: [
+        { label: "クイック追加へ", action: "create-mode", mode: "quick" },
+        { label: "PDF取り込みへ", action: "create-mode", mode: "import", kind: "ghost" },
+      ],
+    };
   }
 
   if (createMode === "card") {
@@ -3264,6 +3934,25 @@ function renderSettingsPanel() {
     .join("");
 
   renderSettingsAccountBackupPanel();
+
+  if (settingsQuickKeepDeckCheckbox) {
+    settingsQuickKeepDeckCheckbox.checked = state.settings?.quickCapture?.keepDeckContext !== false;
+  }
+  if (settingsQuickKeepTemplateCheckbox) {
+    settingsQuickKeepTemplateCheckbox.checked = state.settings?.quickCapture?.keepTemplate !== false;
+  }
+  if (settingsStudyDefaultMinutes) {
+    settingsStudyDefaultMinutes.value = String(state.settings?.studyPreferences?.defaultSessionMinutes || 5);
+  }
+  if (settingsStudyDefaultSpeedMode) {
+    settingsStudyDefaultSpeedMode.value = state.settings?.studyPreferences?.defaultSpeedMode || "recommended";
+  }
+  if (settingsStudyAutoRepeatCheckbox) {
+    settingsStudyAutoRepeatCheckbox.checked = state.settings?.studyPreferences?.autoRepeatMistakes !== false;
+  }
+  if (settingsStudyAutoAdvanceCheckbox) {
+    settingsStudyAutoAdvanceCheckbox.checked = state.settings?.studyPreferences?.autoAdvance !== false;
+  }
 }
 
 function renderDemoRestorePanel() {
@@ -3961,6 +4650,7 @@ function renderSharePanel() {
 
 function syncDeckForm() {
   const deck = getDeckById(editingDeckId);
+  const defaults = getDeckDefaults(deck || { focus: deck?.focus || deckFocusInput.value || "medical" });
   deckFormTitle.textContent = deck ? "デッキを編集" : "デッキを作る";
   deckSubmitButton.textContent = deck ? "デッキを更新" : "デッキを追加";
   cancelDeckEditButton.hidden = !deck;
@@ -3969,6 +4659,21 @@ function syncDeckForm() {
   deckFocusInput.value = deck?.focus || "medical";
   deckSubjectInput.value = deck?.subject || "";
   deckDescriptionInput.value = deck?.description || "";
+  if (deckDefaultTopicInput) {
+    deckDefaultTopicInput.value = defaults.defaultTopic || "";
+  }
+  if (deckDefaultTagsInput) {
+    deckDefaultTagsInput.value = defaults.defaultTags || "";
+  }
+  if (deckFrontTemplateInput) {
+    deckFrontTemplateInput.value = defaults.frontPromptTemplate || "";
+  }
+  if (deckBackTemplateInput) {
+    deckBackTemplateInput.value = defaults.backPromptTemplate || "";
+  }
+  if (deckPreferredCardStyleInput) {
+    deckPreferredCardStyleInput.value = defaults.preferredCardStyle || "balanced";
+  }
   applyDeckFocusPreset();
 }
 
@@ -4003,17 +4708,29 @@ function applyEditDeckFocusPreset() {
   if (focus === "medical") {
     editDeckSubjectInput.placeholder = "解剖 / 生理 / 病理 / 薬理 / 内科";
     editDeckDescriptionInput.placeholder = "例: 症候から病態を引けるようにする復習デッキ";
+    if (editDeckDefaultTopicInput) editDeckDefaultTopicInput.placeholder = "解剖 / 病理 / 鑑別 / 症候";
+    if (editDeckDefaultTagsInput) editDeckDefaultTagsInput.placeholder = "医学, 循環, 腎, 必修";
+    if (editDeckFrontTemplateInput) editDeckFrontTemplateInput.placeholder = "例: ○○とは？ / 画像の部位名は？";
+    if (editDeckBackTemplateInput) editDeckBackTemplateInput.placeholder = "例: 定義を短く / 鑑別の要点を一言で";
     return;
   }
 
   if (focus === "english") {
     editDeckSubjectInput.placeholder = "医学英語 / 語彙 / 読解 / リスニング";
     editDeckDescriptionInput.placeholder = "例: 医学英語と長文読解を分けて反復する";
+    if (editDeckDefaultTopicInput) editDeckDefaultTopicInput.placeholder = "語彙 / 読解 / 医学英語";
+    if (editDeckDefaultTagsInput) editDeckDefaultTagsInput.placeholder = "english, vocabulary, medical english";
+    if (editDeckFrontTemplateInput) editDeckFrontTemplateInput.placeholder = "例: 単語・表現 / この文の要点は？";
+    if (editDeckBackTemplateInput) editDeckBackTemplateInput.placeholder = "例: 意味と使い方 / 要点を短く";
     return;
   }
 
   editDeckSubjectInput.placeholder = "テーマ / 分野";
   editDeckDescriptionInput.placeholder = "用途やテーマを短く書く";
+  if (editDeckDefaultTopicInput) editDeckDefaultTopicInput.placeholder = "テーマ";
+  if (editDeckDefaultTagsInput) editDeckDefaultTagsInput.placeholder = "タグをカンマ区切りで入力";
+  if (editDeckFrontTemplateInput) editDeckFrontTemplateInput.placeholder = "例: ○○とは？";
+  if (editDeckBackTemplateInput) editDeckBackTemplateInput.placeholder = "例: 要点を短く";
 }
 
 function applyEditCardContextPlaceholders(focus) {
@@ -4023,23 +4740,19 @@ function applyEditCardContextPlaceholders(focus) {
     editCardTagsInput.placeholder = "循環, 腎, 呼吸, 必修";
     editCardNoteInput.placeholder = "臨床ポイント、鑑別、関連知識を残す";
     editCardExampleInput.placeholder = "症例ベースの覚え方や所見のつなぎ方";
-    return;
-  }
-
-  if (focus === "english") {
+  } else if (focus === "english") {
     editCardHintInput.placeholder = "語源、言い換え、読み方のヒント";
     editCardTopicInput.placeholder = "医学英語 / 語彙 / 読解 / 構文";
     editCardTagsInput.placeholder = "vocabulary, reading, phrase, medical english";
     editCardNoteInput.placeholder = "語法メモ、似た表現、論文での使い分け";
     editCardExampleInput.placeholder = "例文や英文のまま覚えたいフレーズ";
-    return;
+  } else {
+    editCardHintInput.placeholder = "例文や覚え方のヒント";
+    editCardTopicInput.placeholder = "テーマ";
+    editCardTagsInput.placeholder = "タグをカンマ区切りで入力";
+    editCardNoteInput.placeholder = "重要な関連知識や使い分けを記録";
+    editCardExampleInput.placeholder = "例文や症例ベースの覚え方";
   }
-
-  editCardHintInput.placeholder = "例文や覚え方のヒント";
-  editCardTopicInput.placeholder = "テーマ";
-  editCardTagsInput.placeholder = "タグをカンマ区切りで入力";
-  editCardNoteInput.placeholder = "重要な関連知識や使い分けを記録";
-  editCardExampleInput.placeholder = "例文や症例ベースの覚え方";
 }
 
 function getEditableDecks() {
@@ -4185,11 +4898,41 @@ function renderEditWorkspace() {
   editDeckFocusInput.value = deck.focus || "medical";
   editDeckSubjectInput.value = deck.subject || "";
   editDeckDescriptionInput.value = deck.description || "";
+  if (editDeckDefaultTopicInput) {
+    editDeckDefaultTopicInput.value = deck.defaults?.defaultTopic || "";
+  }
+  if (editDeckDefaultTagsInput) {
+    editDeckDefaultTagsInput.value = deck.defaults?.defaultTags || "";
+  }
+  if (editDeckFrontTemplateInput) {
+    editDeckFrontTemplateInput.value = deck.defaults?.frontPromptTemplate || "";
+  }
+  if (editDeckBackTemplateInput) {
+    editDeckBackTemplateInput.value = deck.defaults?.backPromptTemplate || "";
+  }
+  if (editDeckPreferredCardStyleInput) {
+    editDeckPreferredCardStyleInput.value = deck.defaults?.preferredCardStyle || "balanced";
+  }
   const canSubmitDeckChanges = canEditDeckMeta(deck) && !deckLockedByOther;
   editDeckNameInput.disabled = !canSubmitDeckChanges;
   editDeckFocusInput.disabled = !canSubmitDeckChanges;
   editDeckSubjectInput.disabled = !canSubmitDeckChanges;
   editDeckDescriptionInput.disabled = !canSubmitDeckChanges;
+  if (editDeckDefaultTopicInput) {
+    editDeckDefaultTopicInput.disabled = !canSubmitDeckChanges;
+  }
+  if (editDeckDefaultTagsInput) {
+    editDeckDefaultTagsInput.disabled = !canSubmitDeckChanges;
+  }
+  if (editDeckFrontTemplateInput) {
+    editDeckFrontTemplateInput.disabled = !canSubmitDeckChanges;
+  }
+  if (editDeckBackTemplateInput) {
+    editDeckBackTemplateInput.disabled = !canSubmitDeckChanges;
+  }
+  if (editDeckPreferredCardStyleInput) {
+    editDeckPreferredCardStyleInput.disabled = !canSubmitDeckChanges;
+  }
   editDeckSubmitButton.disabled = !canSubmitDeckChanges;
   resetEditDeckButton.disabled = !canSubmitDeckChanges;
   deleteEditDeckButton.disabled = deck.storageMode === "shared";
@@ -4234,6 +4977,9 @@ function renderEditWorkspace() {
   const canUpdateCard = validEditingCard ? canEditCardsInDeck(deck) && !cardLockedByOther : canCreateCard;
   const canEditMedia = canUploadMediaForDeck(deck);
   editCardCreateButton.disabled = !canCreateCard;
+  if (editCardQuickAddButton) {
+    editCardQuickAddButton.disabled = !canCreateCard;
+  }
   editCardFrontInput.disabled = !canUpdateCard;
   editCardBackInput.disabled = !canUpdateCard;
   editCardHintInput.disabled = !canUpdateCard;
@@ -4247,6 +4993,18 @@ function renderEditWorkspace() {
   editCardSubmitButton.textContent = validEditingCard ? "カードを更新" : "カードを保存";
   cancelEditWorkspaceCardButton.hidden = !validEditingCard;
   applyEditCardContextPlaceholders(deck.focus);
+  if (!validEditingCard) {
+    applyDeckDefaultsToCardFields(
+      deck,
+      {
+        frontInput: editCardFrontInput,
+        backInput: editCardBackInput,
+        topicInput: editCardTopicInput,
+        tagsInput: editCardTagsInput,
+      },
+      { force: false },
+    );
+  }
 
   editCardList.innerHTML = filteredCards.length
     ? filteredCards
@@ -5254,6 +6012,7 @@ function renderStudy() {
     studyMode === "review"
       ? `${source.title} を中心に、通常の復習キューとして回します。`
       : `${source.title} から ${Math.min(studySessionSize, studyMode === "choice" ? choiceReadyCards.length : sourceCards.length)} 問を選び、${studyMode === "choice" ? "4択クイズ" : "記述小テスト"}を作ります。`;
+  renderStudyQuickPanel(groups);
   renderAiStudyPanel(source, sourceCards, choiceReadyCards);
   studySmartListGrid.innerHTML = ["due", "again", "hard", "weak"]
     .map((key) => {
@@ -5278,6 +6037,10 @@ function renderStudy() {
     .join("");
 
   if (studyMode === "review") {
+    if (studySession && studySession.mode === "review" && studySession.index >= studySession.items.length) {
+      renderStudySessionComplete(source);
+      return;
+    }
     renderReviewStudy(sourceCards);
     return;
   }
@@ -5301,8 +6064,10 @@ function renderStudy() {
 }
 
 function renderReviewStudy(queue) {
-  const currentCard = pickCurrentCard(queue);
+  const sessionItem = studySession?.mode === "review" ? getCurrentStudySessionItem() : null;
+  const currentCard = sessionItem ? getCardById(sessionItem.cardId) : pickCurrentCard(queue);
   const deck = currentCard ? getDeckById(currentCard.deckId) : null;
+  flashcard.classList.toggle("image-first-card", getPreferredCardStyle(currentCard, deck) === "image-first");
 
   reviewFeedbackPanel.hidden = false;
   shortQuizFeedbackPanel.hidden = true;
@@ -5350,6 +6115,9 @@ function renderReviewStudy(queue) {
   answerArea.classList.toggle("is-hidden", !isAnswerVisible);
   toggleAnswerButton.textContent = isAnswerVisible ? "答えを隠す" : "答えを見る";
   studyProgress.textContent = `${queue.length}枚の対象カードがあります。現在は${formatStudyMode(currentCard.study)}フェーズです。`;
+  if (sessionItem && studySession) {
+    studyProgress.textContent = `高速復習 ${studySession.index + 1}/${studySession.items.length}問。${studySession.items.length}枚を短く回しています。`;
+  }
   renderRatingHints(currentCard);
 }
 
@@ -5391,7 +6159,7 @@ function renderStudySessionPending(source, size, choiceReadyCount = 0) {
 
 function renderStudySessionComplete(source) {
   const summary = buildStudySessionSummary(studySession);
-  reviewFeedbackPanel.hidden = studyMode !== "review";
+  reviewFeedbackPanel.hidden = true;
   shortQuizFeedbackPanel.hidden = studyMode !== "test";
   choiceQuizFeedbackPanel.hidden = studyMode !== "choice";
   flashcard.classList.add("is-hidden");
@@ -5403,13 +6171,20 @@ function renderStudySessionComplete(source) {
   choiceQuizNextButton.hidden = true;
   showStudyEmpty({
     eyebrow: "セッション完了",
-    title: `${source.title} の${studyMode === "choice" ? "4択クイズ" : "小テスト"}が終わりました`,
+    title:
+      studyMode === "review"
+        ? `${source.title} の高速復習が終わりました`
+        : `${source.title} の${studyMode === "choice" ? "4択クイズ" : "小テスト"}が終わりました`,
     text:
-      studyMode === "choice"
+      studyMode === "review"
+        ? `覚えた ${summary.good} / あいまい ${summary.hard} / 再確認 ${summary.again} でした。短時間で弱点をもう一度回せます。`
+        : studyMode === "choice"
         ? `正解 ${summary.good} / ${summary.total} 問でした。間違えた問題は復習待ちへ戻しています。`
         : `正解 ${summary.good}、惜しい ${summary.hard}、不正解 ${summary.again} でした。弱点リストへ戻して再挑戦できます。`,
   });
-  if (studyMode === "test") {
+  if (studyMode === "review") {
+    studyProgress.textContent = `覚えた ${summary.good} / あいまい ${summary.hard} / 再確認 ${summary.again}`;
+  } else if (studyMode === "test") {
     shortQuizProgress.textContent = `正解 ${summary.good} / 惜しい ${summary.hard} / 不正解 ${summary.again}`;
   } else {
     choiceQuizStatus.textContent = "4択クイズを完了しました。";
@@ -5422,6 +6197,7 @@ function renderShortQuizStudy(source) {
   const itemData = resolveStudySessionItem(item);
   const card = itemData?.linkedCard || null;
   const deck = itemData?.deck || null;
+  shortQuizCard.classList.toggle("image-first-card", getPreferredCardStyle(card, deck) === "image-first");
 
   reviewFeedbackPanel.hidden = true;
   shortQuizFeedbackPanel.hidden = false;
@@ -5471,6 +6247,7 @@ function renderChoiceQuizStudy(source) {
   const itemData = resolveStudySessionItem(item);
   const card = itemData?.linkedCard || null;
   const deck = itemData?.deck || null;
+  choiceQuizCard.classList.toggle("image-first-card", getPreferredCardStyle(card, deck) === "image-first");
 
   reviewFeedbackPanel.hidden = true;
   shortQuizFeedbackPanel.hidden = true;
@@ -5583,26 +6360,29 @@ function startStudySession() {
     return;
   }
 
-  studySession = buildStudySession(studyMode, cards, size);
+  studySession = buildStudySession(studyMode, cards, size, { sourceKey: studySourceKey });
   currentCardId = null;
   isAnswerVisible = false;
   renderStudy();
   showToast(studyMode === "choice" ? "4択クイズを作成しました" : "小テストを作成しました");
 }
 
-function buildStudySession(mode, cards, size) {
+function buildStudySession(mode, cards, size, options = {}) {
   const selectedCards = shuffleList([...cards]).slice(0, Math.min(size, cards.length));
 
   return {
     id: crypto.randomUUID(),
     mode,
-    sourceKey: studySourceKey,
+    sourceKey: options.sourceKey || studySourceKey,
+    quickKind: options.quickKind || "",
     items: selectedCards.map((card) => ({
       cardId: card.id,
       typedAnswer: "",
       revealed: false,
       answered: false,
       rating: "",
+      repeatQueued: false,
+      isRepeat: false,
       selectedOptionId: "",
       choiceOptions: mode === "choice" ? buildChoiceOptions(card, cards) : [],
     })),
@@ -5704,6 +6484,9 @@ function gradeShortQuiz(rating) {
   item.typedAnswer = String(shortQuizAnswerInput.value || "").trim();
   item.answered = true;
   item.rating = rating;
+  if (rating === "again" && state.settings?.studyPreferences?.autoRepeatMistakes !== false) {
+    queueStudySessionRepeat(item);
+  }
   recordStudySessionResult(item, rating, "quiz-test");
   advanceStudySession();
 }
@@ -5723,8 +6506,14 @@ function handleChoiceQuizActions(event) {
   item.selectedOptionId = optionButton.dataset.choiceOptionId;
   item.answered = true;
   item.rating = item.choiceOptions.some((option) => option.id === item.selectedOptionId && option.isCorrect) ? "good" : "again";
+  if (item.rating === "again" && state.settings?.studyPreferences?.autoRepeatMistakes !== false) {
+    queueStudySessionRepeat(item);
+  }
   recordStudySessionResult(item, item.rating, "quiz-choice");
   render();
+  if (state.settings?.studyPreferences?.autoAdvance !== false && studySession?.quickKind) {
+    scheduleStudyAdvance();
+  }
 }
 
 function advanceStudySession() {
@@ -5733,6 +6522,7 @@ function advanceStudySession() {
     return;
   }
 
+  clearStudyAdvanceTimer();
   shortQuizAnswerInput.value = "";
   if (studySession.index < studySession.items.length) {
     studySession.index += 1;
@@ -6081,11 +6871,12 @@ function renderDeckDetail() {
   `;
 }
 
-function saveDeckRecord({ deckId, name, focus, subject, description }) {
+function saveDeckRecord({ deckId, name, focus, subject, description, defaults = {} }) {
   const safeName = String(name || "").trim();
   if (!safeName) {
     throw new Error("デッキ名を入力してください");
   }
+  const normalizedDefaults = normalizeDeckDefaults(defaults, normalizeDeckFocus(focus));
 
   const now = Date.now();
   if (deckId) {
@@ -6102,6 +6893,7 @@ function saveDeckRecord({ deckId, name, focus, subject, description }) {
     deck.focus = normalizeDeckFocus(focus);
     deck.subject = String(subject || "").trim();
     deck.description = String(description || "").trim();
+    deck.defaults = normalizedDefaults;
     deck.updatedAt = now;
     markDeckDirty(deck.id);
     return { deck, isNew: false };
@@ -6118,6 +6910,7 @@ function saveDeckRecord({ deckId, name, focus, subject, description }) {
     storageMode: "local",
     role: "owner",
     syncState: "local-only",
+    defaults: normalizedDefaults,
   });
 
   state.decks.unshift(deck);
@@ -6225,10 +7018,17 @@ function handleDeckSubmit(event) {
   const focus = String(formData.get("deckFocus") || "medical").trim();
   const subject = String(formData.get("deckSubject") || "").trim();
   const description = String(formData.get("deckDescription") || "").trim();
+  const defaults = {
+    defaultTopic: String(formData.get("deckDefaultTopic") || "").trim(),
+    defaultTags: String(formData.get("deckDefaultTags") || "").trim(),
+    frontPromptTemplate: String(formData.get("deckFrontTemplate") || "").trim(),
+    backPromptTemplate: String(formData.get("deckBackTemplate") || "").trim(),
+    preferredCardStyle: String(formData.get("deckPreferredCardStyle") || "balanced").trim(),
+  };
 
   (async () => {
     try {
-    const { deck, isNew } = saveDeckRecord({ deckId, name, focus, subject, description });
+    const { deck, isNew } = saveDeckRecord({ deckId, name, focus, subject, description, defaults });
     clearDeckEditing();
     persist();
     render();
@@ -6334,6 +7134,13 @@ async function handleEditDeckSubmit(event) {
       focus: String(formData.get("editDeckFocus") || "medical").trim(),
       subject: String(formData.get("editDeckSubject") || "").trim(),
       description: String(formData.get("editDeckDescription") || "").trim(),
+      defaults: {
+        defaultTopic: String(formData.get("editDeckDefaultTopic") || "").trim(),
+        defaultTags: String(formData.get("editDeckDefaultTags") || "").trim(),
+        frontPromptTemplate: String(formData.get("editDeckFrontTemplate") || "").trim(),
+        backPromptTemplate: String(formData.get("editDeckBackTemplate") || "").trim(),
+        preferredCardStyle: String(formData.get("editDeckPreferredCardStyle") || "balanced").trim(),
+      },
     });
     selectedEditDeckId = deck.id;
     persist();
@@ -7618,17 +8425,20 @@ function saveImportDraftAsDeck() {
   }
 
   if (!targetDeck) {
-    state.decks.unshift({
+    state.decks.unshift(
+      normalizeDeck({
       id: deckId,
       name: deckName,
       focus: importDraft.focus,
       subject: importDraft.subject,
       description: importDraft.instructions ? `${descriptionBase} / ${importDraft.instructions}` : descriptionBase,
       createdAt: now,
+      updatedAt: now,
       storageMode: "local",
       role: "owner",
       syncState: "local-only",
-    });
+      }),
+    );
   } else {
     targetDeck.updatedAt = now;
     targetDeck.subject = targetDeck.subject || importDraft.subject;
@@ -7937,7 +8747,8 @@ async function deleteCard(cardId) {
 }
 
 function reviewCurrentCard(rating) {
-  const card = getCardById(currentCardId);
+  const sessionItem = studySession?.mode === "review" ? getCurrentStudySessionItem() : null;
+  const card = sessionItem ? getCardById(sessionItem.cardId) : getCardById(currentCardId);
   if (!card) {
     showToast("学習できるカードがありません");
     return;
@@ -7964,10 +8775,22 @@ function reviewCurrentCard(rating) {
   });
 
   state.reviewLog = state.reviewLog.slice(-250);
-  currentCardId = null;
+  if (sessionItem) {
+    sessionItem.answered = true;
+    sessionItem.rating = rating;
+    if (rating === "again" && state.settings?.studyPreferences?.autoRepeatMistakes !== false) {
+      queueStudySessionRepeat(sessionItem);
+    }
+  } else {
+    currentCardId = null;
+  }
   isAnswerVisible = false;
   persist();
-  render();
+  if (sessionItem) {
+    advanceStudySession();
+  } else {
+    render();
+  }
   syncSharedProgressForCard(card, rating).catch((error) => {
     console.warn("Failed to sync shared progress:", error);
   });
@@ -7999,6 +8822,189 @@ function clearCardEditing() {
   cardIdInput.value = "";
   resetMediaDraft("card");
   applyCardContextPlaceholders();
+}
+
+function resetQuickCaptureForm({ preserveDeck = state.settings?.quickCapture?.keepDeckContext !== false, preserveTags = true, withToast = false } = {}) {
+  const currentDeckId = quickCaptureDeckId?.value || state.settings?.quickCapture?.lastDeckId || "";
+  const currentTags = quickCaptureTagsInput?.value || "";
+  quickCaptureForm?.reset();
+  resetMediaDraft("quick");
+  syncQuickCaptureDeckOptions();
+  if (preserveDeck && currentDeckId && optionExists(quickCaptureDeckId, currentDeckId)) {
+    quickCaptureDeckId.value = currentDeckId;
+  }
+  renderQuickCapturePanel();
+  if (preserveTags && quickCaptureTagsInput) {
+    const deck = getDeckById(quickCaptureDeckId?.value || "");
+    const rememberedTags = state.settings?.quickCapture?.keepTemplate !== false ? currentTags || state.settings?.quickCapture?.lastTags || "" : currentTags;
+    quickCaptureTagsInput.value = mergeTagString(rememberedTags, deck?.defaults?.defaultTags || "");
+  }
+  if (withToast) {
+    showToast("クイック追加の入力をクリアしました");
+  }
+}
+
+async function handleQuickCaptureSubmit(event) {
+  event.preventDefault();
+  const deckId = String(quickCaptureDeckId?.value || "").trim();
+  const deck = getDeckById(deckId);
+  if (!deck) {
+    showToast("保存先デッキを選んでください");
+    return;
+  }
+
+  const submitMode = event.submitter?.dataset.quickSubmit === "save" ? "save" : "next";
+  const front = String(quickCaptureFrontInput?.value || "").trim();
+  const back = String(quickCaptureBackInput?.value || "").trim();
+  const tags = parseTags(String(quickCaptureTagsInput?.value || ""));
+
+  try {
+    const { card, isNew } = await saveCardRecord({
+      deckId,
+      front,
+      back,
+      topic: deck.defaults?.defaultTopic || deck.subject || "",
+      tags,
+      frontMedia: quickCaptureMediaDraft.front,
+      backMedia: quickCaptureMediaDraft.back,
+    });
+    state.settings.quickCapture.lastDeckId = deckId;
+    state.settings.quickCapture.lastTags = buildTagString(tags);
+    persist();
+    cleanupOrphanedMediaAssets();
+    render();
+    resetQuickCaptureForm({ preserveDeck: true, preserveTags: true });
+    if (submitMode === "next") {
+      window.requestAnimationFrame(() => quickCaptureFrontInput?.focus());
+    }
+    showToast(isNew ? `「${deck.name}」にカードを追加しました` : `「${deck.name}」のカードを更新しました`);
+    if (deck.storageMode === "shared") {
+      try {
+        deck.syncState = "syncing";
+        render();
+        await upsertSharedCardForDeck(deck, card, {
+          eventType: isNew ? "card_added" : "card_updated",
+          summary: isNew ? `カード「${formatCardFrontLabel(card)}」を追加しました` : `カード「${formatCardFrontLabel(card)}」を更新しました`,
+        });
+        await refreshCloudData({ silent: true });
+        persist();
+        render();
+      } catch (error) {
+        deck.syncState = "dirty";
+        persist();
+        render();
+        console.warn("Failed to sync quick capture card:", error);
+      }
+    }
+  } catch (error) {
+    cleanupOrphanedMediaAssets();
+    showToast(error.message || "クイック追加に失敗しました");
+  }
+}
+
+function normalizeBulkInputSourceText(text) {
+  const normalized = normalizeImportedText(text);
+  const lines = normalized.split("\n");
+  const blocks = [];
+  let currentQuestion = "";
+  let currentAnswer = [];
+
+  const flush = () => {
+    if (!currentQuestion || !currentAnswer.length) {
+      return;
+    }
+    blocks.push(`Q: ${currentQuestion}\nA: ${currentAnswer.join(" ")}`);
+    currentQuestion = "";
+    currentAnswer = [];
+  };
+
+  lines.forEach((line) => {
+    const safeLine = cleanImportedSegment(line);
+    if (!safeLine) {
+      flush();
+      return;
+    }
+    const questionMatch = safeLine.match(/^q[:：]\s*(.+)$/i);
+    if (questionMatch) {
+      flush();
+      currentQuestion = cleanImportedSegment(questionMatch[1] || "");
+      return;
+    }
+    const answerMatch = safeLine.match(/^a[:：]\s*(.+)$/i);
+    if (answerMatch) {
+      currentAnswer.push(cleanImportedSegment(answerMatch[1] || ""));
+      return;
+    }
+    if (currentQuestion && !currentAnswer.length) {
+      currentAnswer.push(safeLine);
+      return;
+    }
+    blocks.push(safeLine);
+  });
+  flush();
+
+  return blocks.join("\n\n") || normalized;
+}
+
+function handleBulkInputSubmit(event) {
+  event.preventDefault();
+  const sourceText = String(bulkInputText?.value || "").trim();
+  if (!sourceText) {
+    showToast("まずは講義メモやQ/Aを貼り付けてください");
+    return;
+  }
+
+  const targetDeck = getDeckById(String(bulkTargetDeckId?.value || "").trim());
+  const focus = normalizeDeckFocus(targetDeck?.focus || bulkFocusInput?.value || "medical");
+  const subject = String(targetDeck?.subject || bulkSubjectInput?.value || "").trim();
+  const deckName = String(targetDeck?.name || bulkDeckNameInput?.value || "").trim() || buildDeckNameFromSource(`一括入力 ${formatDateKey(new Date())}`);
+
+  try {
+    importDraft = buildImportDraft({
+      text: normalizeBulkInputSourceText(sourceText),
+      sourceName: "一括入力メモ",
+      deckName,
+      focus,
+      subject,
+      instructions: "一括入力からカード候補化",
+      limit: 24,
+    });
+    importDraft.targetDeckId = targetDeck?.id || "";
+    importFocusInput.value = focus;
+    importDeckNameInput.value = deckName;
+    importSubjectInput.value = subject;
+    setCreateMode("import");
+    render();
+    showToast(targetDeck ? `「${targetDeck.name}」へ追加する候補を作成しました` : "一括入力からカード候補を作成しました");
+  } catch (error) {
+    showToast(error.message || "一括入力の解析に失敗しました");
+  }
+}
+
+function handleQuickCapturePreferenceChange() {
+  state.settings.quickCapture.keepDeckContext = Boolean(settingsQuickKeepDeckCheckbox?.checked);
+  state.settings.quickCapture.keepTemplate = Boolean(settingsQuickKeepTemplateCheckbox?.checked);
+  persist();
+  renderQuickCapturePanel();
+  applyCardContextPlaceholders();
+  const editDeck = getSelectedEditDeck();
+  if (editDeck && !editWorkspaceCardId) {
+    renderEditWorkspace();
+  }
+}
+
+function handleStudyPreferenceChange() {
+  state.settings.studyPreferences.defaultSessionMinutes = [5, 10, 20].includes(Number(settingsStudyDefaultMinutes?.value))
+    ? Number(settingsStudyDefaultMinutes.value)
+    : 5;
+  state.settings.studyPreferences.defaultSpeedMode = ["recommended", "mistakes", "choice"].includes(String(settingsStudyDefaultSpeedMode?.value || ""))
+    ? String(settingsStudyDefaultSpeedMode.value)
+    : "recommended";
+  state.settings.studyPreferences.autoRepeatMistakes = Boolean(settingsStudyAutoRepeatCheckbox?.checked);
+  state.settings.studyPreferences.autoAdvance = Boolean(settingsStudyAutoAdvanceCheckbox?.checked);
+  persist();
+  studyQuickMinutes = state.settings.studyPreferences.defaultSessionMinutes;
+  renderStudy();
 }
 
 function clearImportDraft() {
@@ -8043,21 +9049,34 @@ function applyDeckFocusPreset() {
   if (focus === "medical") {
     deckSubjectInput.placeholder = "解剖 / 生理 / 病理 / 薬理 / 内科";
     deckDescriptionInput.placeholder = "例: 症候から病態を引けるようにする復習デッキ";
+    if (deckDefaultTopicInput) deckDefaultTopicInput.placeholder = "解剖 / 病理 / 鑑別 / 症候";
+    if (deckDefaultTagsInput) deckDefaultTagsInput.placeholder = "医学, 循環, 腎, 必修";
+    if (deckFrontTemplateInput) deckFrontTemplateInput.placeholder = "例: ○○とは？ / 画像の部位名は？";
+    if (deckBackTemplateInput) deckBackTemplateInput.placeholder = "例: 定義を短く / 鑑別の要点を一言で";
     return;
   }
 
   if (focus === "english") {
     deckSubjectInput.placeholder = "医学英語 / 語彙 / 読解 / リスニング";
     deckDescriptionInput.placeholder = "例: 医学英語と長文読解を分けて反復する";
+    if (deckDefaultTopicInput) deckDefaultTopicInput.placeholder = "語彙 / 読解 / 医学英語";
+    if (deckDefaultTagsInput) deckDefaultTagsInput.placeholder = "english, vocabulary, medical english";
+    if (deckFrontTemplateInput) deckFrontTemplateInput.placeholder = "例: 単語・表現 / この文の要点は？";
+    if (deckBackTemplateInput) deckBackTemplateInput.placeholder = "例: 意味と使い方 / 要点を短く";
     return;
   }
 
   deckSubjectInput.placeholder = "テーマ / 分野";
   deckDescriptionInput.placeholder = "用途やテーマを短く書く";
+  if (deckDefaultTopicInput) deckDefaultTopicInput.placeholder = "テーマ";
+  if (deckDefaultTagsInput) deckDefaultTagsInput.placeholder = "タグをカンマ区切りで入力";
+  if (deckFrontTemplateInput) deckFrontTemplateInput.placeholder = "例: ○○とは？";
+  if (deckBackTemplateInput) deckBackTemplateInput.placeholder = "例: 要点を短く";
 }
 
 function applyCardContextPlaceholders() {
-  const focus = getDeckFocus(cardDeckId.value);
+  const deck = getDeckById(cardDeckId.value);
+  const focus = deck?.focus || getDeckFocus(cardDeckId.value);
 
   if (focus === "medical") {
     cardHintInput.placeholder = "病態の流れや鑑別のヒント";
@@ -8065,23 +9084,32 @@ function applyCardContextPlaceholders() {
     cardTagsInput.placeholder = "循環, 腎, 呼吸, 必修";
     cardNoteInput.placeholder = "臨床ポイント、鑑別、関連知識を残す";
     cardExampleInput.placeholder = "症例ベースの覚え方や所見のつなぎ方";
-    return;
-  }
-
-  if (focus === "english") {
+  } else if (focus === "english") {
     cardHintInput.placeholder = "語源、言い換え、読み方のヒント";
     cardTopicInput.placeholder = "医学英語 / 語彙 / 読解 / 構文";
     cardTagsInput.placeholder = "vocabulary, reading, phrase, medical english";
     cardNoteInput.placeholder = "語法メモ、似た表現、論文での使い分け";
     cardExampleInput.placeholder = "例文や英文のまま覚えたいフレーズ";
-    return;
+  } else {
+    cardHintInput.placeholder = "例文や覚え方のヒント";
+    cardTopicInput.placeholder = "テーマ";
+    cardTagsInput.placeholder = "タグをカンマ区切りで入力";
+    cardNoteInput.placeholder = "重要な関連知識や使い分けを記録";
+    cardExampleInput.placeholder = "例文や症例ベースの覚え方";
   }
 
-  cardHintInput.placeholder = "例文や覚え方のヒント";
-  cardTopicInput.placeholder = "テーマ";
-  cardTagsInput.placeholder = "タグをカンマ区切りで入力";
-  cardNoteInput.placeholder = "重要な関連知識や使い分けを記録";
-  cardExampleInput.placeholder = "例文や症例ベースの覚え方";
+  if (!editingCardId && deck) {
+    applyDeckDefaultsToCardFields(
+      deck,
+      {
+        frontInput: cardFrontInput,
+        backInput: cardBackInput,
+        topicInput: cardTopicInput,
+        tagsInput: cardTagsInput,
+      },
+      { force: false },
+    );
+  }
 }
 
 function applyImportFocusPreset() {
@@ -12306,6 +13334,67 @@ function normalizeSettingsState(settings) {
   return {
     onboardingCompleted: Boolean(safeSettings.onboardingCompleted),
     autoBackupEnabled: safeSettings.autoBackupEnabled !== false,
+    quickCapture: {
+      lastDeckId: String(safeSettings.quickCapture?.lastDeckId || "").trim(),
+      lastTags: String(safeSettings.quickCapture?.lastTags || "").trim(),
+      keepDeckContext: safeSettings.quickCapture?.keepDeckContext !== false,
+      keepTemplate: safeSettings.quickCapture?.keepTemplate !== false,
+    },
+    studyPreferences: {
+      defaultSpeedMode: ["recommended", "mistakes", "choice"].includes(String(safeSettings.studyPreferences?.defaultSpeedMode || ""))
+        ? String(safeSettings.studyPreferences.defaultSpeedMode)
+        : "recommended",
+      defaultSessionMinutes: [5, 10, 20].includes(Number(safeSettings.studyPreferences?.defaultSessionMinutes))
+        ? Number(safeSettings.studyPreferences.defaultSessionMinutes)
+        : 5,
+      autoRepeatMistakes: safeSettings.studyPreferences?.autoRepeatMistakes !== false,
+      autoAdvance: safeSettings.studyPreferences?.autoAdvance !== false,
+    },
+  };
+}
+
+function normalizeDeckDefaults(defaults, focus) {
+  const builtIn = buildFocusDeckDefaults(focus);
+  const safeDefaults = defaults || {};
+  const preferredCardStyle = ["balanced", "text-first", "image-first"].includes(String(safeDefaults.preferredCardStyle || ""))
+    ? String(safeDefaults.preferredCardStyle)
+    : builtIn.preferredCardStyle;
+  return {
+    defaultTopic: String(safeDefaults.defaultTopic || builtIn.defaultTopic || "").trim(),
+    defaultTags: String(safeDefaults.defaultTags || builtIn.defaultTags || "").trim(),
+    frontPromptTemplate: String(safeDefaults.frontPromptTemplate || builtIn.frontPromptTemplate || "").trim(),
+    backPromptTemplate: String(safeDefaults.backPromptTemplate || builtIn.backPromptTemplate || "").trim(),
+    preferredCardStyle,
+  };
+}
+
+function buildFocusDeckDefaults(focus) {
+  if (focus === "medical") {
+    return {
+      defaultTopic: "",
+      defaultTags: "医学",
+      frontPromptTemplate: "○○とは？",
+      backPromptTemplate: "定義や要点を短く",
+      preferredCardStyle: "balanced",
+    };
+  }
+
+  if (focus === "english") {
+    return {
+      defaultTopic: "医学英語 / 語彙",
+      defaultTags: "english, medical english",
+      frontPromptTemplate: "単語・表現",
+      backPromptTemplate: "意味と使い方",
+      preferredCardStyle: "text-first",
+    };
+  }
+
+  return {
+    defaultTopic: "",
+    defaultTags: "",
+    frontPromptTemplate: "",
+    backPromptTemplate: "",
+    preferredCardStyle: "balanced",
   };
 }
 
@@ -12339,11 +13428,12 @@ function normalizeAssistantState(assistant) {
 
 function normalizeDeck(deck) {
   const safeDeck = deck || {};
+  const focus = normalizeDeckFocus(safeDeck.focus);
 
   return {
     id: String(safeDeck.id || crypto.randomUUID()),
     name: String(safeDeck.name || "無題デッキ"),
-    focus: normalizeDeckFocus(safeDeck.focus),
+    focus,
     subject: String(safeDeck.subject || "").trim(),
     description: String(safeDeck.description || "").trim(),
     createdAt: Number.isFinite(safeDeck.createdAt) ? safeDeck.createdAt : Date.now(),
@@ -12354,6 +13444,7 @@ function normalizeDeck(deck) {
     role: ["owner", "editor", "viewer", "pending_request"].includes(String(safeDeck.role || ""))
       ? String(safeDeck.role)
       : "owner",
+    defaults: normalizeDeckDefaults(safeDeck.defaults, focus),
     permissions: normalizePermissionMap(safeDeck.permissions, safeDeck.role),
     syncState: ["local-only", "synced", "dirty", "syncing", "offline"].includes(String(safeDeck.syncState || ""))
       ? String(safeDeck.syncState)

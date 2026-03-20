@@ -198,29 +198,60 @@
                 <p class="eyebrow">復習キュー</p>
                 <h3>学習モード</h3>
               </div>
-              <label class="inline-select">
-                <span>対象</span>
-                <select id="studyDeckFilter"></select>
-              </label>
-            </div>
-            <div class="button-row" id="studyModeNav">
-              <button class="chip-button is-active" data-study-mode="review" type="button">復習</button>
-              <button class="chip-button" data-study-mode="test" type="button">小テスト</button>
-              <button class="chip-button" data-study-mode="choice" type="button">4択クイズ</button>
-            </div>
-            <div class="filter-grid study-config-grid">
-              <label class="inline-select">
-                <span>問題数</span>
-                <input id="studySessionSizeInput" type="number" min="3" max="20" value="8" />
-              </label>
-              <article class="subpanel">
-                <p class="eyebrow">現在の設定</p>
-                <p class="muted" id="studyModeSummary">まずは復習モードから始められます。</p>
-              </article>
-              <div class="button-row align-end">
-                <button class="primary-button" id="startStudySessionButton" type="button" hidden>セッションを作る</button>
+              <div class="button-row study-header-actions">
+                <label class="inline-select">
+                  <span>対象</span>
+                  <select id="studyDeckFilter"></select>
+                </label>
+                <button class="ghost-button" id="studyQuickCaptureButton" type="button">クイック追加</button>
               </div>
             </div>
+            <section class="subpanel study-quick-panel" id="studyQuickPanel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">高速学習</p>
+                  <h4>今日のおすすめセッション</h4>
+                </div>
+              </div>
+              <p class="muted" id="studyQuickSummary">
+                5分だけ回す、ミスだけ潰す、4択で流す、のような短い導線からすぐ始められます。
+              </p>
+              <div class="button-row" id="studyMinuteNav">
+                <button class="chip-button is-active" data-study-minutes="5" type="button">5分</button>
+                <button class="chip-button" data-study-minutes="10" type="button">10分</button>
+                <button class="chip-button" data-study-minutes="20" type="button">20分</button>
+              </div>
+              <div class="action-grid" id="studyQuickActionGrid"></div>
+            </section>
+            <section class="subpanel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">詳細モード</p>
+                  <h4>出題形式を細かく選ぶ</h4>
+                </div>
+              </div>
+              <p class="muted">
+                復習、小テスト、4択クイズを個別に切り替えたいときは、ここから詳細に設定できます。
+              </p>
+              <div class="button-row" id="studyModeNav">
+                <button class="chip-button is-active" data-study-mode="review" type="button">復習</button>
+                <button class="chip-button" data-study-mode="test" type="button">小テスト</button>
+                <button class="chip-button" data-study-mode="choice" type="button">4択クイズ</button>
+              </div>
+              <div class="filter-grid study-config-grid">
+                <label class="inline-select">
+                  <span>問題数</span>
+                  <input id="studySessionSizeInput" type="number" min="3" max="20" value="8" />
+                </label>
+                <article class="subpanel">
+                  <p class="eyebrow">現在の設定</p>
+                  <p class="muted" id="studyModeSummary">まずは復習モードから始められます。</p>
+                </article>
+                <div class="button-row align-end">
+                  <button class="primary-button" id="startStudySessionButton" type="button" hidden>セッションを作る</button>
+                </div>
+              </div>
+            </section>
             <section class="subpanel ai-study-panel" id="aiStudyPanel">
               <div class="section-heading">
                 <div>
@@ -369,9 +400,11 @@
               <h3>作成と共有</h3>
             </div>
             <div class="button-row" id="createNav">
+              <button class="chip-button" data-create-mode="quick" type="button">クイック追加</button>
+              <button class="chip-button" data-create-mode="bulk" type="button">一括入力</button>
               <button class="chip-button" data-create-mode="edit" type="button">編集</button>
               <button class="chip-button is-active" data-create-mode="deck" type="button">デッキ</button>
-              <button class="chip-button" data-create-mode="card" type="button">カード</button>
+              <button class="chip-button" data-create-mode="card" type="button">詳細カード</button>
               <button class="chip-button" data-create-mode="import" type="button">PDF取り込み</button>
               <button class="chip-button" data-create-mode="locator" type="button">過去問参照</button>
               <button class="chip-button" data-create-mode="share" type="button">共有</button>
@@ -402,6 +435,118 @@
             <p class="muted" id="createGuideSummary">いま開いている作成モードに合わせて、迷わず進められる手順を表示します。</p>
             <div class="stack-list" id="createGuideSteps"></div>
             <div class="button-row" id="createGuideActions"></div>
+          </section>
+
+          <section class="panel create-panel" id="createQuickPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">クイック追加</p>
+                <h3>短時間でカードを追加する</h3>
+              </div>
+            </div>
+            <p class="muted" id="quickCaptureStatus">
+              問題、答え、画像、タグだけで素早く保存できます。保存後もデッキ文脈を維持して続けて追加できます。
+            </p>
+            <form id="quickCaptureForm" class="stack-form">
+              <label>
+                <span>デッキ</span>
+                <select id="quickCaptureDeckId" name="quickCaptureDeckId" required></select>
+              </label>
+              <label>
+                <span>問題</span>
+                <textarea id="quickCaptureFrontInput" name="quickCaptureFront" rows="2" maxlength="160" placeholder="表に出す内容"></textarea>
+              </label>
+              <section class="media-input-panel">
+                <div class="section-heading compact">
+                  <div>
+                    <p class="eyebrow">表の画像</p>
+                    <h5>写真・図・表を追加</h5>
+                  </div>
+                  <span class="meta-pill">最大4枚 / 1枚8MB</span>
+                </div>
+                <label class="file-drop-zone">
+                  <span>画像を選ぶ</span>
+                  <input id="quickCaptureFrontMediaInput" type="file" accept="image/*" multiple />
+                </label>
+                <div class="media-upload-status" id="quickCaptureFrontMediaStatus">必要なら図や写真を問題側に追加できます。</div>
+                <div class="media-editor-list" id="quickCaptureFrontMediaList"></div>
+              </section>
+              <label>
+                <span>答え</span>
+                <textarea id="quickCaptureBackInput" name="quickCaptureBack" rows="3" maxlength="240" placeholder="裏面の内容"></textarea>
+              </label>
+              <section class="media-input-panel">
+                <div class="section-heading compact">
+                  <div>
+                    <p class="eyebrow">裏の画像</p>
+                    <h5>答えと一緒に見せる画像</h5>
+                  </div>
+                  <span class="meta-pill">最大4枚 / 1枚8MB</span>
+                </div>
+                <label class="file-drop-zone">
+                  <span>画像を選ぶ</span>
+                  <input id="quickCaptureBackMediaInput" type="file" accept="image/*" multiple />
+                </label>
+                <div class="media-upload-status" id="quickCaptureBackMediaStatus">解剖図、表、症例画像などを裏側へ追加できます。</div>
+                <div class="media-editor-list" id="quickCaptureBackMediaList"></div>
+              </section>
+              <label>
+                <span>タグ</span>
+                <input id="quickCaptureTagsInput" name="quickCaptureTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+              </label>
+              <div class="form-actions">
+                <button class="primary-button" id="quickCaptureSaveNextButton" data-quick-submit="next" type="submit">保存して次へ</button>
+                <button class="ghost-button" id="quickCaptureSaveButton" data-quick-submit="save" type="submit">保存</button>
+                <button class="ghost-button" id="quickCaptureResetButton" type="button">入力をクリア</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel create-panel" id="createBulkPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">一括入力</p>
+                <h3>貼り付けテキストから候補を作る</h3>
+              </div>
+            </div>
+            <p class="muted" id="bulkInputStatus">
+              Q/A、箇条書き、番号付きメモを貼り付けると、候補レビューへまとめて送れます。
+            </p>
+            <form id="bulkInputForm" class="stack-form">
+              <label>
+                <span>保存先デッキ</span>
+                <select id="bulkTargetDeckId" name="bulkTargetDeckId"></select>
+              </label>
+              <label>
+                <span>学習トラック</span>
+                <select id="bulkFocusInput" name="bulkFocusInput">
+                  <option value="medical">医学</option>
+                  <option value="english">英語</option>
+                  <option value="general">汎用</option>
+                </select>
+              </label>
+              <label>
+                <span>新しいデッキ名</span>
+                <input id="bulkDeckNameInput" name="bulkDeckNameInput" maxlength="60" placeholder="講義メモ / 口頭試問メモ / 英語ノート" />
+              </label>
+              <label>
+                <span>分野</span>
+                <input id="bulkSubjectInput" name="bulkSubjectInput" maxlength="60" placeholder="解剖 / 生理 / 医学英語 / 読解" />
+              </label>
+              <label>
+                <span>貼り付けテキスト</span>
+                <textarea
+                  id="bulkInputText"
+                  name="bulkInputText"
+                  rows="10"
+                  maxlength="24000"
+                  placeholder="Q: ネフローゼ症候群の4徴は？&#10;A: 高度蛋白尿、低アルブミン血症、浮腫、高脂血症。&#10;&#10;1. 僧帽弁: 左心房と左心室の間&#10;2. 三尖弁: 右心房と右心室の間"
+                ></textarea>
+              </label>
+              <div class="form-actions">
+                <button class="primary-button" id="bulkInputAnalyzeButton" type="submit">候補レビューへ送る</button>
+              </div>
+            </form>
           </section>
 
           <section class="panel create-panel" id="createEditPanel">
@@ -454,6 +599,34 @@
                   <span>説明</span>
                   <textarea id="editDeckDescription" name="editDeckDescription" rows="3" maxlength="120" placeholder="用途やテーマを短く書く"></textarea>
                 </label>
+                <section class="subpanel compact-form-panel">
+                  <p class="eyebrow">作成デフォルト</p>
+                  <h5>このデッキで新規カードを作るときの初期値</h5>
+                  <label>
+                    <span>既定の分野</span>
+                    <input id="editDeckDefaultTopic" name="editDeckDefaultTopic" maxlength="60" placeholder="解剖 / 病理 / 語彙 / 読解" />
+                  </label>
+                  <label>
+                    <span>既定タグ</span>
+                    <input id="editDeckDefaultTags" name="editDeckDefaultTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+                  </label>
+                  <label>
+                    <span>問題文テンプレ</span>
+                    <input id="editDeckFrontTemplate" name="editDeckFrontTemplate" maxlength="80" placeholder="例: ○○とは？ / 画像の部位名は？" />
+                  </label>
+                  <label>
+                    <span>答えテンプレ</span>
+                    <input id="editDeckBackTemplate" name="editDeckBackTemplate" maxlength="80" placeholder="例: 定義を短く / 鑑別の要点を一言で" />
+                  </label>
+                  <label>
+                    <span>カードスタイル</span>
+                    <select id="editDeckPreferredCardStyle" name="editDeckPreferredCardStyle">
+                      <option value="balanced">文字と画像をバランスよく使う</option>
+                      <option value="text-first">文字を主役にする</option>
+                      <option value="image-first">画像を主役にする</option>
+                    </select>
+                  </label>
+                </section>
                 <div class="form-actions">
                   <button class="primary-button" id="editDeckSubmitButton" type="submit">変更を保存</button>
                   <button class="ghost-button" id="resetEditDeckButton" type="button">入力を戻す</button>
@@ -468,7 +641,10 @@
                   <p class="eyebrow">カード一覧</p>
                   <h4 id="editCardsTitle">このデッキのカードを編集する</h4>
                 </div>
-                <button class="primary-button" id="editCardCreateButton" type="button">このデッキへカード追加</button>
+                <div class="button-row">
+                  <button class="primary-button" id="editCardCreateButton" type="button">このデッキへカード追加</button>
+                  <button class="ghost-button" id="editCardQuickAddButton" type="button">このデッキへ連続追加</button>
+                </div>
               </div>
               <label class="stack-form">
                 <span>カード検索</span>
@@ -573,6 +749,34 @@
                 <span>説明</span>
                 <textarea id="deckDescription" name="deckDescription" rows="3" maxlength="120" placeholder="用途やテーマを短く書く"></textarea>
               </label>
+              <section class="subpanel compact-form-panel">
+                <p class="eyebrow">作成デフォルト</p>
+                <h5>このデッキで新規カードを作るときの初期値</h5>
+                <label>
+                  <span>既定の分野</span>
+                  <input id="deckDefaultTopic" name="deckDefaultTopic" maxlength="60" placeholder="解剖 / 病理 / 語彙 / 読解" />
+                </label>
+                <label>
+                  <span>既定タグ</span>
+                  <input id="deckDefaultTags" name="deckDefaultTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+                </label>
+                <label>
+                  <span>問題文テンプレ</span>
+                  <input id="deckFrontTemplate" name="deckFrontTemplate" maxlength="80" placeholder="例: ○○とは？ / 画像の部位名は？" />
+                </label>
+                <label>
+                  <span>答えテンプレ</span>
+                  <input id="deckBackTemplate" name="deckBackTemplate" maxlength="80" placeholder="例: 定義を短く / 鑑別の要点を一言で" />
+                </label>
+                <label>
+                  <span>カードスタイル</span>
+                  <select id="deckPreferredCardStyle" name="deckPreferredCardStyle">
+                    <option value="balanced">文字と画像をバランスよく使う</option>
+                    <option value="text-first">文字を主役にする</option>
+                    <option value="image-first">画像を主役にする</option>
+                  </select>
+                </label>
+              </section>
               <div class="form-actions">
                 <button class="primary-button" id="deckSubmitButton" type="submit">デッキを追加</button>
                 <button class="ghost-button" id="cancelDeckEditButton" type="button" hidden>編集をやめる</button>
@@ -906,7 +1110,10 @@
               <p class="eyebrow">ライブラリ</p>
               <h3>ライブラリと検索</h3>
             </div>
-            <button class="ghost-button" id="clearAssistantButton" type="button">検索履歴を消す</button>
+            <div class="button-row">
+              <button class="ghost-button" id="libraryQuickCaptureButton" type="button">クイック追加</button>
+              <button class="ghost-button" id="clearAssistantButton" type="button">検索履歴を消す</button>
+            </div>
           </div>
 
           <section class="panel">
@@ -1106,6 +1313,57 @@
             <div class="stack-list" id="settingsBackupSnapshotList"></div>
           </section>
 
+          <section class="panel" id="settingsStudyPreferencePanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">学習プリファレンス</p>
+                <h3>作成と高速学習の初期設定</h3>
+              </div>
+            </div>
+            <div class="home-grid">
+              <section class="subpanel">
+                <p class="eyebrow">クイック追加</p>
+                <h4>カード作成を速くする設定</h4>
+                <label class="toggle-row backup-toggle">
+                  <input id="settingsQuickKeepDeckCheckbox" type="checkbox" />
+                  <span>最後に使ったデッキを次回も維持する</span>
+                </label>
+                <label class="toggle-row backup-toggle">
+                  <input id="settingsQuickKeepTemplateCheckbox" type="checkbox" />
+                  <span>デッキのテンプレとタグ初期値を維持する</span>
+                </label>
+              </section>
+              <section class="subpanel">
+                <p class="eyebrow">高速学習</p>
+                <h4>短時間セッションの標準設定</h4>
+                <label class="inline-select">
+                  <span>標準の時間</span>
+                  <select id="settingsStudyDefaultMinutes">
+                    <option value="5">5分</option>
+                    <option value="10">10分</option>
+                    <option value="20">20分</option>
+                  </select>
+                </label>
+                <label class="inline-select">
+                  <span>標準の高速モード</span>
+                  <select id="settingsStudyDefaultSpeedMode">
+                    <option value="recommended">おすすめ</option>
+                    <option value="mistakes">ミスだけ</option>
+                    <option value="choice">4択で流す</option>
+                  </select>
+                </label>
+                <label class="toggle-row backup-toggle">
+                  <input id="settingsStudyAutoRepeatCheckbox" type="checkbox" />
+                  <span>不正解は同じセッション後半で1回だけ再出題する</span>
+                </label>
+                <label class="toggle-row backup-toggle">
+                  <input id="settingsStudyAutoAdvanceCheckbox" type="checkbox" />
+                  <span>高速学習では正誤表示後に自動で次へ進む</span>
+                </label>
+              </section>
+            </div>
+          </section>
+
           <section class="panel">
             <div class="section-heading">
               <div>
@@ -1203,6 +1461,7 @@
         <h3 id="deckActionTitle">このデッキに何を追加しますか？</h3>
         <p class="muted" id="deckActionStatus">カード追加、PDF取り込み、過去問参照をここから始められます。</p>
         <div class="stack-list">
+          <button class="ghost-button modal-action-button" id="deckActionQuickButton" type="button">クイック追加</button>
           <button class="ghost-button modal-action-button" id="deckActionCardButton" type="button">カードを追加</button>
           <button class="ghost-button modal-action-button" id="deckActionImportButton" type="button">PDF取り込み</button>
           <button class="ghost-button modal-action-button" id="deckActionLocatorButton" type="button">過去問参照</button>
