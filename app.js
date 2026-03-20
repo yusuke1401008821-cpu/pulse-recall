@@ -19,6 +19,7 @@ const BACKUP_SNAPSHOT_BUCKET = "user-backup-snapshots";
 const BACKUP_SNAPSHOT_VERSION = 4;
 const BACKUP_AUTO_DEBOUNCE_MS = 15 * 1000;
 const BACKUP_RESTORE_POINT_LIMIT = 5;
+const AUTH_INTENT_STORAGE_KEY = "pulse-recall-auth-intent-v1";
 const MEDIA_DB_NAME = "pulse-recall-media-v1";
 const MEDIA_DB_VERSION = 1;
 const MEDIA_STORE_NAME = "card-media";
@@ -329,6 +330,8 @@ let cardMediaDraft = createEmptyMediaDraft();
 let quickCaptureMediaDraft = createEmptyMediaDraft();
 let editCardMediaDraft = createEmptyMediaDraft();
 let studyAdvanceTimer = null;
+let settingsEmailAuthVisible = false;
+let shareEmailAuthVisible = false;
 let cloudState = {
   status: "idle",
   config: null,
@@ -361,6 +364,8 @@ let cloudState = {
     card: null,
   },
   lockHeartbeatTimer: null,
+  authIntent: "",
+  lastSessionUserId: "",
 };
 const mediaPreviewUrlCache = new Map();
 
@@ -641,6 +646,9 @@ const createGuideSummary = document.getElementById("createGuideSummary");
 const createGuideSteps = document.getElementById("createGuideSteps");
 const createGuideActions = document.getElementById("createGuideActions");
 const authStatus = document.getElementById("authStatus");
+const shareOpenAccountBackupButton = document.getElementById("shareOpenAccountBackupButton");
+const shareToggleEmailAuthButton = document.getElementById("shareToggleEmailAuthButton");
+const shareEmailAuthPanel = document.getElementById("shareEmailAuthPanel");
 const authEmailInput = document.getElementById("authEmailInput");
 const signInMagicLinkButton = document.getElementById("signInMagicLinkButton");
 const signOutButton = document.getElementById("signOutButton");
@@ -673,9 +681,17 @@ const settingsOverviewSummary = document.getElementById("settingsOverviewSummary
 const settingsSnapshotList = document.getElementById("settingsSnapshotList");
 const settingsAccountBackupSummary = document.getElementById("settingsAccountBackupSummary");
 const settingsAccountBackupStatus = document.getElementById("settingsAccountBackupStatus");
+const settingsSignInGoogleButton = document.getElementById("settingsSignInGoogleButton");
+const settingsSignInAppleButton = document.getElementById("settingsSignInAppleButton");
+const settingsToggleEmailAuthButton = document.getElementById("settingsToggleEmailAuthButton");
+const settingsEmailAuthPanel = document.getElementById("settingsEmailAuthPanel");
 const settingsAuthEmailInput = document.getElementById("settingsAuthEmailInput");
 const settingsSendMagicLinkButton = document.getElementById("settingsSendMagicLinkButton");
 const settingsSignOutButton = document.getElementById("settingsSignOutButton");
+const settingsProfilePromptPanel = document.getElementById("settingsProfilePromptPanel");
+const settingsProfilePromptStatus = document.getElementById("settingsProfilePromptStatus");
+const settingsProfileDisplayNameInput = document.getElementById("settingsProfileDisplayNameInput");
+const settingsSaveProfileButton = document.getElementById("settingsSaveProfileButton");
 const settingsAutoBackupCheckbox = document.getElementById("settingsAutoBackupCheckbox");
 const settingsBackupLastSaved = document.getElementById("settingsBackupLastSaved");
 const settingsBackupNowButton = document.getElementById("settingsBackupNowButton");
@@ -940,11 +956,11 @@ const FEATURE_SEARCH_ITEMS = [
     id: "account-backup",
     title: "アカウント保存を開く",
     sectionLabel: "設定",
-    description: "ログイン、自動バックアップ、復元ポイントをまとめて管理します。",
-    keywords: ["アカウント", "バックアップ", "ログイン", "復元", "クラウド保存"],
+    description: "Google、Apple、メールのログインと、自動バックアップ、復元ポイントをまとめて管理します。",
+    keywords: ["アカウント", "バックアップ", "ログイン", "復元", "クラウド保存", "google", "apple", "メール", "アカウント作成"],
     action: "section",
     sectionId: "settings",
-    targetId: "settingsAuthEmailInput",
+    targetId: "settingsAccountBackupPanel",
     featured: true,
   },
   {
@@ -1238,11 +1254,22 @@ function bindEvents() {
     renderSharePanel();
     renderDeckDetail();
   });
-  authEmailInput.addEventListener("input", () => {
-    syncAuthEmailInputs(authEmailInput.value, "share");
-    renderSharePanel();
-    renderSettingsPanel();
-  });
+  if (shareOpenAccountBackupButton) {
+    shareOpenAccountBackupButton.addEventListener("click", () => openAccountBackupSettings({ intent: "share" }));
+  }
+  if (shareToggleEmailAuthButton) {
+    shareToggleEmailAuthButton.addEventListener("click", () => {
+      shareEmailAuthVisible = !shareEmailAuthVisible;
+      renderSharePanel();
+    });
+  }
+  if (authEmailInput) {
+    authEmailInput.addEventListener("input", () => {
+      syncAuthEmailInputs(authEmailInput.value, "share");
+      renderSharePanel();
+      renderSettingsPanel();
+    });
+  }
   if (settingsAuthEmailInput) {
     settingsAuthEmailInput.addEventListener("input", () => {
       syncAuthEmailInputs(settingsAuthEmailInput.value, "settings");
@@ -1250,13 +1277,47 @@ function bindEvents() {
       renderSettingsPanel();
     });
   }
-  signInMagicLinkButton.addEventListener("click", () => sendMagicLink(authEmailInput.value));
+  if (settingsToggleEmailAuthButton) {
+    settingsToggleEmailAuthButton.addEventListener("click", () => {
+      settingsEmailAuthVisible = !settingsEmailAuthVisible;
+      renderSettingsPanel();
+    });
+  }
+  if (settingsSignInGoogleButton) {
+    settingsSignInGoogleButton.addEventListener("click", () => {
+      signInWithProvider("google", "settings-backup").catch((error) => {
+        console.warn("Failed to sign in with Google:", error);
+      });
+    });
+  }
+  if (settingsSignInAppleButton) {
+    settingsSignInAppleButton.addEventListener("click", () => {
+      signInWithProvider("apple", "settings-backup").catch((error) => {
+        console.warn("Failed to sign in with Apple:", error);
+      });
+    });
+  }
+  if (signInMagicLinkButton) {
+    signInMagicLinkButton.addEventListener("click", () => sendMagicLink(authEmailInput?.value || ""));
+  }
   if (settingsSendMagicLinkButton) {
     settingsSendMagicLinkButton.addEventListener("click", () => sendMagicLink(settingsAuthEmailInput?.value || ""));
   }
-  signOutButton.addEventListener("click", signOutCloud);
+  if (signOutButton) {
+    signOutButton.addEventListener("click", signOutCloud);
+  }
   if (settingsSignOutButton) {
     settingsSignOutButton.addEventListener("click", signOutCloud);
+  }
+  if (settingsSaveProfileButton) {
+    settingsSaveProfileButton.addEventListener("click", () => {
+      saveProfileDisplayName().catch((error) => {
+        console.warn("Failed to save profile display name:", error);
+      });
+    });
+  }
+  if (settingsProfileDisplayNameInput) {
+    settingsProfileDisplayNameInput.addEventListener("input", renderSettingsPanel);
   }
   shareDeckButton.addEventListener("click", shareDeck);
   copyShareLinkButton.addEventListener("click", copyShareLink);
@@ -2983,9 +3044,13 @@ function openShareManager() {
   switchSection("manage");
 }
 
-function openAccountBackupSettings() {
+function openAccountBackupSettings({ intent = "settings-backup", expandEmail = false } = {}) {
+  setStoredAuthIntent(intent);
+  if (expandEmail) {
+    settingsEmailAuthVisible = true;
+  }
   switchSection("settings");
-  focusFeatureTarget("settingsAuthEmailInput");
+  focusFeatureTarget(settingsEmailAuthVisible ? "settingsAuthEmailInput" : getPreferredAuthFocusTargetId());
 }
 
 function openDeckActionModal(deckId) {
@@ -3651,7 +3716,7 @@ function buildCreateGuideModel() {
       steps: [
         { title: "まずは共有したいデッキを選ぶ", text: "学習中のデッキから1つ選んで、共有リンクを作ります。" },
         { title: "軽い共有ならローカル複製", text: "相手は自分の端末へそのまま追加でき、ログインも不要です。" },
-        { title: "共同編集ならクラウド共有", text: "magic link でログインすると、viewer / editor を分けて運用できます。" },
+        { title: "共同編集ならクラウド共有", text: "Google / Apple / メールでログインすると、viewer / editor を分けて運用できます。" },
       ],
       actions: [
         { label: "設定へ", action: "settings" },
@@ -3807,7 +3872,7 @@ function renderHomeBackupPanel() {
   homeBackupStatus.textContent = !isCloudConfigured()
     ? "Supabase を設定すると、ログイン後にこの端末のデッキ・カード・画像・履歴を自分のアカウントへ保存できます。"
     : !isCloudSignedIn()
-      ? "ログインすると、自動バックアップが有効になり、別端末でも最新の保存状態から復元できます。"
+      ? "Google / Apple / メールでアカウントを作ると、自動バックアップが有効になり、別端末でも最新の保存状態から復元できます。"
       : latestSnapshot
         ? `${statusLabel}。最新は ${formatBackupDateTime(latestSnapshot.createdAt || latestSnapshot.updatedAt)} に ${buildBackupSummaryText(latestSnapshot.summary)} を保存しました。`
         : `${statusLabel}。まだクラウド保存はありません。必要なら今すぐバックアップできます。`;
@@ -3818,7 +3883,7 @@ function renderHomeBackupPanel() {
         <button class="ghost-button" data-open-account-backup="true" type="button">復元ポイントを見る</button>
       `
     : `
-        <button class="primary-button" data-open-account-backup="true" type="button">アカウント保存を開く</button>
+        <button class="primary-button" data-open-account-backup="true" type="button">アカウントを作成 / ログイン</button>
       `;
 }
 
@@ -3829,6 +3894,9 @@ function renderSettingsAccountBackupPanel() {
 
   const hasClientConfig = isCloudConfigured();
   const isSignedIn = isCloudSignedIn();
+  const googleEnabled = isOAuthProviderEnabled("google");
+  const appleEnabled = isOAuthProviderEnabled("apple");
+  const magicLinkEnabled = isMagicLinkEnabled();
   const latestAuto = getLatestAutoBackupSnapshot();
   const latestSnapshot = latestAuto || getMostRecentBackupSnapshot();
   const restorePoints = getRestorePointSnapshots();
@@ -3843,7 +3911,7 @@ function renderSettingsAccountBackupPanel() {
     ? "Supabase を設定すると、ログイン後にこの端末のデッキ・カード・画像・学習履歴・設定を自分のアカウントへ自動バックアップできます。"
     : isSignedIn
       ? "共有と同じアカウントで使えます。ローカル優先のまま、変更を自分のクラウドバックアップへ安全に保存します。"
-      : "普段の学習はログイン不要です。バックアップを有効にしたいときだけ、ここからマジックリンクでログインします。";
+      : "普段の学習はログイン不要です。バックアップを有効にしたいときだけ、ここからアカウントを作成またはログインできます。";
 
   settingsAccountBackupStatus.innerHTML = `
     <span class="meta-pill ${escapeHtml(statusClassName)}">${escapeHtml(statusLabel)}</span>
@@ -3852,7 +3920,7 @@ function renderSettingsAccountBackupPanel() {
         ? "現在はローカル専用です。"
         : isSignedIn
           ? `${cloudState.session.user.email || "ログイン中"} でアカウント保存を使えます。`
-          : "まだログインしていません。"
+          : "Google / Apple / メールのどれかで続けると、そのままアカウントが作成されます。"
     )}</span>
     ${cloudState.backupError ? `<span class="muted">${escapeHtml(cloudState.backupError)}</span>` : ""}
   `;
@@ -3861,8 +3929,22 @@ function renderSettingsAccountBackupPanel() {
     ? `最後の保存: ${formatBackupDateTime(latestSnapshot.createdAt || latestSnapshot.updatedAt)} / ${buildBackupSummaryText(latestSnapshot.summary)}`
     : "まだクラウド保存はありません。初回バックアップを作ると、別端末から復元できるようになります。";
 
+  toggleEmailAuthPanel(settingsEmailAuthPanel, settingsEmailAuthVisible && !isSignedIn && magicLinkEnabled);
+  if (settingsSignInGoogleButton) {
+    settingsSignInGoogleButton.hidden = !googleEnabled || isSignedIn;
+    settingsSignInGoogleButton.disabled = !googleEnabled || isSignedIn;
+  }
+  if (settingsSignInAppleButton) {
+    settingsSignInAppleButton.hidden = !appleEnabled || isSignedIn;
+    settingsSignInAppleButton.disabled = !appleEnabled || isSignedIn;
+  }
+  if (settingsToggleEmailAuthButton) {
+    settingsToggleEmailAuthButton.hidden = !magicLinkEnabled || isSignedIn;
+    settingsToggleEmailAuthButton.disabled = !magicLinkEnabled || isSignedIn;
+    settingsToggleEmailAuthButton.textContent = settingsEmailAuthVisible ? "メール入力を閉じる" : "メールで続ける";
+  }
   if (settingsSendMagicLinkButton) {
-    settingsSendMagicLinkButton.disabled = !hasClientConfig || !String(settingsAuthEmailInput?.value || authEmailInput?.value || "").trim();
+    settingsSendMagicLinkButton.disabled = !magicLinkEnabled || !String(settingsAuthEmailInput?.value || authEmailInput?.value || "").trim();
   }
   if (settingsSignOutButton) {
     settingsSignOutButton.disabled = !isSignedIn;
@@ -3872,6 +3954,23 @@ function renderSettingsAccountBackupPanel() {
   }
   if (settingsRefreshBackupButton) {
     settingsRefreshBackupButton.disabled = !hasClientConfig;
+  }
+  if (settingsProfilePromptPanel) {
+    const needsProfile = shouldPromptProfileCompletion();
+    settingsProfilePromptPanel.hidden = !needsProfile;
+    if (needsProfile && settingsProfileDisplayNameInput && !String(settingsProfileDisplayNameInput.value || "").trim()) {
+      settingsProfileDisplayNameInput.value = String(cloudState.profile?.email || cloudState.session?.user?.email || "")
+        .split("@")[0]
+        .trim();
+    }
+    if (settingsProfilePromptStatus) {
+      settingsProfilePromptStatus.textContent = needsProfile
+        ? "Google / Apple から名前が十分に届かないことがあります。共同編集で見分けやすい表示名を保存できます。"
+        : "";
+    }
+  }
+  if (settingsSaveProfileButton) {
+    settingsSaveProfileButton.disabled = !isSignedIn || !String(settingsProfileDisplayNameInput?.value || "").trim();
   }
 
   settingsBackupSnapshotList.innerHTML = latestAuto || restorePoints.length
@@ -4533,7 +4632,7 @@ function renderShareGuidePanel(deck) {
       <h4>2. 共同編集が必要ならクラウド共有</h4>
       <p class="muted">${
         hasClientConfig
-          ? "magic link でログインすると、owner 承認制の editor / viewer 共有が使えます。"
+          ? "Google / Apple / メールでログインすると、owner 承認制の editor / viewer 共有が使えます。"
           : "Supabase を接続すると、owner 承認制の editor / viewer 共有が使えるようになります。"
       }</p>
     </article>
@@ -4552,6 +4651,7 @@ function renderSharePanel() {
   const deck = getSelectedShareDeck();
   const hasClientConfig = Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
   const isSignedIn = Boolean(cloudState.session?.user);
+  const magicLinkEnabled = isMagicLinkEnabled();
   const supportsLocalShare = deck ? canUseLocalShare(deck) : false;
 
   renderShareGuidePanel(deck);
@@ -4559,10 +4659,24 @@ function renderSharePanel() {
   authStatus.textContent = !hasClientConfig
     ? "Supabase 未設定ならローカル専用のまま使えます。共有やアカウント保存を使う時だけ接続してください。"
     : isSignedIn
-      ? `${cloudState.session.user.email || "ログイン中"} で共有機能を使えます。ログイン状態は設定の「アカウント保存」からも管理できます。`
-      : "共有やアカウント保存を使う時だけログインします。普段の学習はログイン不要です。";
-  signOutButton.disabled = !isSignedIn;
-  signInMagicLinkButton.disabled = !hasClientConfig || !String(authEmailInput.value || "").trim();
+      ? `${cloudState.session.user.email || "ログイン中"} で共有機能を使えます。Google / Apple / メールのログイン状態は設定の「アカウント保存」から管理できます。`
+      : "共有機能を使う時だけログインします。Google / Apple / メールは設定の「アカウント保存」から選べます。";
+  if (shareOpenAccountBackupButton) {
+    shareOpenAccountBackupButton.disabled = !hasClientConfig;
+    shareOpenAccountBackupButton.textContent = isSignedIn ? "設定で確認する" : "設定でログイン";
+  }
+  if (shareToggleEmailAuthButton) {
+    shareToggleEmailAuthButton.hidden = !magicLinkEnabled || isSignedIn;
+    shareToggleEmailAuthButton.disabled = !magicLinkEnabled || isSignedIn;
+    shareToggleEmailAuthButton.textContent = shareEmailAuthVisible ? "メール入力を閉じる" : "メールで続ける";
+  }
+  toggleEmailAuthPanel(shareEmailAuthPanel, shareEmailAuthVisible && !isSignedIn && magicLinkEnabled);
+  if (signOutButton) {
+    signOutButton.disabled = !isSignedIn;
+  }
+  if (signInMagicLinkButton) {
+    signInMagicLinkButton.disabled = !magicLinkEnabled || !String(authEmailInput?.value || "").trim();
+  }
   refreshCloudButton.disabled = !hasClientConfig;
 
   if (!deck) {
@@ -9982,6 +10096,123 @@ function isCloudSignedIn() {
   return Boolean(cloudState.session?.user);
 }
 
+function isOAuthProviderEnabled(provider) {
+  if (!isCloudConfigured()) {
+    return false;
+  }
+
+  if (provider === "google") {
+    return cloudState.config?.authGoogleEnabled !== false;
+  }
+  if (provider === "apple") {
+    return cloudState.config?.authAppleEnabled !== false;
+  }
+  return false;
+}
+
+function isMagicLinkEnabled() {
+  return isCloudConfigured() && cloudState.config?.authMagicLinkEnabled !== false;
+}
+
+function getAuthProviderLabel(provider) {
+  return provider === "apple" ? "Apple" : provider === "google" ? "Google" : "メール";
+}
+
+function setStoredAuthIntent(intent = "") {
+  cloudState.authIntent = String(intent || "").trim();
+  if (!cloudState.authIntent) {
+    localStorage.removeItem(AUTH_INTENT_STORAGE_KEY);
+    return;
+  }
+
+  localStorage.setItem(
+    AUTH_INTENT_STORAGE_KEY,
+    JSON.stringify({
+      intent: cloudState.authIntent,
+      updatedAt: Date.now(),
+    }),
+  );
+}
+
+function getStoredAuthIntent() {
+  if (cloudState.authIntent) {
+    return cloudState.authIntent;
+  }
+
+  try {
+    const raw = localStorage.getItem(AUTH_INTENT_STORAGE_KEY);
+    if (!raw) {
+      return "";
+    }
+    const parsed = JSON.parse(raw);
+    const intent = String(parsed?.intent || "").trim();
+    cloudState.authIntent = intent;
+    return intent;
+  } catch (error) {
+    console.warn("Failed to read auth intent:", error);
+    return "";
+  }
+}
+
+function clearStoredAuthIntent() {
+  cloudState.authIntent = "";
+  localStorage.removeItem(AUTH_INTENT_STORAGE_KEY);
+}
+
+function buildAuthRedirectUrl() {
+  const url = new URL(window.location.href);
+  ["code", "type"].forEach((key) => {
+    url.searchParams.delete(key);
+  });
+  url.hash = "";
+  return `${url.origin}${url.pathname}${url.search}`;
+}
+
+function toggleEmailAuthPanel(panel, isVisible) {
+  if (!panel) {
+    return;
+  }
+  panel.hidden = !isVisible;
+}
+
+function getPreferredAuthFocusTargetId() {
+  if (isOAuthProviderEnabled("google")) {
+    return "settingsSignInGoogleButton";
+  }
+  if (isOAuthProviderEnabled("apple")) {
+    return "settingsSignInAppleButton";
+  }
+  if (isMagicLinkEnabled()) {
+    settingsEmailAuthVisible = true;
+    return "settingsAuthEmailInput";
+  }
+  return "settingsAccountBackupPanel";
+}
+
+function hasLocalLearningData() {
+  return Boolean(state.decks.length || state.cards.length || state.reviewLog.length);
+}
+
+function shouldPromptProfileCompletion() {
+  return isCloudSignedIn() && !String(cloudState.profile?.display_name || "").trim();
+}
+
+function translateAuthErrorMessage(error, provider = "") {
+  const safeProvider = getAuthProviderLabel(provider);
+  const message = String(error?.message || "").trim();
+  const normalized = message.toLowerCase();
+  if (!message) {
+    return `${safeProvider} でのログインに失敗しました。`;
+  }
+  if (normalized.includes("provider") && (normalized.includes("disabled") || normalized.includes("not enabled"))) {
+    return `${safeProvider} ログインはまだ Supabase 側で有効化されていません。`;
+  }
+  if (normalized.includes("redirect")) {
+    return `${safeProvider} ログインの戻り先URL設定を確認してください。`;
+  }
+  return message;
+}
+
 function buildBackupFingerprint(snapshotState = state) {
   return JSON.stringify({
     decks: snapshotState.decks || [],
@@ -10089,6 +10320,9 @@ async function fetchCloudConfig() {
     cloudState.config = {
       supabaseUrl: config && config.supabaseUrl ? String(config.supabaseUrl) : "",
       supabaseAnonKey: config && config.supabaseAnonKey ? String(config.supabaseAnonKey) : "",
+      authGoogleEnabled: config?.authGoogleEnabled !== false,
+      authAppleEnabled: config?.authAppleEnabled !== false,
+      authMagicLinkEnabled: config?.authMagicLinkEnabled !== false,
       aiEnabled: Boolean(config?.aiEnabled),
       aiProvider: String(config?.aiProvider || "gemini"),
       aiModel: String(config?.aiModel || "gemini-2.5-flash-lite"),
@@ -10124,8 +10358,9 @@ async function getSupabaseClient() {
     },
   });
 
-  cloudState.client.auth.onAuthStateChange((_event, session) => {
+  cloudState.client.auth.onAuthStateChange((event, session) => {
     cloudState.session = session;
+    cloudState.lastSessionUserId = session?.user?.id || "";
     if (session?.user?.email) {
       syncAuthEmailInputs(session.user.email, "cloud");
     }
@@ -10140,6 +10375,11 @@ async function getSupabaseClient() {
     refreshCloudBackups({ silent: true }).catch((error) => {
       console.warn("Failed to refresh cloud backups:", error);
     });
+    if (session?.user && (event === "SIGNED_IN" || Boolean(getStoredAuthIntent()))) {
+      handleSuccessfulCloudSignIn(event).catch((error) => {
+        console.warn("Failed to handle post-login flow:", error);
+      });
+    }
     renderSharePanel();
     renderSettingsPanel();
   });
@@ -10167,7 +10407,7 @@ async function initializeCloud() {
     if (cloudState.shareToken) {
       shareJoinTitle.textContent = "共有デッキに参加";
       shareJoinStatus.textContent =
-        "この共有リンクを使うには、Supabase を接続してから共有タブでログインしてください。";
+        "この共有リンクを使うには、Supabase を接続してから設定の「アカウント保存」でログインしてください。";
       requestShareAccessButton.disabled = true;
       requestShareAccessButton.textContent = "参加を申請する";
       shareJoinModal.hidden = false;
@@ -10180,6 +10420,7 @@ async function initializeCloud() {
     data: { session },
   } = await client.auth.getSession();
   cloudState.session = session;
+  cloudState.lastSessionUserId = session?.user?.id || "";
   if (session?.user) {
     await ensureCloudProfile();
     if (session.user.email) {
@@ -10189,6 +10430,9 @@ async function initializeCloud() {
 
   await refreshCloudData({ silent: true });
   await refreshCloudBackups({ silent: true });
+  if (session?.user && getStoredAuthIntent()) {
+    await handleSuccessfulCloudSignIn("SIGNED_IN");
+  }
   cleanupAuthUrl();
 }
 
@@ -11766,12 +12010,124 @@ function syncAuthEmailInputs(value, source = "") {
   }
 }
 
+async function applyStoredAuthIntent() {
+  const intent = getStoredAuthIntent();
+  if (!intent || !isCloudSignedIn()) {
+    return;
+  }
+
+  if (intent === "share" || intent === "share-join") {
+    setCreateMode("share");
+    switchSection("manage");
+    if (cloudState.shareToken) {
+      await refreshShareJoinPreview();
+    }
+  } else {
+    switchSection("settings");
+  }
+
+  if (intent === "restore") {
+    focusFeatureTarget("settingsBackupSnapshotList");
+  } else if (intent === "onboarding") {
+    focusFeatureTarget(getPreferredAuthFocusTargetId());
+  } else if (intent === "share-join") {
+    focusFeatureTarget("requestShareAccessButton");
+  } else {
+    focusFeatureTarget(getPreferredAuthFocusTargetId());
+  }
+
+  clearStoredAuthIntent();
+}
+
+async function maybeCreateInitialCloudBackup({ isFreshSignIn = false } = {}) {
+  if (!isCloudSignedIn() || !hasLocalLearningData()) {
+    return;
+  }
+  if (getMostRecentBackupSnapshot()) {
+    return;
+  }
+  if (!isFreshSignIn && state.settings?.autoBackupEnabled === false) {
+    return;
+  }
+
+  await createCloudBackupSnapshot({ kind: "auto", showToast: false });
+  showToast("この端末の内容を最初のクラウドバックアップとして保存しました");
+}
+
+async function handleSuccessfulCloudSignIn(event = "SIGNED_IN") {
+  if (!isCloudSignedIn()) {
+    return;
+  }
+
+  if (shouldPromptProfileCompletion() && settingsProfileDisplayNameInput && !settingsProfileDisplayNameInput.value) {
+    settingsProfileDisplayNameInput.value = String(cloudState.profile?.email || cloudState.session?.user?.email || "")
+      .split("@")[0]
+      .trim();
+  }
+
+  await applyStoredAuthIntent();
+
+  if (event === "SIGNED_IN") {
+    await maybeCreateInitialCloudBackup({ isFreshSignIn: true }).catch((error) => {
+      console.warn("Failed to create initial cloud backup:", error);
+    });
+    const provider = String(cloudState.session?.user?.app_metadata?.provider || "").trim();
+    if (provider) {
+      showToast(`${getAuthProviderLabel(provider)} でログインしました`);
+    }
+  }
+
+  renderSharePanel();
+  renderSettingsPanel();
+}
+
+async function signInWithProvider(provider, intent = "settings-backup") {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client) {
+    showToast("先に Supabase の設定を追加してください");
+    return;
+  }
+  if (!isOAuthProviderEnabled(provider)) {
+    showToast(`${getAuthProviderLabel(provider)} ログインはまだ有効化されていません`);
+    return;
+  }
+
+  setStoredAuthIntent(intent);
+  const redirectTo = buildAuthRedirectUrl();
+  const options = {
+    redirectTo,
+  };
+  if (provider === "google") {
+    options.queryParams = {
+      prompt: "select_account",
+    };
+  }
+
+  const { data, error } = await client.auth.signInWithOAuth({
+    provider,
+    options,
+  });
+
+  if (error) {
+    showToast(translateAuthErrorMessage(error, provider));
+    return;
+  }
+
+  if (data?.url) {
+    window.location.assign(data.url);
+  }
+}
+
 async function sendMagicLink(emailValue = "") {
-  const email = String(emailValue || settingsAuthEmailInput?.value || authEmailInput.value || "").trim();
+  const email = String(emailValue || settingsAuthEmailInput?.value || authEmailInput?.value || "").trim();
   const client = cloudState.client || (await getSupabaseClient());
 
   if (!client) {
     showToast("先に Supabase の設定を追加してください");
+    return;
+  }
+  if (!isMagicLinkEnabled()) {
+    showToast("メールログインは現在オフになっています");
     return;
   }
   if (!email) {
@@ -11780,8 +12136,8 @@ async function sendMagicLink(emailValue = "") {
   }
 
   syncAuthEmailInputs(email, "cloud");
-
-  const redirectUrl = cloudState.shareToken ? buildShareUrl(cloudState.shareToken) : `${window.location.origin}${window.location.pathname}`;
+  setStoredAuthIntent(cloudState.shareToken ? "share-join" : activeSection === "manage" ? "share" : "settings-backup");
+  const redirectUrl = buildAuthRedirectUrl();
   const { error } = await client.auth.signInWithOtp({
     email,
     options: {
@@ -11794,7 +12150,44 @@ async function sendMagicLink(emailValue = "") {
     return;
   }
 
-  showToast("マジックリンクを送信しました。メールからこのアプリへ戻ってください");
+  showToast("メールを送信しました。初回でもそのままアカウントが作成され、リンクからこのアプリへ戻れます");
+  settingsEmailAuthVisible = true;
+  shareEmailAuthVisible = true;
+  renderSharePanel();
+  renderSettingsPanel();
+}
+
+async function saveProfileDisplayName() {
+  const client = cloudState.client || (await getSupabaseClient());
+  const displayName = String(settingsProfileDisplayNameInput?.value || "").trim();
+  if (!client || !isCloudSignedIn()) {
+    showToast("表示名を保存するにはログインが必要です");
+    return;
+  }
+  if (!displayName) {
+    showToast("表示名を入力してください");
+    return;
+  }
+
+  const { data, error } = await client
+    .from("profiles")
+    .update({ display_name: displayName })
+    .eq("id", cloudState.session.user.id)
+    .select("*")
+    .single();
+
+  if (error) {
+    showToast(error.message || "表示名の保存に失敗しました");
+    return;
+  }
+
+  cloudState.profile = data || {
+    ...(cloudState.profile || {}),
+    display_name: displayName,
+  };
+  renderSharePanel();
+  renderSettingsPanel();
+  showToast("表示名を保存しました");
 }
 
 async function signOutCloud() {
@@ -11820,6 +12213,10 @@ async function signOutCloud() {
   cloudState.latestBackupAt = 0;
   cloudState.lastBackupFingerprint = "";
   cloudState.backupDirty = false;
+  cloudState.lastSessionUserId = "";
+  shareEmailAuthVisible = false;
+  settingsEmailAuthVisible = false;
+  clearStoredAuthIntent();
   if (cloudState.backupTimer) {
     window.clearTimeout(cloudState.backupTimer);
     cloudState.backupTimer = null;
@@ -12461,8 +12858,9 @@ async function refreshShareJoinPreview() {
 
   if (!cloudState.session?.user) {
     shareJoinTitle.textContent = "共有デッキに参加";
-    shareJoinStatus.textContent = "ログインすると、この共有リンクへの参加申請を送れます。";
-    requestShareAccessButton.disabled = true;
+    shareJoinStatus.textContent = "ログインすると、この共有リンクへの参加申請を送れます。設定で Google / Apple / メールから続けたあと、この画面に戻ります。";
+    requestShareAccessButton.disabled = false;
+    requestShareAccessButton.textContent = "ログインして参加";
     shareJoinModal.hidden = false;
     return;
   }
@@ -12549,7 +12947,9 @@ async function requestShareAccess() {
 
   const client = cloudState.client || (await getSupabaseClient());
   if (!client || !cloudState.session?.user) {
-    showToast("参加申請にはログインが必要です");
+    closeShareJoinModal();
+    openAccountBackupSettings({ intent: "share-join" });
+    showToast("先にログインすると、この共有リンクへの参加申請に戻れます");
     return;
   }
 

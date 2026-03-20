@@ -1033,16 +1033,25 @@
             <div class="share-grid">
               <section class="subpanel">
                 <p class="eyebrow">ログイン</p>
-                <h4>共有するときだけログイン</h4>
+                <h4>共有に必要なときだけログイン</h4>
                 <p class="muted" id="authStatus">Supabase 未設定ならローカル専用のまま使えます。</p>
-                <div class="stack-form">
-                  <label>
-                    <span>メールアドレス</span>
-                    <input id="authEmailInput" type="email" placeholder="you@example.com" />
-                  </label>
+                <div class="stack-form auth-entry-panel">
                   <div class="form-actions">
-                    <button class="primary-button" id="signInMagicLinkButton" type="button">マジックリンクを送る</button>
+                    <button class="primary-button" id="shareOpenAccountBackupButton" type="button">設定でログイン</button>
+                    <button class="ghost-button" id="shareToggleEmailAuthButton" type="button">メールで続ける</button>
                     <button class="ghost-button" id="signOutButton" type="button">ログアウト</button>
+                  </div>
+                  <div class="stack-form auth-email-panel" id="shareEmailAuthPanel" hidden>
+                    <p class="muted">
+                      Google / Apple が使えないときは、メールでもそのままアカウント作成とログインができます。
+                    </p>
+                    <label>
+                      <span>メールアドレス</span>
+                      <input id="authEmailInput" type="email" placeholder="you@example.com" />
+                    </label>
+                    <div class="form-actions">
+                      <button class="secondary-button" id="signInMagicLinkButton" type="button">メールで続ける</button>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -1273,21 +1282,47 @@
                 <div class="section-heading">
                   <div>
                     <p class="eyebrow">ログイン</p>
-                    <h4>マジックリンクでログイン</h4>
+                    <h4>アカウントを作成 / ログイン</h4>
                   </div>
                 </div>
                 <p class="muted" id="settingsAccountBackupStatus">
                   共有と同じアカウントで使えます。普段の学習はログイン不要です。
                 </p>
-                <div class="stack-form">
-                  <label>
-                    <span>メールアドレス</span>
-                    <input id="settingsAuthEmailInput" type="email" placeholder="you@example.com" />
-                  </label>
-                  <div class="form-actions">
-                    <button class="primary-button" id="settingsSendMagicLinkButton" type="button">マジックリンクを送る</button>
+                <div class="stack-form auth-entry-panel">
+                  <div class="button-row auth-provider-stack">
+                    <button class="primary-button" id="settingsSignInGoogleButton" type="button">Googleで続ける</button>
+                    <button class="secondary-button" id="settingsSignInAppleButton" type="button">Appleで続ける</button>
+                  </div>
+                  <div class="button-row auth-provider-stack">
+                    <button class="ghost-button" id="settingsToggleEmailAuthButton" type="button">メールで続ける</button>
                     <button class="ghost-button" id="settingsSignOutButton" type="button">ログアウト</button>
                   </div>
+                  <div class="stack-form auth-email-panel" id="settingsEmailAuthPanel" hidden>
+                    <p class="muted">
+                      初回でも、そのまま自分のアカウントが作成されます。メールのリンクからこのアプリへ戻ってください。
+                    </p>
+                    <label>
+                      <span>メールアドレス</span>
+                      <input id="settingsAuthEmailInput" type="email" placeholder="you@example.com" />
+                    </label>
+                    <div class="form-actions">
+                      <button class="secondary-button" id="settingsSendMagicLinkButton" type="button">メールで続ける</button>
+                    </div>
+                  </div>
+                  <section class="subpanel auth-profile-panel" id="settingsProfilePromptPanel" hidden>
+                    <p class="eyebrow">プロフィール</p>
+                    <h4>表示名を決める</h4>
+                    <p class="muted" id="settingsProfilePromptStatus">
+                      Apple などで名前が取得できないことがあります。あとで見分けやすい表示名を保存できます。
+                    </p>
+                    <label>
+                      <span>表示名</span>
+                      <input id="settingsProfileDisplayNameInput" type="text" maxlength="40" placeholder="例: Yusuke" />
+                    </label>
+                    <div class="form-actions">
+                      <button class="primary-button" id="settingsSaveProfileButton" type="button">表示名を保存</button>
+                    </div>
+                  </section>
                 </div>
               </section>
 
@@ -1418,7 +1453,7 @@
           </article>
           <article>
             <strong>2. アカウント保存を有効にする</strong>
-            <p>「設定」タブでログインすると、デッキ・カード・画像・学習履歴を自分のアカウントへ自動バックアップできます。</p>
+            <p>「設定」タブで Google / Apple / メールのどれかで続けると、自分のアカウントへ自動バックアップできます。あとからでも大丈夫です。</p>
           </article>
           <article>
             <strong>3. カードを追加する</strong>

@@ -418,6 +418,23 @@ button:disabled {
   align-items: end;
 }
 
+.auth-entry-panel {
+  gap: 14px;
+}
+
+.auth-provider-stack {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.auth-email-panel,
+.auth-profile-panel {
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(24, 49, 83, 0.05);
+}
+
 .home-grid,
 .share-grid,
 .library-layout,

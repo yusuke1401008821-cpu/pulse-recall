@@ -3,6 +3,9 @@ module.exports = function handler(_request, response) {
   response.status(200).json({
     supabaseUrl: process.env.SUPABASE_URL || "",
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "",
+    authGoogleEnabled: process.env.AUTH_GOOGLE_ENABLED !== "false",
+    authAppleEnabled: process.env.AUTH_APPLE_ENABLED !== "false",
+    authMagicLinkEnabled: process.env.AUTH_MAGIC_LINK_ENABLED !== "false",
     aiEnabled: Boolean(process.env.GEMINI_API_KEY) && process.env.AI_ENABLED !== "false",
     aiProvider: process.env.AI_PROVIDER || "gemini",
     aiModel: process.env.AI_MODEL || "gemini-2.5-flash-lite",
