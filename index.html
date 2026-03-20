@@ -226,6 +226,7 @@
                 <div class="flashcard-side">
                   <p class="flashcard-label">問題</p>
                   <h3 id="cardFront"></h3>
+                  <div class="media-gallery" id="cardFrontMedia" hidden></div>
                   <p class="flashcard-meta" id="cardDeckName"></p>
                   <p class="flashcard-hint" id="cardTopic"></p>
                   <div class="pill-row" id="cardTags"></div>
@@ -236,6 +237,7 @@
                   <p class="flashcard-hint" id="cardHint"></p>
                   <p class="flashcard-note" id="cardNote"></p>
                   <p class="flashcard-example" id="cardExample"></p>
+                  <div class="media-gallery" id="cardBackMedia" hidden></div>
                 </div>
               </article>
 
@@ -243,6 +245,7 @@
                 <div class="flashcard-side">
                   <p class="flashcard-label">小テスト</p>
                   <h3 id="shortQuizFront"></h3>
+                  <div class="media-gallery" id="shortQuizFrontMedia" hidden></div>
                   <p class="flashcard-meta" id="shortQuizMeta"></p>
                   <p class="flashcard-hint" id="shortQuizTopic"></p>
                   <div class="pill-row" id="shortQuizTags"></div>
@@ -264,6 +267,7 @@
                   <p class="flashcard-hint" id="shortQuizHint"></p>
                   <p class="flashcard-note" id="shortQuizNote"></p>
                   <p class="flashcard-example" id="shortQuizExample"></p>
+                  <div class="media-gallery" id="shortQuizBackMedia" hidden></div>
                 </div>
               </article>
 
@@ -271,6 +275,7 @@
                 <div class="flashcard-side">
                   <p class="flashcard-label">4択クイズ</p>
                   <h3 id="choiceQuizFront"></h3>
+                  <div class="media-gallery" id="choiceQuizFrontMedia" hidden></div>
                   <p class="flashcard-meta" id="choiceQuizMeta"></p>
                   <p class="flashcard-hint" id="choiceQuizTopic"></p>
                   <div class="pill-row" id="choiceQuizTags"></div>
@@ -284,6 +289,7 @@
                   <p class="flashcard-hint" id="choiceQuizHint"></p>
                   <p class="flashcard-note" id="choiceQuizNote"></p>
                   <p class="flashcard-example" id="choiceQuizExample"></p>
+                  <div class="media-gallery" id="choiceQuizBackMedia" hidden></div>
                 </div>
               </article>
 
@@ -448,12 +454,42 @@
                   <input id="editCardIdInput" name="editCardId" type="hidden" />
                   <label>
                     <span>問題</span>
-                    <textarea id="editCardFrontInput" name="editCardFront" rows="2" maxlength="160" placeholder="表に出す内容" required></textarea>
+                    <textarea id="editCardFrontInput" name="editCardFront" rows="2" maxlength="160" placeholder="表に出す内容"></textarea>
                   </label>
+                  <section class="media-input-panel">
+                    <div class="section-heading compact">
+                      <div>
+                        <p class="eyebrow">表の画像</p>
+                        <h5>写真・図・表を追加</h5>
+                      </div>
+                      <span class="meta-pill">最大4枚 / 1枚8MB</span>
+                    </div>
+                    <label class="file-drop-zone">
+                      <span>画像を選ぶ</span>
+                      <input id="editCardFrontMediaInput" type="file" accept="image/*" multiple />
+                    </label>
+                    <div class="media-upload-status" id="editCardFrontMediaStatus">iPhone の写真ライブラリやカメラから画像を追加できます。</div>
+                    <div class="media-editor-list" id="editCardFrontMediaList"></div>
+                  </section>
                   <label>
                     <span>答え</span>
-                    <textarea id="editCardBackInput" name="editCardBack" rows="3" maxlength="240" placeholder="裏面の内容" required></textarea>
+                    <textarea id="editCardBackInput" name="editCardBack" rows="3" maxlength="240" placeholder="裏面の内容"></textarea>
                   </label>
+                  <section class="media-input-panel">
+                    <div class="section-heading compact">
+                      <div>
+                        <p class="eyebrow">裏の画像</p>
+                        <h5>答えと一緒に見せる画像</h5>
+                      </div>
+                      <span class="meta-pill">最大4枚 / 1枚8MB</span>
+                    </div>
+                    <label class="file-drop-zone">
+                      <span>画像を選ぶ</span>
+                      <input id="editCardBackMediaInput" type="file" accept="image/*" multiple />
+                    </label>
+                    <div class="media-upload-status" id="editCardBackMediaStatus">解剖図、症例写真、表などを答え側へ載せられます。</div>
+                    <div class="media-editor-list" id="editCardBackMediaList"></div>
+                  </section>
                   <label>
                     <span>補足</span>
                     <input id="editCardHintInput" name="editCardHint" maxlength="80" placeholder="例文や覚え方のヒント" />
@@ -527,12 +563,42 @@
               </label>
               <label>
                 <span>問題</span>
-                <textarea id="cardFrontInput" name="cardFront" rows="2" maxlength="160" placeholder="表に出す内容" required></textarea>
+                <textarea id="cardFrontInput" name="cardFront" rows="2" maxlength="160" placeholder="表に出す内容"></textarea>
               </label>
+              <section class="media-input-panel">
+                <div class="section-heading compact">
+                  <div>
+                    <p class="eyebrow">表の画像</p>
+                    <h5>写真・図・表を追加</h5>
+                  </div>
+                  <span class="meta-pill">最大4枚 / 1枚8MB</span>
+                </div>
+                <label class="file-drop-zone">
+                  <span>画像を選ぶ</span>
+                  <input id="cardFrontMediaInput" type="file" accept="image/*" multiple />
+                </label>
+                <div class="media-upload-status" id="cardFrontMediaStatus">画像だけのカードも作れます。本文と組み合わせると視覚暗記に向きます。</div>
+                <div class="media-editor-list" id="cardFrontMediaList"></div>
+              </section>
               <label>
                 <span>答え</span>
-                <textarea id="cardBackInput" name="cardBack" rows="3" maxlength="240" placeholder="裏面の内容" required></textarea>
+                <textarea id="cardBackInput" name="cardBack" rows="3" maxlength="240" placeholder="裏面の内容"></textarea>
               </label>
+              <section class="media-input-panel">
+                <div class="section-heading compact">
+                  <div>
+                    <p class="eyebrow">裏の画像</p>
+                    <h5>答えと一緒に見せる画像</h5>
+                  </div>
+                  <span class="meta-pill">最大4枚 / 1枚8MB</span>
+                </div>
+                <label class="file-drop-zone">
+                  <span>画像を選ぶ</span>
+                  <input id="cardBackMediaInput" type="file" accept="image/*" multiple />
+                </label>
+                <div class="media-upload-status" id="cardBackMediaStatus">表や写真を答え側に置いて、見比べながら暗記できます。</div>
+                <div class="media-editor-list" id="cardBackMediaList"></div>
+              </section>
               <label>
                 <span>補足</span>
                 <input id="cardHintInput" name="cardHint" maxlength="80" placeholder="例文や覚え方のヒント" />
@@ -1057,6 +1123,19 @@
           機能名や、やりたいことの言葉で探せます。
         </p>
         <div class="stack-list feature-search-list" id="featureSearchResults"></div>
+      </div>
+    </div>
+
+    <div class="modal-shell" id="mediaViewerModal" hidden>
+      <div class="modal-card media-viewer-card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">画像プレビュー</p>
+            <h3 id="mediaViewerTitle">カード画像</h3>
+          </div>
+          <button class="ghost-button" id="closeMediaViewerButton" type="button">閉じる</button>
+        </div>
+        <img id="mediaViewerImage" alt="カード画像の拡大表示" />
       </div>
     </div>
 

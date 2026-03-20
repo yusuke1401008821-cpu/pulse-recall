@@ -12,6 +12,12 @@ const CLOUD_CONFIG_ENDPOINT = "/api/client-config";
 const AI_GENERATE_ENDPOINT = "/api/ai/generate";
 const LOCAL_SHARE_PARAM = "deckshare";
 const CLOUD_SHARE_PARAM = "share";
+const SHARED_MEDIA_BUCKET = "shared-card-media";
+const MEDIA_DB_NAME = "pulse-recall-media-v1";
+const MEDIA_DB_VERSION = 1;
+const MEDIA_STORE_NAME = "card-media";
+const MEDIA_SIDE_LIMIT = 4;
+const MAX_MEDIA_SIZE_BYTES = 8 * 1024 * 1024;
 const DEMO_RESET_CONFIRM_TEXT = "サンプルを読み込む";
 const AI_FALLBACK_ERROR_CODES = new Set([
   "AI_DISABLED",
@@ -246,6 +252,7 @@ const STARTER_PACKS = {
 
 const demoState = createDemoState();
 let state = loadState();
+let mediaDbPromise = null;
 let activeSection = "dashboard";
 let currentCardId = null;
 let isAnswerVisible = false;
@@ -281,6 +288,8 @@ let selectedEditDeckId = "";
 let editSubview = "deck";
 let editCardQuery = "";
 let editWorkspaceCardId = "";
+let cardMediaDraft = createEmptyMediaDraft();
+let editCardMediaDraft = createEmptyMediaDraft();
 let cloudState = {
   status: "idle",
   config: null,
@@ -296,6 +305,7 @@ let cloudState = {
   membersByDeck: {},
   lastSharePreview: null,
 };
+const mediaPreviewUrlCache = new Map();
 
 const tabs = [...document.querySelectorAll(".tab")];
 const sections = [...document.querySelectorAll(".content")];
@@ -356,7 +366,9 @@ const flashcard = document.getElementById("flashcard");
 const shortQuizCard = document.getElementById("shortQuizCard");
 const choiceQuizCard = document.getElementById("choiceQuizCard");
 const cardFront = document.getElementById("cardFront");
+const cardFrontMedia = document.getElementById("cardFrontMedia");
 const cardBack = document.getElementById("cardBack");
+const cardBackMedia = document.getElementById("cardBackMedia");
 const cardHint = document.getElementById("cardHint");
 const cardDeckName = document.getElementById("cardDeckName");
 const cardTopic = document.getElementById("cardTopic");
@@ -370,12 +382,14 @@ const emptyStateEyebrow = document.getElementById("emptyStateEyebrow");
 const emptyStateTitle = document.getElementById("emptyStateTitle");
 const emptyStateText = document.getElementById("emptyStateText");
 const shortQuizFront = document.getElementById("shortQuizFront");
+const shortQuizFrontMedia = document.getElementById("shortQuizFrontMedia");
 const shortQuizMeta = document.getElementById("shortQuizMeta");
 const shortQuizTopic = document.getElementById("shortQuizTopic");
 const shortQuizTags = document.getElementById("shortQuizTags");
 const shortQuizAnswerInput = document.getElementById("shortQuizAnswerInput");
 const shortQuizAnswerArea = document.getElementById("shortQuizAnswerArea");
 const shortQuizBack = document.getElementById("shortQuizBack");
+const shortQuizBackMedia = document.getElementById("shortQuizBackMedia");
 const shortQuizHint = document.getElementById("shortQuizHint");
 const shortQuizNote = document.getElementById("shortQuizNote");
 const shortQuizExample = document.getElementById("shortQuizExample");
@@ -384,12 +398,14 @@ const shortQuizNextButton = document.getElementById("shortQuizNextButton");
 const shortQuizFeedbackPanel = document.getElementById("shortQuizFeedbackPanel");
 const shortQuizProgress = document.getElementById("shortQuizProgress");
 const choiceQuizFront = document.getElementById("choiceQuizFront");
+const choiceQuizFrontMedia = document.getElementById("choiceQuizFrontMedia");
 const choiceQuizMeta = document.getElementById("choiceQuizMeta");
 const choiceQuizTopic = document.getElementById("choiceQuizTopic");
 const choiceQuizTags = document.getElementById("choiceQuizTags");
 const choiceQuizOptions = document.getElementById("choiceQuizOptions");
 const choiceQuizAnswerArea = document.getElementById("choiceQuizAnswerArea");
 const choiceQuizBack = document.getElementById("choiceQuizBack");
+const choiceQuizBackMedia = document.getElementById("choiceQuizBackMedia");
 const choiceQuizHint = document.getElementById("choiceQuizHint");
 const choiceQuizNote = document.getElementById("choiceQuizNote");
 const choiceQuizExample = document.getElementById("choiceQuizExample");
@@ -423,6 +439,12 @@ const deckSubjectInput = document.getElementById("deckSubject");
 const deckDescriptionInput = document.getElementById("deckDescription");
 const cardFrontInput = document.getElementById("cardFrontInput");
 const cardBackInput = document.getElementById("cardBackInput");
+const cardFrontMediaInput = document.getElementById("cardFrontMediaInput");
+const cardBackMediaInput = document.getElementById("cardBackMediaInput");
+const cardFrontMediaStatus = document.getElementById("cardFrontMediaStatus");
+const cardBackMediaStatus = document.getElementById("cardBackMediaStatus");
+const cardFrontMediaList = document.getElementById("cardFrontMediaList");
+const cardBackMediaList = document.getElementById("cardBackMediaList");
 const cardHintInput = document.getElementById("cardHintInput");
 const cardTopicInput = document.getElementById("cardTopicInput");
 const cardTagsInput = document.getElementById("cardTagsInput");
@@ -501,6 +523,12 @@ const editCardForm = document.getElementById("editCardForm");
 const editCardIdInput = document.getElementById("editCardIdInput");
 const editCardFrontInput = document.getElementById("editCardFrontInput");
 const editCardBackInput = document.getElementById("editCardBackInput");
+const editCardFrontMediaInput = document.getElementById("editCardFrontMediaInput");
+const editCardBackMediaInput = document.getElementById("editCardBackMediaInput");
+const editCardFrontMediaStatus = document.getElementById("editCardFrontMediaStatus");
+const editCardBackMediaStatus = document.getElementById("editCardBackMediaStatus");
+const editCardFrontMediaList = document.getElementById("editCardFrontMediaList");
+const editCardBackMediaList = document.getElementById("editCardBackMediaList");
 const editCardHintInput = document.getElementById("editCardHintInput");
 const editCardTopicInput = document.getElementById("editCardTopicInput");
 const editCardTagsInput = document.getElementById("editCardTagsInput");
@@ -557,6 +585,10 @@ const closeFeatureSearchButton = document.getElementById("closeFeatureSearchButt
 const featureSearchInput = document.getElementById("featureSearchInput");
 const featureSearchStatus = document.getElementById("featureSearchStatus");
 const featureSearchResults = document.getElementById("featureSearchResults");
+const mediaViewerModal = document.getElementById("mediaViewerModal");
+const mediaViewerTitle = document.getElementById("mediaViewerTitle");
+const mediaViewerImage = document.getElementById("mediaViewerImage");
+const closeMediaViewerButton = document.getElementById("closeMediaViewerButton");
 
 const FEATURE_SEARCH_ITEMS = [
   {
@@ -805,6 +837,16 @@ function bindEvents() {
       }
     });
   }
+  if (closeMediaViewerButton) {
+    closeMediaViewerButton.addEventListener("click", closeMediaViewer);
+  }
+  if (mediaViewerModal) {
+    mediaViewerModal.addEventListener("click", (event) => {
+      if (event.target === mediaViewerModal) {
+        closeMediaViewer();
+      }
+    });
+  }
   if (featureSearchInput) {
     featureSearchInput.addEventListener("input", renderFeatureSearchResults);
     featureSearchInput.addEventListener("keydown", handleFeatureSearchInputKeydown);
@@ -813,6 +855,11 @@ function bindEvents() {
     featureSearchResults.addEventListener("click", handleFeatureSearchResultClick);
   }
   document.addEventListener("keydown", handleGlobalKeydown);
+  document.addEventListener("click", (event) => {
+    handleOpenMediaViewerClick(event).catch((error) => {
+      console.warn("Failed to open media viewer:", error);
+    });
+  });
   demoResetConfirmInput.addEventListener("input", renderDemoRestorePanel);
   seedDemoButton.addEventListener("click", restoreDemoData);
   if (settingsOpenGuideButton) {
@@ -833,6 +880,18 @@ function bindEvents() {
   cardForm.addEventListener("submit", handleCardSubmit);
   editDeckForm.addEventListener("submit", handleEditDeckSubmit);
   editCardForm.addEventListener("submit", handleEditCardSubmit);
+  if (cardFrontMediaInput) {
+    cardFrontMediaInput.addEventListener("change", (event) => handleMediaInputChange(event, { formKey: "card", side: "front" }));
+  }
+  if (cardBackMediaInput) {
+    cardBackMediaInput.addEventListener("change", (event) => handleMediaInputChange(event, { formKey: "card", side: "back" }));
+  }
+  if (editCardFrontMediaInput) {
+    editCardFrontMediaInput.addEventListener("change", (event) => handleMediaInputChange(event, { formKey: "edit", side: "front" }));
+  }
+  if (editCardBackMediaInput) {
+    editCardBackMediaInput.addEventListener("change", (event) => handleMediaInputChange(event, { formKey: "edit", side: "back" }));
+  }
   importForm.addEventListener("submit", handleImportSubmit);
   questionMapForm.addEventListener("submit", handleQuestionMapSubmit);
   assistantForm.addEventListener("submit", handleAssistantSubmit);
@@ -874,6 +933,18 @@ function bindEvents() {
     clearEditWorkspaceCardEditing();
     showToast("カード編集を終了しました");
   });
+  if (cardFrontMediaList) {
+    cardFrontMediaList.addEventListener("click", (event) => handleMediaListActions(event, { formKey: "card", side: "front" }));
+  }
+  if (cardBackMediaList) {
+    cardBackMediaList.addEventListener("click", (event) => handleMediaListActions(event, { formKey: "card", side: "back" }));
+  }
+  if (editCardFrontMediaList) {
+    editCardFrontMediaList.addEventListener("click", (event) => handleMediaListActions(event, { formKey: "edit", side: "front" }));
+  }
+  if (editCardBackMediaList) {
+    editCardBackMediaList.addEventListener("click", (event) => handleMediaListActions(event, { formKey: "edit", side: "back" }));
+  }
 
   studyDeckFilter.addEventListener("change", () => {
     resetStudySession();
@@ -985,6 +1056,606 @@ function bindEvents() {
   });
 }
 
+function createEmptyMediaDraft() {
+  return { front: [], back: [] };
+}
+
+function getMediaDraft(formKey) {
+  return formKey === "edit" ? editCardMediaDraft : cardMediaDraft;
+}
+
+function resetMediaDraft(formKey) {
+  const currentDraft = getMediaDraft(formKey);
+  ["front", "back"].forEach((side) => {
+    currentDraft[side].forEach((item) => {
+      if (item.previewUrl && item.previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+    });
+  });
+  if (formKey === "edit") {
+    editCardMediaDraft = createEmptyMediaDraft();
+  } else {
+    cardMediaDraft = createEmptyMediaDraft();
+  }
+}
+
+function normalizeCardMediaItem(item = {}) {
+  const name = String(item.name || item.file?.name || "画像").trim();
+  const mimeType = String(item.mimeType || item.file?.type || "").trim();
+  return {
+    assetId: String(item.assetId || crypto.randomUUID()),
+    name: name || "画像",
+    mimeType,
+    size: Number.isFinite(Number(item.size)) ? Number(item.size) : Number(item.file?.size || 0),
+    width: Number.isFinite(Number(item.width)) ? Number(item.width) : 0,
+    height: Number.isFinite(Number(item.height)) ? Number(item.height) : 0,
+    source: item.source === "shared" || item.sharedPath || item.sharedMediaId ? "shared" : "local",
+    sharedPath: String(item.sharedPath || "").trim(),
+    sharedMediaId: String(item.sharedMediaId || "").trim(),
+    publicUrl: String(item.publicUrl || "").trim(),
+    previewUrl: String(item.previewUrl || "").trim(),
+    file: item.file instanceof Blob ? item.file : null,
+  };
+}
+
+function normalizeCardMediaList(items) {
+  return (Array.isArray(items) ? items : []).map((item) => normalizeCardMediaItem(item)).slice(0, MEDIA_SIDE_LIMIT);
+}
+
+function openMediaDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("この端末では画像保存に IndexedDB が使えません"));
+      return;
+    }
+    const request = window.indexedDB.open(MEDIA_DB_NAME, MEDIA_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+        db.createObjectStore(MEDIA_STORE_NAME, { keyPath: "assetId" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB を開けませんでした"));
+  });
+}
+
+function getMediaDatabase() {
+  if (!mediaDbPromise) {
+    mediaDbPromise = openMediaDatabase().catch((error) => {
+      mediaDbPromise = null;
+      throw error;
+    });
+  }
+  return mediaDbPromise;
+}
+
+async function runMediaStore(mode, callback) {
+  const db = await getMediaDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(MEDIA_STORE_NAME, mode);
+    const store = transaction.objectStore(MEDIA_STORE_NAME);
+    let result;
+    transaction.oncomplete = () => resolve(result);
+    transaction.onerror = () => reject(transaction.error || new Error("画像保存に失敗しました"));
+    transaction.onabort = () => reject(transaction.error || new Error("画像保存を完了できませんでした"));
+    result = callback(store, transaction);
+  });
+}
+
+async function putMediaBlob(assetId, blob) {
+  if (!assetId || !(blob instanceof Blob)) {
+    return;
+  }
+  await runMediaStore("readwrite", (store) => {
+    store.put({
+      assetId,
+      blob,
+      updatedAt: Date.now(),
+    });
+  });
+}
+
+async function getMediaBlob(assetId) {
+  if (!assetId) {
+    return null;
+  }
+  return runMediaStore("readonly", (store) => new Promise((resolve, reject) => {
+    const request = store.get(assetId);
+    request.onsuccess = () => resolve(request.result?.blob || null);
+    request.onerror = () => reject(request.error || new Error("画像の読み込みに失敗しました"));
+  }));
+}
+
+async function deleteMediaBlob(assetId) {
+  if (!assetId) {
+    return;
+  }
+  await runMediaStore("readwrite", (store) => {
+    store.delete(assetId);
+  });
+  const cachedUrl = mediaPreviewUrlCache.get(assetId);
+  if (cachedUrl) {
+    URL.revokeObjectURL(cachedUrl);
+    mediaPreviewUrlCache.delete(assetId);
+  }
+}
+
+async function clearAllMediaAssets() {
+  await runMediaStore("readwrite", (store) => {
+    store.clear();
+  });
+  mediaPreviewUrlCache.forEach((url) => URL.revokeObjectURL(url));
+  mediaPreviewUrlCache.clear();
+}
+
+function getReferencedMediaAssetIds() {
+  const assetIds = new Set();
+  state.cards.forEach((card) => {
+    [...(card.frontMedia || []), ...(card.backMedia || [])].forEach((media) => {
+      if (media.assetId) {
+        assetIds.add(media.assetId);
+      }
+    });
+  });
+  return assetIds;
+}
+
+async function cleanupOrphanedMediaAssets() {
+  try {
+    const referenced = getReferencedMediaAssetIds();
+    const storedAssetIds = await runMediaStore("readonly", (store) => new Promise((resolve, reject) => {
+      const request = store.getAllKeys();
+      request.onsuccess = () => resolve((request.result || []).map((value) => String(value)));
+      request.onerror = () => reject(request.error || new Error("画像一覧を読み込めませんでした"));
+    }));
+
+    await Promise.all(
+      storedAssetIds.filter((assetId) => !referenced.has(assetId)).map((assetId) => deleteMediaBlob(assetId)),
+    );
+  } catch (error) {
+    console.warn("Failed to cleanup orphaned media assets:", error);
+  }
+}
+
+function formatMediaBytes(bytes) {
+  const size = Number(bytes || 0);
+  if (size < 1024 * 1024) {
+    return `${Math.max(1, Math.round(size / 1024))}KB`;
+  }
+  return `${Math.round((size / (1024 * 1024)) * 10) / 10}MB`;
+}
+
+async function readImageDimensions(blob) {
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const size = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth || 0, height: image.naturalHeight || 0 });
+      image.onerror = () => reject(new Error("画像サイズを読み取れませんでした"));
+      image.src = objectUrl;
+    });
+    return size;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function buildDraftMediaItemFromFile(file) {
+  if (!(file instanceof Blob) || !String(file.type || "").startsWith("image/")) {
+    throw new Error("画像ファイルのみ追加できます");
+  }
+  if (file.size > MAX_MEDIA_SIZE_BYTES) {
+    throw new Error(`1枚あたり${formatMediaBytes(MAX_MEDIA_SIZE_BYTES)}までです`);
+  }
+  const { width, height } = await readImageDimensions(file);
+  return normalizeCardMediaItem({
+    assetId: crypto.randomUUID(),
+    name: file.name || "画像",
+    mimeType: file.type || "image/*",
+    size: file.size,
+    width,
+    height,
+    source: "local",
+    previewUrl: URL.createObjectURL(file),
+    file,
+  });
+}
+
+function getSharedMediaPublicUrl(path, fallbackUrl = "") {
+  if (fallbackUrl) {
+    return fallbackUrl;
+  }
+  const safePath = String(path || "").trim().replace(/^\/+/, "");
+  if (!safePath) {
+    return "";
+  }
+  if (cloudState.client?.storage) {
+    const response = cloudState.client.storage.from(SHARED_MEDIA_BUCKET).getPublicUrl(safePath);
+    return response?.data?.publicUrl || "";
+  }
+  if (cloudState.config?.supabaseUrl) {
+    return `${cloudState.config.supabaseUrl}/storage/v1/object/public/${SHARED_MEDIA_BUCKET}/${safePath}`;
+  }
+  return "";
+}
+
+async function resolveMediaPreviewUrl(item) {
+  if (!item) {
+    return "";
+  }
+  if (item.previewUrl) {
+    return item.previewUrl;
+  }
+  const remoteUrl = getSharedMediaPublicUrl(item.sharedPath, item.publicUrl);
+  if (remoteUrl) {
+    return remoteUrl;
+  }
+  if (!item.assetId) {
+    return "";
+  }
+  if (mediaPreviewUrlCache.has(item.assetId)) {
+    return mediaPreviewUrlCache.get(item.assetId);
+  }
+  const blob = await getMediaBlob(item.assetId);
+  if (!blob) {
+    return "";
+  }
+  const objectUrl = URL.createObjectURL(blob);
+  mediaPreviewUrlCache.set(item.assetId, objectUrl);
+  return objectUrl;
+}
+
+function buildMediaImageMarkup(item, alt, className = "") {
+  const remoteUrl = getSharedMediaPublicUrl(item.sharedPath, item.publicUrl);
+  const srcAttribute = item.previewUrl || remoteUrl ? `src="${escapeHtml(item.previewUrl || remoteUrl)}"` : "";
+  return `<img class="${escapeHtml(className)}" ${srcAttribute} data-media-asset-id="${escapeHtml(item.assetId || "")}" data-media-shared-path="${escapeHtml(item.sharedPath || "")}" data-media-public-url="${escapeHtml(item.publicUrl || "")}" alt="${escapeHtml(alt)}" />`;
+}
+
+async function hydrateMediaNodes(root = document) {
+  const nodes = [...root.querySelectorAll("img[data-media-asset-id], img[data-media-shared-path], img[data-media-public-url]")];
+  await Promise.all(
+    nodes.map(async (node) => {
+      if (!(node instanceof HTMLImageElement) || node.getAttribute("src")) {
+        return;
+      }
+      const url = await resolveMediaPreviewUrl({
+        assetId: node.dataset.mediaAssetId || "",
+        sharedPath: node.dataset.mediaSharedPath || "",
+        publicUrl: node.dataset.mediaPublicUrl || "",
+      });
+      if (url) {
+        node.src = url;
+      }
+    }),
+  );
+}
+
+function buildMediaDraftCard(item, index, { formKey, side }) {
+  const dimensionLabel = item.width && item.height ? `${item.width} x ${item.height}` : "サイズ未取得";
+  return `
+    <article class="media-editor-card">
+      ${buildMediaImageMarkup(item, `${side === "front" ? "表" : "裏"}の画像 ${index + 1}`, "media-editor-thumb")}
+      <div class="media-editor-copy">
+        <strong>${escapeHtml(item.name)}</strong>
+        <span class="muted">${escapeHtml([formatMediaBytes(item.size), dimensionLabel].filter(Boolean).join(" / "))}</span>
+        <div class="media-editor-actions">
+          <button class="mini-button" data-media-action="preview" data-media-index="${index}" type="button">拡大</button>
+          <button class="mini-button" data-media-action="move-left" data-media-index="${index}" type="button" ${index === 0 ? "disabled" : ""}>前へ</button>
+          <button class="mini-button" data-media-action="move-right" data-media-index="${index}" type="button" ${index === MEDIA_SIDE_LIMIT - 1 || index === getMediaDraft(formKey)[side].length - 1 ? "disabled" : ""}>次へ</button>
+          <button class="mini-button danger-button" data-media-action="remove" data-media-index="${index}" type="button">外す</button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderMediaDraftList(formKey, side) {
+  const draft = getMediaDraft(formKey)[side];
+  const listElement = formKey === "edit"
+    ? side === "front"
+      ? editCardFrontMediaList
+      : editCardBackMediaList
+    : side === "front"
+      ? cardFrontMediaList
+      : cardBackMediaList;
+  const statusElement = formKey === "edit"
+    ? side === "front"
+      ? editCardFrontMediaStatus
+      : editCardBackMediaStatus
+    : side === "front"
+      ? cardFrontMediaStatus
+      : cardBackMediaStatus;
+
+  if (!listElement || !statusElement) {
+    return;
+  }
+
+  statusElement.textContent = draft.length
+    ? `${draft.length} / ${MEDIA_SIDE_LIMIT} 枚追加済み。並び替えると学習画面の表示順も変わります。`
+    : side === "front"
+      ? "図や写真を表側に置くと、どこの構造かを見ながら覚えやすくなります。"
+      : "答え側には図表や写真の答え合わせ用画像を置けます。";
+
+  listElement.innerHTML = draft.length
+    ? draft.map((item, index) => buildMediaDraftCard(item, index, { formKey, side })).join("")
+    : `
+        <article class="library-card">
+          <h4>${side === "front" ? "表の画像はまだありません" : "裏の画像はまだありません"}</h4>
+          <p class="muted">文字だけでも保存できます。必要なときだけ画像を足してください。</p>
+        </article>
+      `;
+  hydrateMediaNodes(listElement).catch((error) => console.warn("Failed to hydrate media draft list:", error));
+}
+
+function renderAllMediaDraftLists() {
+  renderMediaDraftList("card", "front");
+  renderMediaDraftList("card", "back");
+  renderMediaDraftList("edit", "front");
+  renderMediaDraftList("edit", "back");
+}
+
+async function handleMediaInputChange(event, { formKey, side }) {
+  const input = event.target;
+  const files = [...(input.files || [])];
+  if (!files.length) {
+    return;
+  }
+  const draft = getMediaDraft(formKey);
+  const remainingSlots = Math.max(0, MEDIA_SIDE_LIMIT - draft[side].length);
+  if (!remainingSlots) {
+    input.value = "";
+    showToast(`1面につき最大${MEDIA_SIDE_LIMIT}枚までです`);
+    return;
+  }
+  const acceptedFiles = files.slice(0, remainingSlots);
+  if (acceptedFiles.length < files.length) {
+    showToast(`1面につき最大${MEDIA_SIDE_LIMIT}枚までなので、一部だけ追加しました`);
+  }
+
+  try {
+    const items = [];
+    for (const file of acceptedFiles) {
+      items.push(await buildDraftMediaItemFromFile(file));
+    }
+    draft[side] = normalizeCardMediaList([...draft[side], ...items]);
+    renderMediaDraftList(formKey, side);
+  } catch (error) {
+    showToast(error.message || "画像の追加に失敗しました");
+  } finally {
+    input.value = "";
+  }
+}
+
+function moveMediaDraftItem(items, fromIndex, toIndex) {
+  if (fromIndex < 0 || fromIndex >= items.length || toIndex < 0 || toIndex >= items.length) {
+    return items;
+  }
+  const nextItems = [...items];
+  const [moved] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, moved);
+  return nextItems;
+}
+
+function handleMediaListActions(event, { formKey, side }) {
+  const actionButton = event.target.closest("[data-media-action]");
+  if (!actionButton) {
+    return;
+  }
+  const index = Number(actionButton.dataset.mediaIndex || -1);
+  const draft = getMediaDraft(formKey);
+  const item = draft[side][index];
+  if (!item) {
+    return;
+  }
+
+  if (actionButton.dataset.mediaAction === "preview") {
+    openMediaViewerForItem(item, item.name);
+    return;
+  }
+
+  if (actionButton.dataset.mediaAction === "remove") {
+    if (item.previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(item.previewUrl);
+    }
+    draft[side] = draft[side].filter((_, itemIndex) => itemIndex !== index);
+    renderMediaDraftList(formKey, side);
+    return;
+  }
+
+  if (actionButton.dataset.mediaAction === "move-left") {
+    draft[side] = moveMediaDraftItem(draft[side], index, index - 1);
+    renderMediaDraftList(formKey, side);
+    return;
+  }
+
+  if (actionButton.dataset.mediaAction === "move-right") {
+    draft[side] = moveMediaDraftItem(draft[side], index, index + 1);
+    renderMediaDraftList(formKey, side);
+  }
+}
+
+async function openMediaViewerForItem(item, title = "カード画像") {
+  if (!mediaViewerModal || !mediaViewerImage) {
+    return;
+  }
+  const previewUrl = await resolveMediaPreviewUrl(item);
+  if (!previewUrl) {
+    showToast("画像を開けませんでした");
+    return;
+  }
+  mediaViewerTitle.textContent = title || "カード画像";
+  mediaViewerImage.src = previewUrl;
+  mediaViewerModal.hidden = false;
+}
+
+function closeMediaViewer() {
+  if (!mediaViewerModal || !mediaViewerImage) {
+    return;
+  }
+  mediaViewerModal.hidden = true;
+  mediaViewerImage.removeAttribute("src");
+}
+
+function buildMediaGalleryMarkup(mediaItems = [], labelPrefix = "カード画像") {
+  return normalizeCardMediaList(mediaItems)
+    .map(
+      (item, index) => `
+        <article class="media-gallery-card">
+          <button
+            class="media-gallery-button"
+            data-open-media-viewer="true"
+            data-media-asset-id="${escapeHtml(item.assetId || "")}"
+            data-media-shared-path="${escapeHtml(item.sharedPath || "")}"
+            data-media-public-url="${escapeHtml(item.publicUrl || "")}"
+            data-media-title="${escapeHtml(item.name || `${labelPrefix} ${index + 1}`)}"
+            type="button"
+          >
+            ${buildMediaImageMarkup(item, `${labelPrefix} ${index + 1}`)}
+          </button>
+          <p class="media-caption">${escapeHtml(item.name || `${labelPrefix} ${index + 1}`)}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderCardMediaGallery(element, mediaItems, labelPrefix) {
+  if (!element) {
+    return;
+  }
+  const safeItems = normalizeCardMediaList(mediaItems);
+  element.hidden = !safeItems.length;
+  element.innerHTML = safeItems.length ? buildMediaGalleryMarkup(safeItems, labelPrefix) : "";
+  hydrateMediaNodes(element).catch((error) => console.warn("Failed to hydrate media gallery:", error));
+}
+
+function hasCardMedia(card) {
+  return Boolean((card?.frontMedia || []).length || (card?.backMedia || []).length);
+}
+
+function hasDeckMedia(deckId) {
+  return state.cards.some((card) => card.deckId === deckId && hasCardMedia(card));
+}
+
+function formatCardFrontLabel(card) {
+  return String(card?.front || "").trim() || "画像カード";
+}
+
+function formatCardBackLabel(card) {
+  return String(card?.back || "").trim() || "画像を見て確認";
+}
+
+function canUseLocalShare(deck) {
+  return Boolean(deck) && !hasDeckMedia(deck.id);
+}
+
+async function persistDraftMediaItems(items) {
+  const savedItems = [];
+  for (const item of normalizeCardMediaList(items)) {
+    const nextItem = normalizeCardMediaItem(item);
+    if (nextItem.file instanceof Blob) {
+      await putMediaBlob(nextItem.assetId, nextItem.file);
+      nextItem.file = null;
+      nextItem.previewUrl = "";
+    }
+    savedItems.push(nextItem);
+  }
+  return savedItems;
+}
+
+async function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("画像をバックアップ形式へ変換できませんでした"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [meta, base64] = String(dataUrl || "").split(",", 2);
+  const mimeMatch = /data:([^;]+);base64/.exec(meta || "");
+  const mimeType = mimeMatch?.[1] || "application/octet-stream";
+  const binary = atob(base64 || "");
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+async function getExportableMediaBlob(media) {
+  const localBlob = await getMediaBlob(media.assetId);
+  if (localBlob) {
+    return localBlob;
+  }
+  const remoteUrl = getSharedMediaPublicUrl(media.sharedPath, media.publicUrl);
+  if (!remoteUrl) {
+    return null;
+  }
+  const response = await fetch(remoteUrl);
+  if (!response.ok) {
+    throw new Error("共有画像を取得できませんでした");
+  }
+  return response.blob();
+}
+
+async function collectBackupAssets() {
+  const assets = [];
+  const seen = new Set();
+  for (const card of state.cards) {
+    for (const media of [...(card.frontMedia || []), ...(card.backMedia || [])]) {
+      if (!media.assetId || seen.has(media.assetId)) {
+        continue;
+      }
+      const blob = await getExportableMediaBlob(media);
+      if (!blob) {
+        continue;
+      }
+      assets.push({
+        assetId: media.assetId,
+        name: media.name || "画像",
+        mimeType: media.mimeType || blob.type || "image/*",
+        size: media.size || blob.size,
+        dataUrl: await blobToDataUrl(blob),
+      });
+      seen.add(media.assetId);
+    }
+  }
+  return assets;
+}
+
+function buildMediaSummaryMarkup(card) {
+  const mediaItems = normalizeCardMediaList([...(card.frontMedia || []), ...(card.backMedia || [])]);
+  if (!mediaItems.length) {
+    return "";
+  }
+  return `
+    <div class="card-media-inline">
+      <span class="meta-pill card-media-chip">画像 ${mediaItems.length}枚</span>
+      ${buildMediaGalleryMarkup(mediaItems.slice(0, 1), "カード画像")}
+    </div>
+  `;
+}
+
+async function handleOpenMediaViewerClick(event) {
+  const button = event.target.closest("[data-open-media-viewer]");
+  if (!button) {
+    return;
+  }
+  event.preventDefault();
+  await openMediaViewerForItem(
+    {
+      assetId: button.dataset.mediaAssetId || "",
+      sharedPath: button.dataset.mediaSharedPath || "",
+      publicUrl: button.dataset.mediaPublicUrl || "",
+    },
+    button.dataset.mediaTitle || "カード画像",
+  );
+}
+
 function switchSection(sectionId) {
   activeSection = sectionId;
 
@@ -1030,6 +1701,9 @@ function render() {
   renderSharePanel();
   renderSettingsPanel();
   renderFeatureSearchResults();
+  hydrateMediaNodes().catch((error) => {
+    console.warn("Failed to hydrate media nodes:", error);
+  });
 }
 
 function openFeatureSearchModal(initialQuery = "") {
@@ -1413,6 +2087,7 @@ function renderForms() {
   renderImportPanel();
   renderQuestionMapPanel();
   syncAssistantControls();
+  renderAllMediaDraftLists();
 }
 
 function renderCreatePanels() {
@@ -2061,7 +2736,8 @@ function renderCreateGuide() {
 }
 
 function buildCurrentDataSummary() {
-  return `${state.decks.length}デッキ / ${state.cards.length}枚 / 学習履歴${state.reviewLog.length}件`;
+  const mediaCount = state.cards.reduce((sum, card) => sum + (card.frontMedia || []).length + (card.backMedia || []).length, 0);
+  return `${state.decks.length}デッキ / ${state.cards.length}枚 / 画像${mediaCount}枚 / 学習履歴${state.reviewLog.length}件`;
 }
 
 function renderSettingsPanel() {
@@ -2400,6 +3076,9 @@ function getCurrentShareUrl(deck) {
   if (deck.storageMode === "shared" && deck.shareToken) {
     return buildShareUrl(deck.shareToken);
   }
+  if (!canUseLocalShare(deck)) {
+    return "";
+  }
   if (cloudState.lastLocalShareDeckId === deck.id) {
     return shareLinkCache;
   }
@@ -2409,10 +3088,13 @@ function getCurrentShareUrl(deck) {
 function renderShareGuidePanel(deck) {
   const hasClientConfig = Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
   const isSignedIn = Boolean(cloudState.session?.user);
+  const supportsLocalShare = deck ? canUseLocalShare(deck) : false;
   const currentStateText = !deck
     ? "まだ対象デッキがないので、まずはデッキ作成かスターター追加から始めるのがおすすめです。"
     : deck.storageMode === "shared"
       ? `今選んでいる「${deck.name}」は共同編集モードです。${canManageDeckShare(deck) ? "owner としてメンバー管理まで行えます。" : "あなたの学習進捗は個別に保持されます。"}`
+      : !supportsLocalShare
+        ? `今選んでいる「${deck.name}」には画像付きカードがあります。共有するときは Supabase 共有か JSON バックアップを使うのが安全です。`
       : hasClientConfig
         ? isSignedIn
           ? `今選んでいる「${deck.name}」はローカルデッキです。共有リンクを作ると、複製共有か共同編集に進めます。`
@@ -2423,7 +3105,11 @@ function renderShareGuidePanel(deck) {
   shareGuideList.innerHTML = `
     <article class="library-card">
       <h4>1. まずはローカル複製で共有</h4>
-      <p class="muted">ログイン不要です。相手はリンクを開いて、自分の端末にローカルデッキとして追加できます。</p>
+      <p class="muted">${
+        supportsLocalShare
+          ? "ログイン不要です。相手はリンクを開いて、自分の端末にローカルデッキとして追加できます。"
+          : "画像付きデッキでは使えません。画像を含む共有は Supabase 共有か JSON バックアップを使ってください。"
+      }</p>
     </article>
     <article class="library-card">
       <h4>2. 共同編集が必要ならクラウド共有</h4>
@@ -2448,6 +3134,7 @@ function renderSharePanel() {
   const deck = getSelectedShareDeck();
   const hasClientConfig = Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
   const isSignedIn = Boolean(cloudState.session?.user);
+  const supportsLocalShare = deck ? canUseLocalShare(deck) : false;
 
   renderShareGuidePanel(deck);
 
@@ -2483,7 +3170,7 @@ function renderSharePanel() {
   const canEdit = canEditDeckContent(deck);
   const canManage = canManageDeckShare(deck);
 
-  shareDeckButton.disabled = !canEdit;
+  shareDeckButton.disabled = !canEdit || (deck.storageMode !== "shared" && (!supportsLocalShare && !(hasClientConfig && isSignedIn)));
   copyShareLinkButton.disabled = !shareUrl;
   syncSharedDeckButton.disabled = !hasClientConfig || !isSignedIn || deck.storageMode !== "shared";
   duplicateSharedDeckButton.disabled = false;
@@ -2497,6 +3184,10 @@ function renderSharePanel() {
       ? `このデッキは共有中です。権限: ${formatRoleLabel(deck.role)} / 状態: ${formatSyncState(deck.syncState)}${
           shareUrl ? ` / リンク: ${shareUrl}` : ""
         }`
+      : !supportsLocalShare && !(hasClientConfig && isSignedIn)
+        ? "このデッキには画像付きカードがあるため、リンク共有は使えません。Supabase共有かJSONバックアップを使ってください。"
+      : !supportsLocalShare && hasClientConfig && isSignedIn
+        ? "このデッキには画像付きカードがあるため、共有するときは Supabase 共有へ切り替わります。ローカル複製リンクは使いません。"
       : hasClientConfig
         ? shareUrl
           ? `このローカルデッキの複製用リンクを作成済みです。共同編集にしたい場合はログイン後にもう一度「共有リンクを作る」を押してください。 / リンク: ${shareUrl}`
@@ -2543,6 +3234,10 @@ function syncCardForm() {
   cardTagsInput.value = Array.isArray(card?.tags) ? card.tags.join(", ") : "";
   cardNoteInput.value = card?.note || "";
   cardExampleInput.value = card?.example || "";
+  cardMediaDraft = {
+    front: normalizeCardMediaList(card?.frontMedia || []),
+    back: normalizeCardMediaList(card?.backMedia || []),
+  };
 
   if (card && optionExists(cardDeckId, card.deckId)) {
     cardDeckId.value = card.deckId;
@@ -2625,6 +3320,8 @@ function buildEditCardSearchText(card) {
     card.hint,
     card.note,
     card.example,
+    ...(card.frontMedia || []).map((media) => media.name || ""),
+    ...(card.backMedia || []).map((media) => media.name || ""),
     (card.tags || []).join(" "),
     deck?.name || "",
     deck?.subject || "",
@@ -2635,6 +3332,7 @@ function buildEditCardSearchText(card) {
 
 function clearEditWorkspaceCardEditing({ silent = false } = {}) {
   editWorkspaceCardId = "";
+  resetMediaDraft("edit");
   if (!silent) {
     renderEditWorkspace();
   }
@@ -2678,6 +3376,7 @@ function renderEditWorkspace() {
     editCardsSubview.hidden = true;
     editDeckForm.reset();
     editCardForm.reset();
+    resetMediaDraft("edit");
     deleteEditDeckButton.disabled = true;
     editCardCreateButton.disabled = true;
     cancelEditWorkspaceCardButton.hidden = true;
@@ -2741,7 +3440,7 @@ function renderEditWorkspace() {
 
   editCardsTitle.textContent = `「${deck.name}」のカードを探して編集する`;
   editCardSearchInput.value = editCardQuery;
-  editCardEditorTitle.textContent = validEditingCard ? `「${validEditingCard.front}」を編集中` : "このデッキにカードを追加";
+  editCardEditorTitle.textContent = validEditingCard ? `「${formatCardFrontLabel(validEditingCard)}」を編集中` : "このデッキにカードを追加";
   editCardEditorStatus.textContent = validEditingCard
     ? "保存すると一覧へ反映されます。不要なら「編集をやめる」で追加モードに戻れます。"
     : "必要なカードを手入力で追加したり、一覧から選んで同じ場所で修正できます。";
@@ -2753,6 +3452,10 @@ function renderEditWorkspace() {
   editCardTagsInput.value = Array.isArray(validEditingCard?.tags) ? validEditingCard.tags.join(", ") : "";
   editCardNoteInput.value = validEditingCard?.note || "";
   editCardExampleInput.value = validEditingCard?.example || "";
+  editCardMediaDraft = {
+    front: normalizeCardMediaList(validEditingCard?.frontMedia || []),
+    back: normalizeCardMediaList(validEditingCard?.backMedia || []),
+  };
   editCardCreateButton.disabled = !canEditDeckContent(deck);
   editCardSubmitButton.textContent = validEditingCard ? "カードを更新" : "カードを保存";
   cancelEditWorkspaceCardButton.hidden = !validEditingCard;
@@ -2765,8 +3468,8 @@ function renderEditWorkspace() {
             <article class="library-card edit-card-row">
               <div class="card-row-header">
                 <div>
-                  <h4>${escapeHtml(card.front)}</h4>
-                  <p class="muted">${escapeHtml(card.back)}</p>
+                  <h4>${escapeHtml(formatCardFrontLabel(card))}</h4>
+                  <p class="muted">${escapeHtml(formatCardBackLabel(card))}</p>
                 </div>
                 <div class="button-row">
                   <button class="ghost-button" data-edit-workspace-card="${card.id}" type="button">編集</button>
@@ -2775,6 +3478,7 @@ function renderEditWorkspace() {
               </div>
               <div class="card-row-meta">
                 ${card.topic ? `<span class="meta-pill">${escapeHtml(card.topic)}</span>` : ""}
+                ${hasCardMedia(card) ? `<span class="meta-pill">画像 ${(card.frontMedia || []).length + (card.backMedia || []).length}枚</span>` : ""}
                 <span class="meta-pill">${escapeHtml(formatStudyMode(card.study))}</span>
                 ${(card.tags || []).slice(0, 4).map((tag) => `<span class="meta-pill">${escapeHtml(tag)}</span>`).join("")}
               </div>
@@ -2857,8 +3561,8 @@ function renderImportPanel() {
                 <input type="checkbox" data-toggle-import-card="${card.id}" ${importSelection.has(card.id) ? "checked" : ""} />
                 <span class="muted">候補を選択</span>
               </label>
-              <h4>${index + 1}. ${escapeHtml(card.front)}</h4>
-              <p class="muted">${escapeHtml(card.back)}</p>
+              <h4>${index + 1}. ${escapeHtml(formatCardFrontLabel(card))}</h4>
+              <p class="muted">${escapeHtml(formatCardBackLabel(card))}</p>
             </div>
             <div class="button-row">
               <button class="ghost-button danger-button" data-remove-import-card="${card.id}" type="button">候補から外す</button>
@@ -3256,6 +3960,9 @@ function buildDashboardDeckRow(deck) {
   const primaryLabel = deck.subject || deck.name;
   const supportingLine = [deck.subject ? deck.name : "", deck.description || ""].filter(Boolean).join(" / ");
   const canEdit = canEditDeckContent(deck);
+  const mediaCount = state.cards
+    .filter((card) => card.deckId === deck.id)
+    .reduce((sum, card) => sum + (card.frontMedia || []).length + (card.backMedia || []).length, 0);
 
   return `
     <article class="board-deck-row">
@@ -3267,6 +3974,7 @@ function buildDashboardDeckRow(deck) {
           <span class="board-meta-row">
             <span class="meta-pill">${metrics.cardCount}枚</span>
             <span class="meta-pill">復習待ち ${metrics.dueCount}枚</span>
+            ${mediaCount ? `<span class="meta-pill">画像 ${mediaCount}枚</span>` : ""}
             ${
               metrics.learningCount
                 ? `<span class="meta-pill">学習中 ${metrics.learningCount}枚</span>`
@@ -3778,14 +4486,17 @@ function renderReviewStudy(queue) {
     });
     studyProgress.textContent = "復習待ちはありません。「作成」タブからカードを追加できます。";
     toggleAnswerButton.disabled = true;
+    renderCardMediaGallery(cardFrontMedia, [], "問題画像");
+    renderCardMediaGallery(cardBackMedia, [], "答え画像");
     renderRatingHints(null);
     return;
   }
 
   emptyState.classList.add("is-hidden");
   toggleAnswerButton.disabled = false;
-  cardFront.textContent = currentCard.front;
-  cardBack.textContent = currentCard.back;
+  cardFront.textContent = currentCard.front || "画像を見て答える";
+  renderCardMediaGallery(cardFrontMedia, currentCard.frontMedia || [], "問題画像");
+  cardBack.textContent = currentCard.back || "画像で答えを確認する";
   setElementCopy(
     cardDeckName,
     [getDeckName(currentCard.deckId), deck?.subject || formatDeckFocus(deck?.focus), formatStudyMode(currentCard.study)]
@@ -3798,6 +4509,7 @@ function renderReviewStudy(queue) {
   setElementCopy(cardHint, currentCard.hint);
   setElementCopy(cardNote, currentCard.note);
   setElementCopy(cardExample, currentCard.example ? `例: ${currentCard.example}` : "");
+  renderCardMediaGallery(cardBackMedia, currentCard.backMedia || [], "答え画像");
   answerArea.classList.toggle("is-hidden", !isAnswerVisible);
   toggleAnswerButton.textContent = isAnswerVisible ? "答えを隠す" : "答えを見る";
   studyProgress.textContent = `${queue.length}枚の対象カードがあります。現在は${formatStudyMode(currentCard.study)}フェーズです。`;
@@ -3891,7 +4603,8 @@ function renderShortQuizStudy(source) {
   }
 
   emptyState.classList.add("is-hidden");
-  shortQuizFront.textContent = itemData.prompt;
+  shortQuizFront.textContent = itemData.prompt || "画像を見て答える";
+  renderCardMediaGallery(shortQuizFrontMedia, itemData.frontMedia || [], "小テスト画像");
   setElementCopy(
     shortQuizMeta,
     `${itemData.isAi ? "AI生成" : getDeckName(card?.deckId)} · ${item.index + 1}/${studySession.items.length}${
@@ -3904,10 +4617,11 @@ function renderShortQuizStudy(source) {
   shortQuizAnswerInput.value = item.typedAnswer || "";
   shortQuizAnswerInput.disabled = item.revealed;
   shortQuizAnswerArea.classList.toggle("is-hidden", !item.revealed);
-  shortQuizBack.textContent = itemData.answer;
+  shortQuizBack.textContent = itemData.answer || "画像で答えを確認する";
   setElementCopy(shortQuizHint, itemData.hint);
   setElementCopy(shortQuizNote, itemData.note);
   setElementCopy(shortQuizExample, itemData.example ? `${itemData.isAi ? "根拠" : "例"}: ${itemData.example}` : "");
+  renderCardMediaGallery(shortQuizBackMedia, itemData.backMedia || [], "解答画像");
 
   const summary = buildStudySessionSummary(studySession);
   shortQuizProgress.textContent = item.revealed
@@ -3938,7 +4652,8 @@ function renderChoiceQuizStudy(source) {
   }
 
   emptyState.classList.add("is-hidden");
-  choiceQuizFront.textContent = itemData.prompt;
+  choiceQuizFront.textContent = itemData.prompt || "画像を見て選ぶ";
+  renderCardMediaGallery(choiceQuizFrontMedia, itemData.frontMedia || [], "4択画像");
   setElementCopy(
     choiceQuizMeta,
     `${itemData.isAi ? "AI生成" : getDeckName(card?.deckId)} · ${item.index + 1}/${studySession.items.length}${
@@ -3970,10 +4685,11 @@ function renderChoiceQuizStudy(source) {
     .join("");
 
   choiceQuizAnswerArea.classList.toggle("is-hidden", !item.answered);
-  choiceQuizBack.textContent = itemData.answer;
+  choiceQuizBack.textContent = itemData.answer || "画像で答えを確認する";
   setElementCopy(choiceQuizHint, itemData.hint);
   setElementCopy(choiceQuizNote, itemData.note);
   setElementCopy(choiceQuizExample, itemData.example ? `${itemData.isAi ? "根拠" : "例"}: ${itemData.example}` : "");
+  renderCardMediaGallery(choiceQuizBackMedia, itemData.backMedia || [], "解答画像");
   const summary = buildStudySessionSummary(studySession);
   choiceQuizStatus.textContent = item.answered
     ? item.choiceOptions.some((option) => option.id === item.selectedOptionId && option.isCorrect)
@@ -4081,6 +4797,8 @@ function resolveStudySessionItem(item) {
       hint: item.sourceLabel ? `出典: ${buildAiSourceLabel(item)}` : linkedCard?.hint || "",
       topic: item.topic || linkedCard?.topic || deck?.subject || "",
       tags: (item.tags || []).length ? item.tags : linkedCard?.tags || [],
+      frontMedia: linkedCard?.frontMedia || [],
+      backMedia: linkedCard?.backMedia || [],
       note: item.explanation || linkedCard?.note || "",
       example: item.evidenceSnippet || linkedCard?.example || "",
       choiceOptions: item.choiceOptions || [],
@@ -4103,6 +4821,8 @@ function resolveStudySessionItem(item) {
     hint: card.hint,
     topic: card.topic || deck?.subject || "",
     tags: card.tags || [],
+    frontMedia: card.frontMedia || [],
+    backMedia: card.backMedia || [],
     note: card.note,
     example: card.example,
     choiceOptions: item.choiceOptions || [],
@@ -4319,6 +5039,8 @@ function renderLibrary() {
         return true;
       }
       return [card.front, card.back, card.topic, card.note, card.example, ...(card.tags || []), getDeckName(card.deckId)]
+        .concat((card.frontMedia || []).map((media) => media.name || ""))
+        .concat((card.backMedia || []).map((media) => media.name || ""))
         .join(" ")
         .toLowerCase()
         .includes(textFilter);
@@ -4345,8 +5067,8 @@ function renderLibrary() {
         <article class="library-card">
           <div class="card-row-header">
             <div>
-              <h4>${escapeHtml(card.front)}</h4>
-              <p class="muted">${escapeHtml(card.back)}</p>
+              <h4>${escapeHtml(formatCardFrontLabel(card))}</h4>
+              <p class="muted">${escapeHtml(formatCardBackLabel(card))}</p>
             </div>
             <div class="button-row">
               <button class="ghost-button" data-open-deck-detail="${card.deckId}" type="button">デッキ詳細</button>
@@ -4354,6 +5076,7 @@ function renderLibrary() {
               <button class="ghost-button danger-button" data-delete-card="${card.id}" type="button" ${canEdit ? "" : "disabled"}>削除</button>
             </div>
           </div>
+          ${buildMediaSummaryMarkup(card)}
           ${card.note ? `<p class="flashcard-note">${escapeHtml(card.note)}</p>` : ""}
           ${card.example ? `<p class="flashcard-example">${escapeHtml(card.example)}</p>` : ""}
           <div class="card-row-meta">
@@ -4362,6 +5085,7 @@ function renderLibrary() {
               formatDeckFocus(deck?.focus),
             )}</span>
             ${card.topic ? `<span class="meta-pill">${escapeHtml(card.topic)}</span>` : deck?.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
+            ${hasCardMedia(card) ? `<span class="meta-pill">画像 ${(card.frontMedia || []).length + (card.backMedia || []).length}枚</span>` : ""}
             <span class="meta-pill">${escapeHtml(formatStudyMode(card.study))}</span>
             <span class="meta-pill">次回 ${escapeHtml(nextReview)}</span>
             <span class="meta-pill">間隔 ${escapeHtml(formatInterval(card.study.intervalDays))}</span>
@@ -4404,13 +5128,15 @@ function renderDeckDetail() {
               <article class="library-card">
                 <div class="card-row-header">
                   <div>
-                    <h4>${escapeHtml(card.front)}</h4>
-                    <p class="muted">${escapeHtml(card.back)}</p>
+                    <h4>${escapeHtml(formatCardFrontLabel(card))}</h4>
+                    <p class="muted">${escapeHtml(formatCardBackLabel(card))}</p>
                   </div>
                   <button class="ghost-button" data-edit-card="${card.id}" type="button" ${canEditDeckContent(deck) ? "" : "disabled"}>編集</button>
                 </div>
+                ${buildMediaSummaryMarkup(card)}
                 <div class="card-row-meta">
                   ${card.topic ? `<span class="meta-pill">${escapeHtml(card.topic)}</span>` : ""}
+                  ${hasCardMedia(card) ? `<span class="meta-pill">画像 ${(card.frontMedia || []).length + (card.backMedia || []).length}枚</span>` : ""}
                   ${(card.tags || []).slice(0, 4).map((tag) => `<span class="meta-pill">${escapeHtml(tag)}</span>`).join("")}
                 </div>
               </article>
@@ -4546,13 +5272,15 @@ function saveDeckRecord({ deckId, name, focus, subject, description }) {
   return { deck, isNew: true };
 }
 
-function saveCardRecord({ cardId, deckId, front, back, hint, topic, tags, note, example }) {
+async function saveCardRecord({ cardId, deckId, front, back, hint, topic, tags, note, example, frontMedia = [], backMedia = [] }) {
   const safeDeckId = String(deckId || "").trim();
   const safeFront = String(front || "").trim();
   const safeBack = String(back || "").trim();
+  const safeFrontMedia = normalizeCardMediaList(frontMedia);
+  const safeBackMedia = normalizeCardMediaList(backMedia);
 
-  if (!safeDeckId || !safeFront || !safeBack) {
-    throw new Error("カードの必須項目を入力してください");
+  if (!safeDeckId || (!safeFront && !safeFrontMedia.length) || (!safeBack && !safeBackMedia.length)) {
+    throw new Error("カードの表と裏は、文字か画像のどちらかを入れてください");
   }
 
   const targetDeck = getDeckById(safeDeckId);
@@ -4566,6 +5294,8 @@ function saveCardRecord({ cardId, deckId, front, back, hint, topic, tags, note, 
 
   const now = Date.now();
   const safeTags = Array.isArray(tags) ? tags : parseTags(String(tags || ""));
+  const persistedFrontMedia = await persistDraftMediaItems(safeFrontMedia);
+  const persistedBackMedia = await persistDraftMediaItems(safeBackMedia);
 
   if (cardId) {
     const card = getCardById(cardId);
@@ -4586,6 +5316,8 @@ function saveCardRecord({ cardId, deckId, front, back, hint, topic, tags, note, 
     card.tags = safeTags;
     card.note = String(note || "").trim();
     card.example = String(example || "").trim();
+    card.frontMedia = persistedFrontMedia;
+    card.backMedia = persistedBackMedia;
     card.updatedAt = now;
     targetDeck.updatedAt = now;
     if (previousDeckId && previousDeckId !== safeDeckId) {
@@ -4609,6 +5341,8 @@ function saveCardRecord({ cardId, deckId, front, back, hint, topic, tags, note, 
     tags: safeTags,
     note: String(note || "").trim(),
     example: String(example || "").trim(),
+    frontMedia: persistedFrontMedia,
+    backMedia: persistedBackMedia,
     createdAt: now,
     dueAt: now,
     intervalDays: 0,
@@ -4642,7 +5376,7 @@ function handleDeckSubmit(event) {
   }
 }
 
-function handleCardSubmit(event) {
+async function handleCardSubmit(event) {
   event.preventDefault();
   const formData = new FormData(cardForm);
   const cardId = String(formData.get("cardId") || "").trim();
@@ -4656,7 +5390,7 @@ function handleCardSubmit(event) {
   const example = String(formData.get("cardExample") || "").trim();
 
   try {
-    const { card, isNew } = saveCardRecord({
+    const { card, isNew } = await saveCardRecord({
       cardId,
       deckId,
       front,
@@ -4666,13 +5400,17 @@ function handleCardSubmit(event) {
       tags,
       note,
       example,
+      frontMedia: cardMediaDraft.front,
+      backMedia: cardMediaDraft.back,
     });
     clearCardEditing();
     persist();
+    cleanupOrphanedMediaAssets();
     render();
     cardDeckId.value = card.deckId;
     showToast(isNew ? "カードを保存しました" : "カードを更新しました");
   } catch (error) {
+    cleanupOrphanedMediaAssets();
     showToast(error.message || "カード保存に失敗しました");
   }
 }
@@ -4698,12 +5436,12 @@ function handleEditDeckSubmit(event) {
   }
 }
 
-function handleEditCardSubmit(event) {
+async function handleEditCardSubmit(event) {
   event.preventDefault();
   const formData = new FormData(editCardForm);
 
   try {
-    const { card, isNew } = saveCardRecord({
+    const { card, isNew } = await saveCardRecord({
       cardId: String(formData.get("editCardId") || "").trim(),
       deckId: selectedEditDeckId,
       front: String(formData.get("editCardFront") || "").trim(),
@@ -4713,15 +5451,19 @@ function handleEditCardSubmit(event) {
       tags: parseTags(String(formData.get("editCardTags") || "")),
       note: String(formData.get("editCardNote") || "").trim(),
       example: String(formData.get("editCardExample") || "").trim(),
+      frontMedia: editCardMediaDraft.front,
+      backMedia: editCardMediaDraft.back,
     });
     selectedEditDeckId = card.deckId;
     editSubview = "cards";
     editWorkspaceCardId = "";
     persist();
+    cleanupOrphanedMediaAssets();
     render();
     focusEditCardForm();
     showToast(isNew ? "カードを追加しました" : "カードを更新しました");
   } catch (error) {
+    cleanupOrphanedMediaAssets();
     showToast(error.message || "カード更新に失敗しました");
   }
 }
@@ -6138,6 +6880,7 @@ function deleteDeck(deckId) {
   }
 
   persist();
+  cleanupOrphanedMediaAssets();
   render();
   showToast("デッキを削除しました");
 }
@@ -6177,6 +6920,7 @@ function deleteCard(cardId) {
   }
 
   persist();
+  cleanupOrphanedMediaAssets();
   render();
   showToast("カードを削除しました");
 }
@@ -6242,6 +6986,7 @@ function clearCardEditing() {
   editingCardId = null;
   cardForm.reset();
   cardIdInput.value = "";
+  resetMediaDraft("card");
   applyCardContextPlaceholders();
 }
 
@@ -7466,6 +8211,13 @@ async function refreshCloudData({ silent = false } = {}) {
       throw cardsResponse.error;
     }
 
+    const mediaResponse = sharedDeckIds.length
+      ? await client.from("shared_card_media").select("*").in("deck_id", sharedDeckIds).order("sort_index", { ascending: true })
+      : { data: [], error: null };
+    if (mediaResponse.error) {
+      throw mediaResponse.error;
+    }
+
     const progressResponse = sharedDeckIds.length
       ? await client.from("user_card_progress").select("*").eq("user_id", userId).in("deck_id", sharedDeckIds)
       : { data: [], error: null };
@@ -7488,7 +8240,7 @@ async function refreshCloudData({ silent = false } = {}) {
     }
 
     detachUnavailableSharedDecks(sharedDeckIds);
-    mergeCloudDecks(memberships, cardsResponse.data || [], progressResponse.data || []);
+    mergeCloudDecks(memberships, cardsResponse.data || [], mediaResponse.data || [], progressResponse.data || []);
     cloudState.pendingRequests = (requestResponse.data || [])
       .filter((request) => request.status === "pending")
       .map((request) => ({
@@ -7515,7 +8267,7 @@ async function refreshCloudData({ silent = false } = {}) {
   }
 }
 
-function mergeCloudDecks(sharedDecks, sharedCards, progressRows) {
+function mergeCloudDecks(sharedDecks, sharedCards, sharedCardMedia, progressRows) {
   sharedDecks.forEach((sharedDeck) => {
     const existingDeck = state.decks.find((deck) => deck.sharedDeckId === sharedDeck.id) || null;
     const localDeckId = existingDeck?.id || crypto.randomUUID();
@@ -7549,6 +8301,9 @@ function mergeCloudDecks(sharedDecks, sharedCards, progressRows) {
     const nextCards = deckCards.map((cardRow, index) => {
       const existing = existingCardsBySharedId.get(cardRow.id);
       const progressRow = progressRows.find((row) => row.shared_card_id === cardRow.id);
+      const mediaRows = (sharedCardMedia || [])
+        .filter((row) => row.shared_card_id === cardRow.id)
+        .sort((left, right) => left.side.localeCompare(right.side) || Number(left.sort_index || 0) - Number(right.sort_index || 0));
       return normalizeCard({
         id: existing?.id || crypto.randomUUID(),
         deckId: localDeckId,
@@ -7559,6 +8314,34 @@ function mergeCloudDecks(sharedDecks, sharedCards, progressRows) {
         tags: Array.isArray(cardRow.tags) ? cardRow.tags : parseTags(cardRow.tags),
         note: cardRow.note || "",
         example: cardRow.example || "",
+        frontMedia: mediaRows
+          .filter((row) => row.side === "front")
+          .map((row) => ({
+            assetId: row.asset_id || crypto.randomUUID(),
+            name: row.name || "画像",
+            mimeType: row.mime_type || "",
+            size: Number(row.size || 0),
+            width: Number(row.width || 0),
+            height: Number(row.height || 0),
+            source: "shared",
+            sharedPath: row.storage_path || "",
+            sharedMediaId: row.id,
+            publicUrl: getSharedMediaPublicUrl(row.storage_path || ""),
+          })),
+        backMedia: mediaRows
+          .filter((row) => row.side === "back")
+          .map((row) => ({
+            assetId: row.asset_id || crypto.randomUUID(),
+            name: row.name || "画像",
+            mimeType: row.mime_type || "",
+            size: Number(row.size || 0),
+            width: Number(row.width || 0),
+            height: Number(row.height || 0),
+            source: "shared",
+            sharedPath: row.storage_path || "",
+            sharedMediaId: row.id,
+            publicUrl: getSharedMediaPublicUrl(row.storage_path || ""),
+          })),
         createdAt: existing?.createdAt || parseCloudTimestamp(cardRow.created_at) || Date.now() + index,
         updatedAt: parseCloudTimestamp(cardRow.updated_at) || existing?.updatedAt || Date.now(),
         sharedCardId: cardRow.id,
@@ -7620,6 +8403,80 @@ function buildProgressPayload(deck, card) {
     recovery_days: Number(card.study.recoveryDays || 1),
     updated_at: new Date().toISOString(),
   };
+}
+
+function buildSharedMediaStoragePath(deck, card, media, side, index) {
+  const safeName = String(media.name || "image")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 60) || "image";
+  return `${deck.sharedDeckId}/${card.sharedCardId}/${side}/${index + 1}-${media.assetId}-${safeName}`;
+}
+
+async function buildSharedCardMediaRows(client, deck) {
+  const rows = [];
+  for (const card of state.cards.filter((item) => item.deckId === deck.id)) {
+    const sideEntries = [
+      ["front", normalizeCardMediaList(card.frontMedia || [])],
+      ["back", normalizeCardMediaList(card.backMedia || [])],
+    ];
+
+    for (const [side, mediaItems] of sideEntries) {
+      for (const [index, media] of mediaItems.entries()) {
+        const nextMedia = normalizeCardMediaItem(media);
+        if (!nextMedia.sharedMediaId) {
+          nextMedia.sharedMediaId = crypto.randomUUID();
+        }
+        if (!nextMedia.sharedPath) {
+          nextMedia.sharedPath = buildSharedMediaStoragePath(deck, card, nextMedia, side, index);
+        }
+        let blob = await getMediaBlob(nextMedia.assetId);
+        if (!blob && (nextMedia.publicUrl || nextMedia.sharedPath)) {
+          const remoteUrl = getSharedMediaPublicUrl(nextMedia.sharedPath, nextMedia.publicUrl);
+          if (remoteUrl) {
+            const response = await fetch(remoteUrl);
+            if (response.ok) {
+              blob = await response.blob();
+              await putMediaBlob(nextMedia.assetId, blob);
+            }
+          }
+        }
+        if (blob) {
+          const { error: uploadError } = await client.storage.from(SHARED_MEDIA_BUCKET).upload(nextMedia.sharedPath, blob, {
+            upsert: true,
+            contentType: nextMedia.mimeType || blob.type || "image/*",
+          });
+          if (uploadError) {
+            throw uploadError;
+          }
+        }
+        nextMedia.source = "shared";
+        nextMedia.publicUrl = getSharedMediaPublicUrl(nextMedia.sharedPath);
+        rows.push({
+          id: nextMedia.sharedMediaId,
+          shared_card_id: card.sharedCardId,
+          deck_id: deck.sharedDeckId,
+          side,
+          asset_id: nextMedia.assetId,
+          name: nextMedia.name || "画像",
+          mime_type: nextMedia.mimeType || "",
+          size: Number(nextMedia.size || 0),
+          width: Number(nextMedia.width || 0),
+          height: Number(nextMedia.height || 0),
+          storage_path: nextMedia.sharedPath,
+          sort_index: index,
+          updated_at: new Date(card.updatedAt || Date.now()).toISOString(),
+        });
+        if (side === "front") {
+          card.frontMedia[index] = nextMedia;
+        } else {
+          card.backMedia[index] = nextMedia;
+        }
+      }
+    }
+  }
+  return rows;
 }
 
 async function syncDeckToCloud(deck) {
@@ -7701,6 +8558,35 @@ async function syncDeckToCloud(deck) {
     }
   }
 
+  const existingMediaResponse = await client.from("shared_card_media").select("id, storage_path").eq("deck_id", deck.sharedDeckId);
+  if (existingMediaResponse.error) {
+    deck.syncState = "dirty";
+    throw existingMediaResponse.error;
+  }
+
+  const mediaRows = await buildSharedCardMediaRows(client, deck);
+  const nextMediaIds = new Set(mediaRows.map((row) => row.id));
+  const staleMediaRows = (existingMediaResponse.data || []).filter((row) => !nextMediaIds.has(row.id));
+  if (staleMediaRows.length) {
+    const stalePaths = staleMediaRows.map((row) => row.storage_path).filter(Boolean);
+    const { error: deleteMediaRowError } = await client.from("shared_card_media").delete().in("id", staleMediaRows.map((row) => row.id));
+    if (deleteMediaRowError) {
+      deck.syncState = "dirty";
+      throw deleteMediaRowError;
+    }
+    if (stalePaths.length) {
+      await client.storage.from(SHARED_MEDIA_BUCKET).remove(stalePaths);
+    }
+  }
+
+  if (mediaRows.length) {
+    const { error: upsertMediaError } = await client.from("shared_card_media").upsert(mediaRows);
+    if (upsertMediaError) {
+      deck.syncState = "dirty";
+      throw upsertMediaError;
+    }
+  }
+
   deck.syncState = "synced";
   await syncSharedDeckProgress(deck.id);
   persist();
@@ -7773,6 +8659,9 @@ function clearLocalShareQuery() {
 }
 
 function createLocalShareSnapshot(deck) {
+  if (hasDeckMedia(deck.id)) {
+    throw new Error("画像付きデッキはリンク共有できません。Supabase共有かJSONバックアップを使ってください");
+  }
   const cards = state.cards
     .filter((card) => card.deckId === deck.id)
     .sort((a, b) => a.createdAt - b.createdAt)
@@ -7801,6 +8690,9 @@ function createLocalShareSnapshot(deck) {
 }
 
 async function buildLocalShareUrl(deck) {
+  if (!canUseLocalShare(deck)) {
+    throw new Error("画像付きデッキはリンク共有できません。Supabase共有かJSONバックアップを使ってください");
+  }
   const snapshot = createLocalShareSnapshot(deck);
   const encoded = await encodeSharePayload(snapshot);
   const url = `${window.location.origin}${window.location.pathname}?${LOCAL_SHARE_PARAM}=${encodeURIComponent(encoded)}`;
@@ -8159,6 +9051,20 @@ function duplicateSelectedDeck() {
     .slice()
     .reverse()
     .forEach((card, index) => {
+      const frontMedia = normalizeCardMediaList(card.frontMedia || []).map((media) => ({
+        ...media,
+        sharedMediaId: "",
+        sharedPath: "",
+        publicUrl: media.publicUrl || getSharedMediaPublicUrl(media.sharedPath || "", media.publicUrl || ""),
+        source: "local",
+      }));
+      const backMedia = normalizeCardMediaList(card.backMedia || []).map((media) => ({
+        ...media,
+        sharedMediaId: "",
+        sharedPath: "",
+        publicUrl: media.publicUrl || getSharedMediaPublicUrl(media.sharedPath || "", media.publicUrl || ""),
+        source: "local",
+      }));
       state.cards.unshift(
         normalizeCard({
           ...clone(card),
@@ -8167,6 +9073,8 @@ function duplicateSelectedDeck() {
           createdAt: now + index,
           updatedAt: now + index,
           sharedCardId: "",
+          frontMedia,
+          backMedia,
         }),
       );
     });
@@ -8477,22 +9385,27 @@ function stopOrLeaveSelectedDeck() {
   stopOrLeaveDeck(deck.id);
 }
 
-function exportJsonBackup() {
-  const snapshot = {
-    exportedAt: new Date().toISOString(),
-    version: 2,
-    state,
-  };
-  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `pulse-recall-backup-${formatDateKey(new Date())}.json`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-  showToast("JSON バックアップを書き出しました");
+async function exportJsonBackup() {
+  try {
+    const snapshot = {
+      exportedAt: new Date().toISOString(),
+      version: 3,
+      state,
+      assets: await collectBackupAssets(),
+    };
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `pulse-recall-backup-${formatDateKey(new Date())}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast("JSON バックアップを書き出しました");
+  } catch (error) {
+    showToast(error.message || "JSON バックアップの書き出しに失敗しました");
+  }
 }
 
 async function importJsonBackup(event) {
@@ -8513,6 +9426,17 @@ async function importJsonBackup(event) {
     if (!approved) {
       importJsonFileInput.value = "";
       return;
+    }
+
+    const assets = Array.isArray(parsed.assets) ? parsed.assets : [];
+    if (assets.length || state.cards.some((card) => hasCardMedia(card))) {
+      await clearAllMediaAssets();
+    }
+    for (const asset of assets) {
+      if (!asset?.assetId || !asset?.dataUrl) {
+        continue;
+      }
+      await putMediaBlob(String(asset.assetId), dataUrlToBlob(String(asset.dataUrl)));
     }
 
     state = nextState;
@@ -8664,6 +9588,8 @@ function makeCard({
   tags = [],
   note = "",
   example = "",
+  frontMedia = [],
+  backMedia = [],
   createdAt,
   dueAt,
   intervalDays,
@@ -8679,6 +9605,8 @@ function makeCard({
     tags: Array.isArray(tags) ? tags : parseTags(String(tags || "")),
     note,
     example,
+    frontMedia: normalizeCardMediaList(frontMedia),
+    backMedia: normalizeCardMediaList(backMedia),
     createdAt,
     updatedAt: createdAt,
     sharedCardId,
@@ -9103,6 +10031,8 @@ function normalizeCard(card) {
     tags: Array.isArray(card.tags) ? card.tags.filter(Boolean) : parseTags(card.tags),
     note: String(card.note || "").trim(),
     example: String(card.example || "").trim(),
+    frontMedia: normalizeCardMediaList(card.frontMedia),
+    backMedia: normalizeCardMediaList(card.backMedia),
     createdAt: Number.isFinite(card.createdAt) ? card.createdAt : Date.now(),
     updatedAt: Number.isFinite(card.updatedAt) ? card.updatedAt : Number.isFinite(card.createdAt) ? card.createdAt : Date.now(),
     sharedCardId: String(card.sharedCardId || "").trim(),

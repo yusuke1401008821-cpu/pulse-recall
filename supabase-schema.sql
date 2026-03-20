@@ -45,6 +45,23 @@ create table if not exists public.shared_cards (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.shared_card_media (
+  id uuid primary key default gen_random_uuid(),
+  shared_card_id uuid not null references public.shared_cards (id) on delete cascade,
+  deck_id uuid not null references public.shared_decks (id) on delete cascade,
+  side text not null check (side in ('front', 'back')),
+  asset_id text not null default '',
+  name text not null default '',
+  mime_type text not null default '',
+  size bigint not null default 0,
+  width integer not null default 0,
+  height integer not null default 0,
+  storage_path text not null unique,
+  sort_index integer not null default 0,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create table if not exists public.deck_members (
   id uuid primary key default gen_random_uuid(),
   deck_id uuid not null references public.shared_decks (id) on delete cascade,
@@ -98,6 +115,7 @@ create table if not exists public.user_review_log (
 );
 
 create index if not exists idx_shared_cards_deck_id on public.shared_cards (deck_id);
+create index if not exists idx_shared_card_media_card_id on public.shared_card_media (shared_card_id, side, sort_index);
 create index if not exists idx_deck_members_user_id on public.deck_members (user_id);
 create index if not exists idx_access_requests_deck_id on public.deck_access_requests (deck_id);
 create index if not exists idx_progress_user_id on public.user_card_progress (user_id, deck_id);
@@ -116,6 +134,11 @@ for each row execute procedure public.set_updated_at();
 drop trigger if exists set_shared_cards_updated_at on public.shared_cards;
 create trigger set_shared_cards_updated_at
 before update on public.shared_cards
+for each row execute procedure public.set_updated_at();
+
+drop trigger if exists set_shared_card_media_updated_at on public.shared_card_media;
+create trigger set_shared_card_media_updated_at
+before update on public.shared_card_media
 for each row execute procedure public.set_updated_at();
 
 drop trigger if exists set_access_requests_updated_at on public.deck_access_requests;
@@ -177,6 +200,7 @@ $$;
 alter table public.profiles enable row level security;
 alter table public.shared_decks enable row level security;
 alter table public.shared_cards enable row level security;
+alter table public.shared_card_media enable row level security;
 alter table public.deck_members enable row level security;
 alter table public.deck_access_requests enable row level security;
 alter table public.user_card_progress enable row level security;
@@ -258,6 +282,35 @@ with check (public.can_edit_shared_deck(deck_id));
 drop policy if exists "shared_cards_delete_editors" on public.shared_cards;
 create policy "shared_cards_delete_editors"
 on public.shared_cards
+for delete
+to authenticated
+using (public.can_edit_shared_deck(deck_id));
+
+drop policy if exists "shared_card_media_select_members" on public.shared_card_media;
+create policy "shared_card_media_select_members"
+on public.shared_card_media
+for select
+to authenticated
+using (public.is_accepted_member(deck_id));
+
+drop policy if exists "shared_card_media_insert_editors" on public.shared_card_media;
+create policy "shared_card_media_insert_editors"
+on public.shared_card_media
+for insert
+to authenticated
+with check (public.can_edit_shared_deck(deck_id));
+
+drop policy if exists "shared_card_media_update_editors" on public.shared_card_media;
+create policy "shared_card_media_update_editors"
+on public.shared_card_media
+for update
+to authenticated
+using (public.can_edit_shared_deck(deck_id))
+with check (public.can_edit_shared_deck(deck_id));
+
+drop policy if exists "shared_card_media_delete_editors" on public.shared_card_media;
+create policy "shared_card_media_delete_editors"
+on public.shared_card_media
 for delete
 to authenticated
 using (public.can_edit_shared_deck(deck_id));
@@ -525,3 +578,52 @@ grant execute on function public.get_share_preview(text) to authenticated;
 grant execute on function public.request_deck_access(text, text) to authenticated;
 grant execute on function public.approve_deck_access(uuid, text) to authenticated;
 grant execute on function public.reject_deck_access(uuid) to authenticated;
+
+insert into storage.buckets (id, name, public)
+values ('shared-card-media', 'shared-card-media', true)
+on conflict (id) do update
+set public = excluded.public;
+
+drop policy if exists "shared_card_media_public_read" on storage.objects;
+create policy "shared_card_media_public_read"
+on storage.objects
+for select
+to public
+using (
+  bucket_id = 'shared-card-media'
+  and public.is_accepted_member((storage.foldername(name))[1]::uuid)
+);
+
+drop policy if exists "shared_card_media_insert_editors" on storage.objects;
+create policy "shared_card_media_insert_editors"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'shared-card-media'
+  and public.can_edit_shared_deck((storage.foldername(name))[1]::uuid)
+);
+
+drop policy if exists "shared_card_media_update_editors" on storage.objects;
+create policy "shared_card_media_update_editors"
+on storage.objects
+for update
+to authenticated
+using (
+  bucket_id = 'shared-card-media'
+  and public.can_edit_shared_deck((storage.foldername(name))[1]::uuid)
+)
+with check (
+  bucket_id = 'shared-card-media'
+  and public.can_edit_shared_deck((storage.foldername(name))[1]::uuid)
+);
+
+drop policy if exists "shared_card_media_delete_editors" on storage.objects;
+create policy "shared_card_media_delete_editors"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'shared-card-media'
+  and public.can_edit_shared_deck((storage.foldername(name))[1]::uuid)
+);
