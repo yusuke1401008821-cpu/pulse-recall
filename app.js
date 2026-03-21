@@ -355,6 +355,7 @@ let cloudState = {
   backupSnapshots: [],
   backupStatus: "idle",
   backupError: "",
+  backupReadinessIssue: null,
   latestBackupAt: 0,
   lastBackupFingerprint: "",
   backupDirty: false,
@@ -685,7 +686,6 @@ const settingsSnapshotList = document.getElementById("settingsSnapshotList");
 const settingsAccountBackupSummary = document.getElementById("settingsAccountBackupSummary");
 const settingsAccountBackupStatus = document.getElementById("settingsAccountBackupStatus");
 const settingsSignInGoogleButton = document.getElementById("settingsSignInGoogleButton");
-const settingsSignInAppleButton = document.getElementById("settingsSignInAppleButton");
 const settingsToggleEmailAuthButton = document.getElementById("settingsToggleEmailAuthButton");
 const settingsEmailAuthPanel = document.getElementById("settingsEmailAuthPanel");
 const settingsAuthEmailInput = document.getElementById("settingsAuthEmailInput");
@@ -961,8 +961,8 @@ const FEATURE_SEARCH_ITEMS = [
     id: "account-backup",
     title: "アカウント保存を開く",
     sectionLabel: "設定",
-    description: "Google、Apple、メールのログインと、自動バックアップ、復元ポイントをまとめて管理します。",
-    keywords: ["アカウント", "バックアップ", "ログイン", "復元", "クラウド保存", "google", "apple", "メール", "アカウント作成"],
+    description: "Google とメールのログイン、自動バックアップ、復元ポイントをまとめて管理します。",
+    keywords: ["アカウント", "バックアップ", "ログイン", "復元", "クラウド保存", "google", "メール", "アカウント作成"],
     action: "section",
     sectionId: "settings",
     targetId: "settingsAccountBackupPanel",
@@ -1295,13 +1295,6 @@ function bindEvents() {
       });
     });
   }
-  if (settingsSignInAppleButton) {
-    settingsSignInAppleButton.addEventListener("click", () => {
-      signInWithProvider("apple", "settings-backup").catch((error) => {
-        console.warn("Failed to sign in with Apple:", error);
-      });
-    });
-  }
   if (signInMagicLinkButton) {
     signInMagicLinkButton.addEventListener("click", () => sendMagicLink(authEmailInput?.value || ""));
   }
@@ -1362,7 +1355,16 @@ function bindEvents() {
     settingsStudyAutoAdvanceCheckbox.addEventListener("change", handleStudyPreferenceChange);
   }
   if (settingsBackupNowButton) {
-    settingsBackupNowButton.addEventListener("click", () => createCloudBackupSnapshot({ kind: "manual" }));
+    settingsBackupNowButton.addEventListener("click", () => {
+      if (cloudState.backupReadinessIssue?.blocking) {
+        showToast(cloudState.backupReadinessIssue.text);
+        renderSettingsPanel();
+        return;
+      }
+      createCloudBackupSnapshot({ kind: "manual" }).catch((error) => {
+        console.warn("Failed to create manual cloud backup:", error);
+      });
+    });
   }
   if (settingsRefreshBackupButton) {
     settingsRefreshBackupButton.addEventListener("click", () => {
@@ -3721,7 +3723,7 @@ function buildCreateGuideModel() {
       steps: [
         { title: "まずは共有したいデッキを選ぶ", text: "学習中のデッキから1つ選んで、共有リンクを作ります。" },
         { title: "軽い共有ならローカル複製", text: "相手は自分の端末へそのまま追加でき、ログインも不要です。" },
-        { title: "共同編集ならクラウド共有", text: "Google / Apple / メールでログインすると、viewer / editor を分けて運用できます。" },
+        { title: "共同編集ならクラウド共有", text: "Google / メールでログインすると、viewer / editor を分けて運用できます。" },
       ],
       actions: [
         { label: "設定へ", action: "settings" },
@@ -3777,6 +3779,9 @@ function getAccountBackupStatusCode() {
   if (!isCloudSignedIn()) {
     return "signed-out";
   }
+  if (cloudState.backupReadinessIssue?.blocking) {
+    return "not-ready";
+  }
   if (cloudState.backupBusy || cloudState.backupStatus === "syncing") {
     return "syncing";
   }
@@ -3796,6 +3801,9 @@ function formatAccountBackupStatusLabel() {
   const status = getAccountBackupStatusCode();
   if (status === "syncing") {
     return "保存中";
+  }
+  if (status === "not-ready") {
+    return "バックアップ未準備";
   }
   if (status === "synced") {
     return "バックアップ済み";
@@ -3817,7 +3825,7 @@ function formatAccountBackupStatusClassName() {
   if (status === "dirty" || status === "syncing") {
     return "caution";
   }
-  if (status === "error") {
+  if (status === "not-ready" || status === "error") {
     return "danger";
   }
   return "";
@@ -3872,14 +3880,17 @@ function renderHomeBackupPanel() {
   const latestAuto = getLatestAutoBackupSnapshot();
   const latestSnapshot = latestAuto || getMostRecentBackupSnapshot();
   const statusLabel = formatAccountBackupStatusLabel();
-  const canBackUpNow = isCloudConfigured() && isCloudSignedIn();
+  const canBackUpNow = isCloudConfigured() && isCloudSignedIn() && !cloudState.backupReadinessIssue?.blocking;
   const authDiagnostics = buildAuthDiagnosticItems();
   const primaryAuthIssue = authDiagnostics.find((item) => item.level === "danger") || authDiagnostics[0];
+  const backupIssueText = cloudState.backupReadinessIssue?.text || cloudState.backupError;
 
   homeBackupStatus.textContent = !isCloudConfigured()
     ? primaryAuthIssue?.text || "Supabase を設定すると、ログイン後にこの端末のデッキ・カード・画像・履歴を自分のアカウントへ保存できます。"
     : !isCloudSignedIn()
-      ? "Google / Apple / メールでアカウントを作ると、自動バックアップが有効になり、別端末でも最新の保存状態から復元できます。"
+      ? "Google / メールでアカウントを作ると、自動バックアップが有効になり、別端末でも最新の保存状態から復元できます。"
+      : backupIssueText
+        ? `${statusLabel}。${backupIssueText}`
       : latestSnapshot
         ? `${statusLabel}。最新は ${formatBackupDateTime(latestSnapshot.createdAt || latestSnapshot.updatedAt)} に ${buildBackupSummaryText(latestSnapshot.summary)} を保存しました。`
         : `${statusLabel}。まだクラウド保存はありません。必要なら今すぐバックアップできます。`;
@@ -3888,6 +3899,10 @@ function renderHomeBackupPanel() {
     ? `
         <button class="primary-button" data-trigger-backup-now="true" type="button" ${cloudState.backupBusy ? "disabled" : ""}>今すぐバックアップ</button>
         <button class="ghost-button" data-open-account-backup="true" type="button">復元ポイントを見る</button>
+      `
+    : isCloudConfigured() && isCloudSignedIn()
+      ? `
+        <button class="primary-button" data-open-account-backup="true" type="button">接続状態を開く</button>
       `
     : `
         <button class="primary-button" data-open-account-backup="true" type="button">アカウントを作成 / ログイン</button>
@@ -3902,7 +3917,6 @@ function renderSettingsAccountBackupPanel() {
   const hasClientConfig = isCloudConfigured();
   const isSignedIn = isCloudSignedIn();
   const googleEnabled = isOAuthProviderEnabled("google");
-  const appleEnabled = isOAuthProviderEnabled("apple");
   const magicLinkEnabled = isMagicLinkEnabled();
   const latestAuto = getLatestAutoBackupSnapshot();
   const latestSnapshot = latestAuto || getMostRecentBackupSnapshot();
@@ -3911,6 +3925,9 @@ function renderSettingsAccountBackupPanel() {
   const statusClassName = formatAccountBackupStatusClassName();
   const authDiagnostics = buildAuthDiagnosticItems();
   const primaryAuthIssue = authDiagnostics.find((item) => item.level === "danger") || authDiagnostics[0];
+  const loginStatusLabel = !hasClientConfig ? "ローカル専用" : isSignedIn ? "ログイン中" : "未ログイン";
+  const loginStatusClassName = !hasClientConfig ? "caution" : isSignedIn ? "success" : "";
+  const backupIssueText = cloudState.backupReadinessIssue?.text || cloudState.backupError;
 
   if (settingsAutoBackupCheckbox) {
     settingsAutoBackupCheckbox.checked = state.settings?.autoBackupEnabled !== false;
@@ -3923,36 +3940,35 @@ function renderSettingsAccountBackupPanel() {
       : "普段の学習はログイン不要です。バックアップを有効にしたいときだけ、ここからアカウントを作成またはログインできます。";
 
   settingsAccountBackupStatus.innerHTML = `
+    <span class="meta-pill ${escapeHtml(loginStatusClassName)}">${escapeHtml(loginStatusLabel)}</span>
     <span class="meta-pill ${escapeHtml(statusClassName)}">${escapeHtml(statusLabel)}</span>
     <span>${escapeHtml(
       !hasClientConfig
         ? "現在はローカル専用です。"
         : isSignedIn
-          ? `${cloudState.session.user.email || "ログイン中"} でアカウント保存を使えます。`
-          : "Google / Apple / メールのどれかで続けると、そのままアカウントが作成されます。"
+          ? `${cloudState.session.user.email || "ログイン中"} でログイン中です。`
+          : "Google かメールのどちらかで続けると、そのままアカウントが作成されます。"
     )}</span>
-    ${cloudState.backupError ? `<span class="muted">${escapeHtml(cloudState.backupError)}</span>` : ""}
+    ${backupIssueText ? `<span class="muted">${escapeHtml(backupIssueText)}</span>` : ""}
   `;
   if (settingsAuthReadinessSummary) {
     settingsAuthReadinessSummary.textContent = primaryAuthIssue?.text
-      || "Supabase、Google、Apple、メールのどこが未設定かをここで確認できます。";
+      || "Auth 接続とバックアップ保存先の準備状態をここで確認できます。";
   }
   if (settingsAuthReadinessList) {
     settingsAuthReadinessList.innerHTML = renderAuthDiagnosticMarkup(authDiagnostics);
   }
 
-  settingsBackupLastSaved.textContent = latestSnapshot
-    ? `最後の保存: ${formatBackupDateTime(latestSnapshot.createdAt || latestSnapshot.updatedAt)} / ${buildBackupSummaryText(latestSnapshot.summary)}`
-    : "まだクラウド保存はありません。初回バックアップを作ると、別端末から復元できるようになります。";
+  settingsBackupLastSaved.textContent = backupIssueText
+    ? backupIssueText
+    : latestSnapshot
+      ? `最後の保存: ${formatBackupDateTime(latestSnapshot.createdAt || latestSnapshot.updatedAt)} / ${buildBackupSummaryText(latestSnapshot.summary)}`
+      : "まだクラウド保存はありません。初回バックアップを作ると、別端末から復元できるようになります。";
 
   toggleEmailAuthPanel(settingsEmailAuthPanel, settingsEmailAuthVisible && !isSignedIn && magicLinkEnabled);
   if (settingsSignInGoogleButton) {
     settingsSignInGoogleButton.hidden = !googleEnabled || isSignedIn;
     settingsSignInGoogleButton.disabled = !googleEnabled || isSignedIn;
-  }
-  if (settingsSignInAppleButton) {
-    settingsSignInAppleButton.hidden = !appleEnabled || isSignedIn;
-    settingsSignInAppleButton.disabled = !appleEnabled || isSignedIn;
   }
   if (settingsToggleEmailAuthButton) {
     settingsToggleEmailAuthButton.hidden = !magicLinkEnabled || isSignedIn;
@@ -3966,7 +3982,7 @@ function renderSettingsAccountBackupPanel() {
     settingsSignOutButton.disabled = !isSignedIn;
   }
   if (settingsBackupNowButton) {
-    settingsBackupNowButton.disabled = !hasClientConfig || !isSignedIn || cloudState.backupBusy;
+    settingsBackupNowButton.disabled = !hasClientConfig || !isSignedIn || cloudState.backupBusy || Boolean(cloudState.backupReadinessIssue?.blocking);
   }
   if (settingsRefreshBackupButton) {
     settingsRefreshBackupButton.disabled = !hasClientConfig;
@@ -3981,7 +3997,7 @@ function renderSettingsAccountBackupPanel() {
     }
     if (settingsProfilePromptStatus) {
       settingsProfilePromptStatus.textContent = needsProfile
-        ? "Google / Apple から名前が十分に届かないことがあります。共同編集で見分けやすい表示名を保存できます。"
+        ? "Google から名前が十分に届かないことがあります。共同編集で見分けやすい表示名を保存できます。"
         : "";
     }
   }
@@ -4648,7 +4664,7 @@ function renderShareGuidePanel(deck) {
       <h4>2. 共同編集が必要ならクラウド共有</h4>
       <p class="muted">${
         hasClientConfig
-          ? "Google / Apple / メールでログインすると、owner 承認制の editor / viewer 共有が使えます。"
+          ? "Google / メールでログインすると、owner 承認制の editor / viewer 共有が使えます。"
           : "Supabase を接続すると、owner 承認制の editor / viewer 共有が使えるようになります。"
       }</p>
     </article>
@@ -4677,8 +4693,8 @@ function renderSharePanel() {
   authStatus.textContent = !hasClientConfig
     ? primaryAuthIssue?.text || "Supabase 未設定ならローカル専用のまま使えます。共有やアカウント保存を使う時だけ接続してください。"
     : isSignedIn
-      ? `${cloudState.session.user.email || "ログイン中"} で共有機能を使えます。Google / Apple / メールのログイン状態は設定の「アカウント保存」から管理できます。`
-      : "共有機能を使う時だけログインします。Google / Apple / メールは設定の「アカウント保存」から選べます。";
+      ? `${cloudState.session.user.email || "ログイン中"} で共有機能を使えます。Google / メールのログイン状態は設定の「アカウント保存」から管理できます。`
+      : "共有機能を使う時だけログインします。Google / メールは設定の「アカウント保存」から選べます。";
   if (shareOpenAccountBackupButton) {
     shareOpenAccountBackupButton.disabled = false;
     shareOpenAccountBackupButton.textContent = isSignedIn ? "設定で確認する" : "設定でログイン";
@@ -8158,6 +8174,11 @@ function handleDeckActions(event) {
 
   const backupNowButton = event.target.closest("[data-trigger-backup-now]");
   if (backupNowButton) {
+    if (cloudState.backupReadinessIssue?.blocking) {
+      showToast(cloudState.backupReadinessIssue.text);
+      openAccountBackupSettings({ intent: "settings-backup" });
+      return;
+    }
     createCloudBackupSnapshot({ kind: "manual" }).catch((error) => {
       console.warn("Failed to create manual backup:", error);
     });
@@ -10125,9 +10146,6 @@ function isOAuthProviderEnabled(provider) {
   if (provider === "google") {
     return cloudState.config?.authGoogleEnabled !== false;
   }
-  if (provider === "apple") {
-    return cloudState.config?.authAppleEnabled !== false;
-  }
   return false;
 }
 
@@ -10136,7 +10154,96 @@ function isMagicLinkEnabled() {
 }
 
 function getAuthProviderLabel(provider) {
-  return provider === "apple" ? "Apple" : provider === "google" ? "Google" : "メール";
+  return provider === "google" ? "Google" : "メール";
+}
+
+function setBackupReadinessIssue(issue = null) {
+  if (!issue || !String(issue.text || "").trim()) {
+    cloudState.backupReadinessIssue = null;
+    return;
+  }
+
+  cloudState.backupReadinessIssue = {
+    key: String(issue.key || "").trim(),
+    title: String(issue.title || "バックアップ保存先を確認").trim(),
+    text: String(issue.text || "").trim(),
+    blocking: issue.blocking !== false,
+    updatedAt: Date.now(),
+  };
+}
+
+function clearBackupReadinessIssue() {
+  cloudState.backupReadinessIssue = null;
+}
+
+function clearBackupReadinessIssueUnless(keyToKeep = "") {
+  if (cloudState.backupReadinessIssue?.key === keyToKeep) {
+    return;
+  }
+  clearBackupReadinessIssue();
+}
+
+function classifyBackupError(error) {
+  const rawMessage = String(error?.message || error || "").trim();
+  const normalized = rawMessage.toLowerCase();
+
+  if (
+    (normalized.includes("user_backup_snapshots") && normalized.includes("schema cache"))
+    || (normalized.includes("user_backup_snapshots") && normalized.includes("could not find the table"))
+  ) {
+    return {
+      key: "missing-backup-table",
+      title: "バックアップ保存先: schema 未反映",
+      text: "Supabase の SQL Editor で最新版の supabase-schema.sql を再実行してください。user_backup_snapshots テーブルが見つかっていません。",
+      blocking: true,
+    };
+  }
+
+  if (
+    (normalized.includes("profiles") && normalized.includes("schema cache"))
+    || (normalized.includes("profiles") && normalized.includes("could not find the table"))
+  ) {
+    return {
+      key: "missing-profiles-table",
+      title: "バックアップ保存先: profiles 未作成",
+      text: "Supabase の SQL Editor で最新版の supabase-schema.sql を再実行してください。profiles テーブルが見つかっていません。",
+      blocking: true,
+    };
+  }
+
+  if (
+    (normalized.includes("bucket") && normalized.includes("user-backup-snapshots"))
+    || normalized.includes("bucket not found")
+    || normalized.includes("storage bucket")
+  ) {
+    return {
+      key: "missing-backup-bucket",
+      title: "バックアップ保存先: Storage 未作成",
+      text: "Supabase の SQL Editor で最新版の supabase-schema.sql を再実行してください。user-backup-snapshots bucket か storage policy が未作成です。",
+      blocking: true,
+    };
+  }
+
+  if (
+    normalized.includes("row-level security")
+    || normalized.includes("permission denied")
+    || normalized.includes("not allowed")
+    || normalized.includes("policy")
+  ) {
+    return {
+      key: "backup-policy-denied",
+      title: "バックアップ保存先: 権限設定を確認",
+      text: "Supabase の RLS または storage policy に拒否されています。最新版の supabase-schema.sql を再実行したあと、ログイン状態のまま再試行してください。",
+      blocking: true,
+    };
+  }
+
+  return {
+    key: "backup-generic",
+    title: "バックアップ保存先: 保存に失敗",
+    text: rawMessage || "バックアップ保存先の確認に失敗しました。Supabase 設定と supabase-schema.sql の反映を見直してください。",
+    blocking: false,
+  };
 }
 
 function setCloudAuthIssue(kind = "", message = "", provider = "") {
@@ -10162,13 +10269,14 @@ function buildAuthDiagnosticItems() {
   const items = [];
   const hasConfig = isCloudConfigured();
   const googleEnabled = cloudState.config?.authGoogleEnabled !== false;
-  const appleEnabled = cloudState.config?.authAppleEnabled !== false;
   const magicLinkEnabled = cloudState.config?.authMagicLinkEnabled !== false;
+  const isSignedIn = isCloudSignedIn();
+  const backupIssue = cloudState.backupReadinessIssue;
 
   if (cloudState.configError) {
     items.push({
       level: "danger",
-      title: "設定読み込みに失敗",
+      title: "Auth 接続: 設定読み込みに失敗",
       text: `Vercel の client-config を読めませんでした。${cloudState.configError}`,
     });
   }
@@ -10176,14 +10284,16 @@ function buildAuthDiagnosticItems() {
   if (!hasConfig) {
     items.push({
       level: "danger",
-      title: "Supabase URL / anon key 未設定",
+      title: "Auth 接続: Supabase URL / anon key 未設定",
       text: "この本番では SUPABASE_URL と SUPABASE_ANON_KEY が返っておらず、ログインは local-only に固定されています。Vercel に追加して再デプロイしてください。",
     });
   } else {
     items.push({
-      level: "success",
-      title: "Supabase 接続情報は取得済み",
-      text: "このアプリは Supabase の URL と anon key を読めています。次は Auth の provider と redirect URL を確認します。",
+      level: isSignedIn ? "success" : "caution",
+      title: "Auth 接続",
+      text: isSignedIn
+        ? `${cloudState.session?.user?.email || "現在のアカウント"} でログイン中です。`
+        : "Supabase 接続情報は読めています。次は Google かメールでログインできます。",
     });
   }
 
@@ -10192,13 +10302,6 @@ function buildAuthDiagnosticItems() {
       level: "caution",
       title: "Google ログインはオフ",
       text: "AUTH_GOOGLE_ENABLED か Supabase Auth の Google provider を見直してください。",
-    });
-  }
-  if (hasConfig && !appleEnabled) {
-    items.push({
-      level: "caution",
-      title: "Apple ログインはオフ",
-      text: "AUTH_APPLE_ENABLED か Supabase Auth の Apple provider を見直してください。",
     });
   }
   if (hasConfig && !magicLinkEnabled) {
@@ -10223,19 +10326,29 @@ function buildAuthDiagnosticItems() {
     });
   }
 
-  if (hasConfig && !isCloudSignedIn()) {
+  if (hasConfig && !isSignedIn) {
     items.push({
       level: "caution",
-      title: "次に必要なこと",
-      text: "Supabase Auth の Site URL / Redirect URLs に https://pulse-recall.vercel.app を入れ、Google / Apple provider を有効化したあと、ここから再度ログインしてください。",
+      title: "バックアップ保存先",
+      text: "ログイン後に profiles / user_backup_snapshots / storage bucket の準備状態を確認します。",
     });
-  }
-
-  if (isCloudSignedIn()) {
+  } else if (!hasConfig) {
+    items.push({
+      level: "caution",
+      title: "バックアップ保存先",
+      text: "Supabase 未接続のため、クラウドバックアップの準備状態はまだ確認できません。",
+    });
+  } else if (backupIssue) {
+    items.push({
+      level: backupIssue.blocking ? "danger" : "caution",
+      title: backupIssue.title,
+      text: backupIssue.text,
+    });
+  } else {
     items.push({
       level: "success",
-      title: "ログイン利用可",
-      text: `${cloudState.session?.user?.email || "現在のアカウント"} でアカウント保存と共有を使えます。`,
+      title: "バックアップ保存先",
+      text: "profiles / user_backup_snapshots / storage bucket の基本確認は通っています。",
     });
   }
 
@@ -10329,9 +10442,6 @@ function toggleEmailAuthPanel(panel, isVisible) {
 function getPreferredAuthFocusTargetId() {
   if (isOAuthProviderEnabled("google")) {
     return "settingsSignInGoogleButton";
-  }
-  if (isOAuthProviderEnabled("apple")) {
-    return "settingsSignInAppleButton";
   }
   if (isMagicLinkEnabled()) {
     settingsEmailAuthVisible = true;
@@ -10491,7 +10601,6 @@ async function fetchCloudConfig() {
       supabaseUrl: config && config.supabaseUrl ? String(config.supabaseUrl) : "",
       supabaseAnonKey: config && config.supabaseAnonKey ? String(config.supabaseAnonKey) : "",
       authGoogleEnabled: config?.authGoogleEnabled !== false,
-      authAppleEnabled: config?.authAppleEnabled !== false,
       authMagicLinkEnabled: config?.authMagicLinkEnabled !== false,
       aiEnabled: Boolean(config?.aiEnabled),
       aiProvider: String(config?.aiProvider || "gemini"),
@@ -10644,10 +10753,12 @@ async function ensureCloudProfile() {
   const { data, error } = await client.from("profiles").upsert(payload).select("*").single();
   if (error) {
     console.warn("Failed to upsert profile:", error);
+    setBackupReadinessIssue(classifyBackupError(error));
     cloudState.profile = payload;
     return payload;
   }
 
+  clearBackupReadinessIssueUnless("missing-profiles-table");
   cloudState.profile = data;
   return data;
 }
@@ -12393,6 +12504,7 @@ async function signOutCloud() {
   cloudState.backupSnapshots = [];
   cloudState.backupStatus = "signed-out";
   cloudState.backupError = "";
+  clearBackupReadinessIssue();
   cloudState.latestBackupAt = 0;
   cloudState.lastBackupFingerprint = "";
   cloudState.backupDirty = false;
@@ -12515,6 +12627,7 @@ async function refreshCloudBackups({ silent = false } = {}) {
     cloudState.backupSnapshots = [];
     cloudState.backupStatus = "unconfigured";
     cloudState.backupError = "";
+    clearBackupReadinessIssue();
     cloudState.latestBackupAt = 0;
     cloudState.lastBackupFingerprint = "";
     render();
@@ -12525,6 +12638,7 @@ async function refreshCloudBackups({ silent = false } = {}) {
     cloudState.backupSnapshots = [];
     cloudState.backupStatus = "signed-out";
     cloudState.backupError = "";
+    clearBackupReadinessIssue();
     cloudState.latestBackupAt = 0;
     cloudState.lastBackupFingerprint = "";
     render();
@@ -12551,6 +12665,7 @@ async function refreshCloudBackups({ silent = false } = {}) {
     cloudState.lastBackupFingerprint =
       latestAuto?.summary?.fingerprint || latestSnapshot?.summary?.fingerprint || cloudState.lastBackupFingerprint || "";
     cloudState.backupError = "";
+    clearBackupReadinessIssueUnless("missing-profiles-table");
 
     if (cloudState.backupDirty) {
       cloudState.backupStatus = "dirty";
@@ -12564,8 +12679,10 @@ async function refreshCloudBackups({ silent = false } = {}) {
       markCloudBackupDirty();
     }
   } catch (error) {
+    const issue = classifyBackupError(error);
     cloudState.backupStatus = "error";
-    cloudState.backupError = error.message || "バックアップ情報の読み込みに失敗しました";
+    cloudState.backupError = issue.text;
+    setBackupReadinessIssue(issue);
     render();
     if (!silent) {
       showToast(cloudState.backupError);
@@ -12606,6 +12723,9 @@ async function createCloudBackupSnapshot({ kind = "manual", showToast = true } =
   if (!client || !cloudState.session?.user) {
     throw new Error("アカウント保存を使うにはログインが必要です");
   }
+  if (cloudState.backupReadinessIssue?.blocking) {
+    throw new Error(cloudState.backupReadinessIssue.text);
+  }
   if (cloudState.backupBusy) {
     return;
   }
@@ -12622,6 +12742,7 @@ async function createCloudBackupSnapshot({ kind = "manual", showToast = true } =
   cloudState.backupBusy = true;
   cloudState.backupStatus = "syncing";
   cloudState.backupError = "";
+  clearBackupReadinessIssueUnless("missing-profiles-table");
   render();
 
   try {
@@ -12718,14 +12839,17 @@ async function createCloudBackupSnapshot({ kind = "manual", showToast = true } =
     cloudState.latestBackupAt = Date.now();
     cloudState.backupStatus = "synced";
     cloudState.backupError = "";
+    clearBackupReadinessIssueUnless("missing-profiles-table");
     await refreshCloudBackups({ silent: true });
     render();
     if (showToast) {
       showToast(kind === "manual" ? "アカウントへ手動バックアップしました" : "アカウントへバックアップしました");
     }
   } catch (error) {
+    const issue = classifyBackupError(error);
     cloudState.backupStatus = "error";
-    cloudState.backupError = error.message || "アカウント保存に失敗しました";
+    cloudState.backupError = issue.text;
+    setBackupReadinessIssue(issue);
     render();
     if (showToast || !isAuto) {
       showToast(cloudState.backupError);
@@ -12739,6 +12863,9 @@ async function createCloudBackupSnapshot({ kind = "manual", showToast = true } =
 
 async function flushPendingCloudBackup({ showToast = false } = {}) {
   if (!isCloudConfigured() || !isCloudSignedIn()) {
+    return;
+  }
+  if (cloudState.backupReadinessIssue?.blocking) {
     return;
   }
   const fingerprint = buildBackupFingerprint();
@@ -13042,7 +13169,7 @@ async function refreshShareJoinPreview() {
 
   if (!cloudState.session?.user) {
     shareJoinTitle.textContent = "共有デッキに参加";
-    shareJoinStatus.textContent = "ログインすると、この共有リンクへの参加申請を送れます。設定で Google / Apple / メールから続けたあと、この画面に戻ります。";
+    shareJoinStatus.textContent = "ログインすると、この共有リンクへの参加申請を送れます。設定で Google かメールから続けたあと、この画面に戻ります。";
     requestShareAccessButton.disabled = false;
     requestShareAccessButton.textContent = "ログインして参加";
     shareJoinModal.hidden = false;

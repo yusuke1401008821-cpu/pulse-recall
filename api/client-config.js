@@ -13,7 +13,6 @@ module.exports = function handler(_request, response) {
       hasSupabaseAuth &&
       process.env.AUTH_GOOGLE_ENABLED !== "disabled" &&
       process.env.AUTH_GOOGLE_ENABLED !== "0",
-    authAppleEnabled: process.env.AUTH_APPLE_ENABLED !== "false",
     authMagicLinkEnabled: process.env.AUTH_MAGIC_LINK_ENABLED !== "false",
     aiEnabled: Boolean(process.env.GEMINI_API_KEY) && process.env.AI_ENABLED !== "false",
     aiProvider: process.env.AI_PROVIDER || "gemini",
