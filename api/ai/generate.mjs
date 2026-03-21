@@ -1,7 +1,11 @@
 const DEFAULT_PROVIDER = "gemini";
 const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 const MAX_INLINE_FILE_BYTES = 4 * 1024 * 1024;
+const MAX_INLINE_FILE_COUNT = 6;
+const MAX_TOTAL_INLINE_FILE_BYTES = 7 * 1024 * 1024;
 const MAX_PROMPT_CHARS = 180000;
+const AI_REQUEST_TIMEOUT_MS = 35 * 1000;
+const AI_RETRY_LIMIT = 1;
 
 export default {
   async fetch(request) {
@@ -66,13 +70,19 @@ async function handleDeckFromPdf({ apiKey, model, payload, files }) {
   const limit = clampNumber(payload.limit, 4, 30, 12);
   const pastedText = cleanText(payload.pastedText || "");
   const sourceName = cleanText(payload.sourceName || files[0]?.name || "資料");
+  const sourceManifest = Array.isArray(payload.sourceManifest) ? payload.sourceManifest.slice(0, 12) : [];
+  const selectedChunks = normalizeSourceChunks(payload.selectedChunks).slice(0, 24);
   const fileParts = await buildFileParts(files);
 
-  if (!fileParts.length && !pastedText) {
+  if (!fileParts.length && !pastedText && !selectedChunks.length) {
     throw createAiError("INVALID_INPUT", "No source document was provided.", 400);
   }
+  const chunkGroups = splitIntoChunks(selectedChunks, 6);
+  const normalizedGroups = chunkGroups.length ? chunkGroups : [[{ sourceLabel: sourceName, sourcePage: null, text: pastedText || "(添付ファイルを参照)" }]];
+  const cards = [];
 
-  const prompt = trimPrompt(`
+  for (const [groupIndex, chunkGroup] of normalizedGroups.entries()) {
+    const prompt = trimPrompt(`
 あなたは医学部学習と英語学習用の暗記カード作成アシスタントです。
 与えられた資料だけを根拠に、保存前レビュー用のカード候補を作ってください。
 
@@ -80,14 +90,15 @@ async function handleDeckFromPdf({ apiKey, model, payload, files }) {
 - deckName: ${deckName || "未指定"}
 - focus: ${focus || "general"}
 - subject: ${subject || "未指定"}
-- limit: ${limit}
+- limit: ${Math.max(2, Math.ceil(limit / normalizedGroups.length))}
 - instructions: ${instructions || "特記事項なし"}
+- sourceManifest: ${JSON.stringify(sourceManifest)}
 - 事実を補わない
 - 資料に書かれていない知識は作らない
-- 医学用語は簡潔に、英語なら例文や語法があれば優先する
-- 出典が曖昧なら confidence を下げる
+- chunk ごとに根拠を持つ問題だけ返す
 - evidenceSnippet は短く、資料中の根拠をそのまま抜き出す
-- sourcePage がわからない場合は null にする
+- sourceLabel と sourcePage をできるだけ付ける
+- confidence は 0 から 1
 
 返答は JSON のみ:
 {
@@ -109,20 +120,27 @@ async function handleDeckFromPdf({ apiKey, model, payload, files }) {
   ]
 }
 
-本文テキスト:
-${pastedText || "(PDFまたはファイルを参照)"}
-  `);
+selectedChunks:
+${JSON.stringify(chunkGroup)}
 
-  const data = await callGeminiJson({
-    apiKey,
-    model,
-    prompt,
-    fileParts,
-  });
+本文テキスト:
+${groupIndex === 0 ? pastedText || "(必要なら添付ファイルを参照)" : "(上の chunk を優先して使う)"}
+    `);
+
+    const data = await callGeminiJson({
+      apiKey,
+      model,
+      prompt,
+      fileParts: groupIndex === 0 ? fileParts : [],
+      temperature: 0.1,
+      allowRepair: true,
+    });
+    cards.push(...normalizeDeckCards(data.cards));
+  }
 
   return {
-    sourceLabel: cleanText(data.sourceLabel || sourceName),
-    cards: normalizeDeckCards(data.cards),
+    sourceLabel: sourceName,
+    cards: dedupeDeckCards(cards).slice(0, limit),
   };
 }
 
@@ -182,35 +200,40 @@ cards:
 ${JSON.stringify(cards)}
   `);
 
-  const data = await callGeminiJson({ apiKey, model, prompt });
+  const data = await callGeminiJson({ apiKey, model, prompt, temperature: 0.05, allowRepair: true });
   return {
     quizItems: normalizeQuizItems(data.quizItems, mode),
   };
 }
 
 async function handleQuestionSlideRefine({ apiKey, model, payload }) {
-  const questions = Array.isArray(payload.questions) ? payload.questions.slice(0, 24) : [];
-  const candidatePages = Array.isArray(payload.candidatePages) ? payload.candidatePages.slice(0, 18) : [];
-  if (!questions.length || !candidatePages.length) {
+  const questions = normalizeQuestionRefineInputs(payload.questions).slice(0, 24);
+  const sourceManifest = payload?.sourceManifest && typeof payload.sourceManifest === "object" ? payload.sourceManifest : {};
+  if (!questions.length) {
     throw createAiError("INVALID_INPUT", "Questions or slide candidates are missing.", 400);
   }
 
-  const prompt = trimPrompt(`
+  const questionMatches = [];
+  for (const questionGroup of splitIntoChunks(questions, 6)) {
+    const prompt = trimPrompt(`
 あなたは過去問と講義スライドの対応づけを手伝う学習アシスタントです。
-与えられた候補ページだけを使って、各設問に近いスライド候補を最大3件返してください。
+各設問ごとに付いている候補ページだけを使って、近いスライド候補を最大3件返してください。
 
 条件:
-- questionMatches は questions の label ごとに返す
+- sourceManifest: ${JSON.stringify(sourceManifest)}
+- questionMatches は questionId ごとに返す
 - matches がない設問は空配列
 - confidence は 0 から 1
 - reason は「なぜそのスライド候補なのか」を1文で簡潔に
-- evidenceSnippet は candidatePages の本文から短く抜粋
+- evidenceSnippet は candidates の本文から短く抜粋
+- candidates 以外の資料は参照しない
 - 事実を補わない
 
 返答は JSON のみ:
 {
   "questionMatches": [
     {
+      "questionId": "id",
       "label": "問1",
       "matches": [
         {
@@ -226,65 +249,138 @@ async function handleQuestionSlideRefine({ apiKey, model, payload }) {
 }
 
 questions:
-${JSON.stringify(questions)}
+${JSON.stringify(questionGroup)}
+    `);
 
-candidatePages:
-${JSON.stringify(candidatePages)}
-  `);
-
-  const data = await callGeminiJson({ apiKey, model, prompt });
+    const data = await callGeminiJson({ apiKey, model, prompt, temperature: 0.05, allowRepair: true });
+    questionMatches.push(...normalizeQuestionMatches(data.questionMatches));
+  }
   return {
-    questionMatches: normalizeQuestionMatches(data.questionMatches),
+    questionMatches,
   };
 }
 
-async function callGeminiJson({ apiKey, model, prompt, fileParts = [] }) {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [...fileParts, { text: prompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-        },
-      }),
-    },
-  );
+async function callGeminiJson({ apiKey, model, prompt, fileParts = [], temperature = 0.1, allowRepair = false }) {
+  let attempt = 0;
+  let repairPrompt = prompt;
 
+  while (attempt <= AI_RETRY_LIMIT) {
+    try {
+      const text = await requestGeminiText({ apiKey, model, prompt: repairPrompt, fileParts, temperature });
+      const parsed = parseJsonText(text);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+
+      if (allowRepair && attempt < AI_RETRY_LIMIT) {
+        repairPrompt = trimPrompt(`
+以下の資料要求は同じです。前回の返答は JSON として読めませんでした。
+説明文を一切付けず、指定した JSON のみを返してください。
+
+元の指示:
+${prompt}
+
+前回の返答:
+${String(text || "").slice(0, 4000)}
+        `);
+        attempt += 1;
+        continue;
+      }
+
+      throw createAiError("AI_BAD_RESPONSE", "Gemini returned an unreadable response.", 502);
+    } catch (error) {
+      if (!shouldRetryAiRequest(error) || attempt >= AI_RETRY_LIMIT) {
+        throw error;
+      }
+      attempt += 1;
+    }
+  }
+
+  throw createAiError("AI_REQUEST_FAILED", "Gemini request failed after retry.", 502);
+}
+
+async function requestGeminiText({ apiKey, model, prompt, fileParts = [], temperature = 0.1 }) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [...fileParts, { text: prompt }],
+            },
+          ],
+          generationConfig: {
+            temperature,
+            responseMimeType: "application/json",
+          },
+        }),
+      },
+    );
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error?.name === "AbortError") {
+      throw createAiError("AI_TIMEOUT", "Gemini request timed out.", 504);
+    }
+    const requestError = createAiError("AI_REQUEST_FAILED", error?.message || "Gemini request failed.", 502);
+    requestError.retryable = true;
+    throw requestError;
+  }
+
+  clearTimeout(timeoutId);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const upstream = data?.error || {};
-    const code = upstream.status === "RESOURCE_EXHAUSTED" ? "FREE_TIER_EXCEEDED" : "AI_REQUEST_FAILED";
-    const status = upstream.status === "RESOURCE_EXHAUSTED" ? 429 : response.status || 500;
-    throw createAiError(code, upstream.message || "Gemini request failed.", status);
+    const upstreamStatus = String(upstream.status || "");
+    const isRateLimited = upstreamStatus === "RESOURCE_EXHAUSTED" || response.status === 429;
+    const error = createAiError(
+      isRateLimited ? "FREE_TIER_EXCEEDED" : "AI_REQUEST_FAILED",
+      upstream.message || "Gemini request failed.",
+      isRateLimited ? 429 : response.status || 500,
+    );
+    error.retryable = !isRateLimited && response.status >= 500;
+    throw error;
   }
 
   const parts = data?.candidates?.[0]?.content?.parts || [];
-  const text = parts
+  return parts
     .map((part) => String(part?.text || ""))
     .join("\n")
     .trim();
-  const parsed = parseJsonText(text);
-  if (!parsed || typeof parsed !== "object") {
-    throw createAiError("AI_BAD_RESPONSE", "Gemini returned an unreadable response.", 502);
+}
+
+function shouldRetryAiRequest(error) {
+  const code = String(error?.code || "").trim();
+  if (code === "FREE_TIER_EXCEEDED" || code === "AI_TOO_MANY_FILES" || code === "AI_TOTAL_SIZE_TOO_LARGE" || code === "AI_FILE_TOO_LARGE") {
+    return false;
   }
-  return parsed;
+  return Boolean(error?.retryable) || code === "AI_TIMEOUT" || code === "AI_BAD_RESPONSE";
 }
 
 async function buildFileParts(files) {
+  const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+  if (normalizedFiles.length > MAX_INLINE_FILE_COUNT) {
+    throw createAiError("AI_TOO_MANY_FILES", "Too many files were attached for free-tier processing.", 413);
+  }
+
+  const totalBytes = normalizedFiles.reduce((sum, file) => sum + Number(file.size || 0), 0);
+  if (totalBytes > MAX_TOTAL_INLINE_FILE_BYTES) {
+    throw createAiError("AI_TOTAL_SIZE_TOO_LARGE", "The combined file size is too large for free-tier inline processing.", 413);
+  }
+
   const parts = [];
 
-  for (const file of files || []) {
+  for (const file of normalizedFiles) {
     if (!file) {
       continue;
     }
@@ -305,6 +401,67 @@ async function buildFileParts(files) {
   }
 
   return parts;
+}
+
+function normalizeSourceChunks(chunks) {
+  return (Array.isArray(chunks) ? chunks : [])
+    .map((chunk) => ({
+      sourceLabel: cleanText(chunk?.sourceLabel || chunk?.sourceName || ""),
+      sourcePage: toNullableNumber(chunk?.sourcePage),
+      text: cleanText(chunk?.text || chunk?.content || ""),
+    }))
+    .filter((chunk) => chunk.text);
+}
+
+function normalizeQuestionRefineInputs(questions) {
+  return (Array.isArray(questions) ? questions : [])
+    .map((question) => ({
+      questionId: cleanText(question?.questionId || question?.id || question?.label || ""),
+      label: cleanText(question?.label || ""),
+      questionSourceName: cleanText(question?.questionSourceName || question?.sourceName || ""),
+      prompt: cleanText(question?.prompt || question?.question || ""),
+      options: (Array.isArray(question?.options) ? question.options : [])
+        .map((option) => cleanText(option))
+        .filter(Boolean)
+        .slice(0, 5),
+      candidates: (Array.isArray(question?.candidates) ? question.candidates : [])
+        .map((candidate) => ({
+          sourceName: cleanText(candidate?.sourceName || candidate?.sourceLabel || ""),
+          pageNumber: toNullableNumber(candidate?.pageNumber || candidate?.sourcePage) || 1,
+          evidenceSnippet: cleanText(candidate?.evidenceSnippet || candidate?.snippet || ""),
+          snippet: cleanText(candidate?.snippet || candidate?.evidenceSnippet || ""),
+          matchedTokens: normalizeTags(candidate?.matchedTokens || []).slice(0, 8),
+          coverage: clampNumber(candidate?.coverage, 0, 1, 0),
+          score: Number(candidate?.score || 0),
+        }))
+        .filter((candidate) => candidate.sourceName && (candidate.evidenceSnippet || candidate.snippet)),
+    }))
+    .filter((question) => question.questionId && question.prompt && question.candidates.length);
+}
+
+function dedupeDeckCards(cards) {
+  const seen = new Set();
+  return (Array.isArray(cards) ? cards : []).filter((card) => {
+    const key = `${cleanText(card?.front)}::${cleanText(card?.back)}::${cleanText(card?.sourceLabel)}::${toNullableNumber(card?.sourcePage) || ""}`.toLowerCase();
+    if (!card?.front || !card?.back || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function splitIntoChunks(items, size) {
+  const normalized = Array.isArray(items) ? items : [];
+  if (!normalized.length || size <= 0) {
+    return [];
+  }
+
+  const chunks = [];
+  for (let index = 0; index < normalized.length; index += size) {
+    chunks.push(normalized.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function parsePayload(rawPayload) {
@@ -390,6 +547,7 @@ function normalizeQuizItems(items, mode) {
 function normalizeQuestionMatches(questionMatches) {
   return (Array.isArray(questionMatches) ? questionMatches : [])
     .map((entry) => ({
+      questionId: cleanText(entry?.questionId || entry?.id || ""),
       label: cleanText(entry?.label || entry?.questionLabel || ""),
       matches: (Array.isArray(entry?.matches) ? entry.matches : [])
         .map((match) => ({
@@ -398,10 +556,13 @@ function normalizeQuestionMatches(questionMatches) {
           evidenceSnippet: cleanText(match?.evidenceSnippet || match?.snippet || ""),
           reason: cleanText(match?.reason || ""),
           confidence: clampNumber(match?.confidence, 0, 1, 0),
+          matchedTokens: normalizeTags(match?.matchedTokens || []).slice(0, 8),
+          coverage: clampNumber(match?.coverage, 0, 1, 0),
+          score: Number(match?.score || 0),
         }))
         .filter((match) => match.sourceName && match.evidenceSnippet),
     }))
-    .filter((entry) => entry.label);
+    .filter((entry) => entry.questionId || entry.label);
 }
 
 function jsonResponse(body, status = 200) {

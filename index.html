@@ -872,8 +872,9 @@
             <form id="importForm" class="stack-form">
               <label>
                 <span>PDF / テキストファイル</span>
-                <input id="importFileInput" name="importFile" type="file" accept=".pdf,.txt,.md,.text" />
+                <input id="importFileInput" name="importFile" type="file" accept=".pdf,.txt,.md,.text" multiple />
               </label>
+              <div class="stack-list source-file-list" id="importFileList"></div>
               <label>
                 <span>または本文を貼り付け</span>
                 <textarea
@@ -957,8 +958,15 @@
                   <h4>設問を読み込む</h4>
                   <label>
                     <span>過去問 PDF / テキスト</span>
-                    <input id="questionMapQuestionFileInput" name="questionMapQuestionFile" type="file" accept=".pdf,.txt,.md,.text" />
+                    <input
+                      id="questionMapQuestionFileInput"
+                      name="questionMapQuestionFile"
+                      type="file"
+                      accept=".pdf,.txt,.md,.text"
+                      multiple
+                    />
                   </label>
+                  <div class="stack-list source-file-list" id="questionMapQuestionFileList"></div>
                   <label>
                     <span>または本文を貼り付け</span>
                     <textarea
@@ -984,6 +992,7 @@
                       multiple
                     />
                   </label>
+                  <div class="stack-list source-file-list" id="questionMapSlideFileList"></div>
                   <label>
                     <span>または本文を貼り付け</span>
                     <textarea

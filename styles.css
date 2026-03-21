@@ -1185,6 +1185,18 @@ button:disabled {
   margin-top: 16px;
 }
 
+.source-file-list {
+  margin-top: 10px;
+}
+
+.compact-source-card {
+  padding: 14px 16px;
+}
+
+.compact-source-card .card-row-header {
+  align-items: center;
+}
+
 .import-help {
   margin-top: 16px;
 }

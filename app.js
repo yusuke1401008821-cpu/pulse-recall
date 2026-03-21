@@ -25,6 +25,8 @@ const MEDIA_DB_VERSION = 1;
 const MEDIA_STORE_NAME = "card-media";
 const MEDIA_SIDE_LIMIT = 4;
 const MAX_MEDIA_SIZE_BYTES = 8 * 1024 * 1024;
+const AI_MAX_UPLOAD_FILES = 6;
+const AI_MAX_UPLOAD_TOTAL_BYTES = 7 * 1024 * 1024;
 const DEMO_RESET_CONFIRM_TEXT = "サンプルを読み込む";
 const SHARE_LOCK_LEASE_SECONDS = 10 * 60;
 const SHARE_LOCK_HEARTBEAT_MS = 30 * 1000;
@@ -63,6 +65,9 @@ const AI_FALLBACK_ERROR_CODES = new Set([
   "FREE_TIER_EXCEEDED",
   "AI_ENDPOINT_UNAVAILABLE",
   "AI_FILE_TOO_LARGE",
+  "AI_TOO_MANY_FILES",
+  "AI_TOTAL_SIZE_TOO_LARGE",
+  "AI_TIMEOUT",
   "AI_BAD_RESPONSE",
   "AI_UNSUPPORTED_PROVIDER",
 ]);
@@ -306,6 +311,9 @@ let editingDeckId = null;
 let editingCardId = null;
 let toastTimer = null;
 let importDraft = null;
+let importSelectedFiles = [];
+let questionMapSelectedQuestionFiles = [];
+let questionMapSelectedSlideFiles = [];
 let pdfjsModulePromise = null;
 let isImportLoading = false;
 let isAssistantLoading = false;
@@ -532,6 +540,7 @@ const importForm = document.getElementById("importForm");
 const analyzeImportButton = document.getElementById("analyzeImportButton");
 const analyzeImportAiButton = document.getElementById("analyzeImportAiButton");
 const importFileInput = document.getElementById("importFileInput");
+const importFileList = document.getElementById("importFileList");
 const importTextInput = document.getElementById("importTextInput");
 const importFocusInput = document.getElementById("importFocus");
 const importDeckNameInput = document.getElementById("importDeckName");
@@ -570,8 +579,10 @@ const bulkInputText = document.getElementById("bulkInputText");
 const bulkInputStatus = document.getElementById("bulkInputStatus");
 const questionMapForm = document.getElementById("questionMapForm");
 const questionMapQuestionFileInput = document.getElementById("questionMapQuestionFileInput");
+const questionMapQuestionFileList = document.getElementById("questionMapQuestionFileList");
 const questionMapQuestionTextInput = document.getElementById("questionMapQuestionTextInput");
 const questionMapSlideFileInput = document.getElementById("questionMapSlideFileInput");
+const questionMapSlideFileList = document.getElementById("questionMapSlideFileList");
 const questionMapSlideTextInput = document.getElementById("questionMapSlideTextInput");
 const questionMapTopMatchesInput = document.getElementById("questionMapTopMatchesInput");
 const questionMapStatus = document.getElementById("questionMapStatus");
@@ -1243,7 +1254,10 @@ function bindEvents() {
     bulkFocusInput.addEventListener("change", renderBulkInputPanel);
   }
   importFocusInput.addEventListener("change", applyImportFocusPreset);
-  importFileInput.addEventListener("change", syncImportDeckNameFromFile);
+  importFileInput.addEventListener("change", handleImportFileSelection);
+  if (importFileList) {
+    importFileList.addEventListener("click", handleImportFileListActions);
+  }
   saveImportButton.addEventListener("click", saveImportDraftAsDeck);
   clearImportDraftButton.addEventListener("click", clearImportDraft);
   selectAllImportButton.addEventListener("click", selectAllImportCandidates);
@@ -1251,6 +1265,14 @@ function bindEvents() {
   removeSelectedImportButton.addEventListener("click", removeSelectedImportCandidates);
   dedupeImportButton.addEventListener("click", dedupeImportCandidates);
   applyImportTagsButton.addEventListener("click", applyBulkImportTags);
+  questionMapQuestionFileInput.addEventListener("change", handleQuestionMapQuestionFileSelection);
+  if (questionMapQuestionFileList) {
+    questionMapQuestionFileList.addEventListener("click", handleQuestionMapFileListActions);
+  }
+  questionMapSlideFileInput.addEventListener("change", handleQuestionMapSlideFileSelection);
+  if (questionMapSlideFileList) {
+    questionMapSlideFileList.addEventListener("click", handleQuestionMapFileListActions);
+  }
   clearQuestionMapButton.addEventListener("click", clearQuestionMapDraft);
   assistantDeckFilter.addEventListener("change", handleAssistantSettingsChange);
   clearAssistantButton.addEventListener("click", clearAssistantHistory);
@@ -5208,6 +5230,10 @@ function renderEditWorkspace() {
 
 function renderImportPanel() {
   applyImportFocusPreset();
+  renderSelectedFileList(importFileList, importSelectedFiles, {
+    emptyText: "まだファイルは選ばれていません。複数の PDF / テキストをまとめて入れられます。",
+    removeDataAttr: "data-remove-import-file",
+  });
   clearImportDraftButton.hidden = !importDraft;
   saveImportButton.hidden = !importDraft;
   saveImportButton.disabled = !importDraft || isImportLoading;
@@ -5231,10 +5257,14 @@ function renderImportPanel() {
 
   if (!importDraft) {
     const contextDeck = getDeckById(importContextDeckId);
+    const selectedSourceSummary = buildSelectedSourcesSummary(importSelectedFiles, {
+      text: importTextInput.value,
+      textLabel: "貼り付け本文",
+    });
     if (!isImportLoading) {
       importStatus.textContent = contextDeck
-        ? `「${contextDeck.name}」へ追加する資料を選ぶと、自動でカード候補を作成します。AIボタンを押すと、Geminiの無料枠で高精度生成を試し、失敗時はローカル解析へ戻ります。`
-        : "PDF または本文を入れると、自動でカード候補を作成します。どのデッキにも保存前レビューでき、AIボタンを押すと Gemini の無料枠で高精度生成を試し、失敗時はローカル解析へ戻ります。";
+        ? `「${contextDeck.name}」へ追加する資料を選ぶと、自動でカード候補を作成します。${selectedSourceSummary} AIボタンを押すと、Geminiの無料枠で高精度生成を試し、失敗時はローカル解析へ戻ります。`
+        : `PDF または本文を入れると、自動でカード候補を作成します。${selectedSourceSummary} どのデッキにも保存前レビューでき、AIボタンを押すと Gemini の無料枠で高精度生成を試し、失敗時はローカル解析へ戻ります。`;
     }
     saveImportButton.textContent = "この候補でデッキ作成";
     importPreview.innerHTML = `
@@ -5254,11 +5284,12 @@ function renderImportPanel() {
   importSelection = new Set([...importSelection].filter((id) => cardIds.has(id)));
   const selectedCount = importSelection.size;
   const selectedDeck = getDeckById(importDraft.targetDeckId);
+  const lowTextWarning = formatLowTextWarning(importDraft.lowTextSourceNames);
 
   saveImportButton.textContent = selectedDeck ? "既存デッキへ追加" : "この候補でデッキ作成";
   importStatus.textContent = `${importDraft.sourceName} から ${importDraft.cards.length} 枚の候補を作成しました。内容を確認してから保存できます。${
     selectedCount ? ` 現在 ${selectedCount} 枚を選択中です。` : ""
-  }`;
+  }${lowTextWarning ? ` ${lowTextWarning}` : ""}`;
   importPreview.innerHTML = importDraft.cards
     .map(
       (card, index) => `
@@ -5295,6 +5326,14 @@ function renderImportPanel() {
 function renderQuestionMapPanel() {
   const topMatches = clampNumber(Number.parseInt(questionMapTopMatchesInput.value, 10), 1, 5, 3);
   questionMapTopMatchesInput.value = String(topMatches);
+  renderSelectedFileList(questionMapQuestionFileList, questionMapSelectedQuestionFiles, {
+    emptyText: "まだ過去問ファイルは選ばれていません。複数の過去問 PDF / テキストをまとめて入れられます。",
+    removeDataAttr: "data-remove-question-map-question-file",
+  });
+  renderSelectedFileList(questionMapSlideFileList, questionMapSelectedSlideFiles, {
+    emptyText: "まだスライドファイルは選ばれていません。複数の講義スライド PDF / テキストをまとめて入れられます。",
+    removeDataAttr: "data-remove-question-map-slide-file",
+  });
   clearQuestionMapButton.hidden = !questionMapDraft;
   clearQuestionMapButton.disabled = isQuestionMapLoading;
   analyzeQuestionMapButton.disabled = isQuestionMapLoading;
@@ -5314,12 +5353,20 @@ function renderQuestionMapPanel() {
 
   if (!questionMapDraft) {
     const contextDeck = getDeckById(questionMapContextDeckId);
+    const questionSummary = buildSelectedSourcesSummary(questionMapSelectedQuestionFiles, {
+      text: questionMapQuestionTextInput.value,
+      textLabel: "貼り付け過去問",
+    });
+    const slideSummary = buildSelectedSourcesSummary(questionMapSelectedSlideFiles, {
+      text: questionMapSlideTextInput.value,
+      textLabel: "貼り付けスライド",
+    });
     if (!isQuestionMapLoading && questionMapErrorMessage) {
       questionMapStatus.textContent = questionMapErrorMessage;
     } else if (!isQuestionMapLoading) {
       questionMapStatus.textContent = contextDeck
-        ? `「${contextDeck.name}」向けに、過去問と講義スライドを入れると設問ごとの関連候補を表示します。AIボタンを使うと根拠説明も補強できます。`
-        : "過去問と講義スライドを入れると、設問ごとに関連スライド候補、ページ番号、該当箇所の抜粋を表示します。どのデッキにも紐づけず先に参照候補を確認でき、AIボタンを使うと根拠説明も補強できます。";
+        ? `「${contextDeck.name}」向けに、過去問と講義スライドを入れると設問ごとの関連候補を表示します。${questionSummary} ${slideSummary} AIボタンを使うと根拠説明も補強できます。`
+        : `過去問と講義スライドを入れると、設問ごとに関連スライド候補、ページ番号、該当箇所の抜粋を表示します。${questionSummary} ${slideSummary} どのデッキにも紐づけず先に参照候補を確認でき、AIボタンを使うと根拠説明も補強できます。`;
     }
     questionMapSummary.innerHTML = "";
     questionMapResults.innerHTML = questionMapErrorMessage
@@ -5347,6 +5394,8 @@ function renderQuestionMapPanel() {
     questionMapDraft.aiEnhanced ? " AIで根拠説明を補強済みです。" : ""
   }`;
   questionMapSummary.innerHTML = [
+    { label: "過去問ファイル", value: `${questionMapDraft.questionFileCount}件` },
+    { label: "スライドファイル", value: `${questionMapDraft.slideFileCount}件` },
     { label: "解析した設問", value: `${questionMapDraft.questions.length}問` },
     { label: "使ったスライド", value: `${questionMapDraft.slidePageCount}ページ` },
     { label: "候補が見つかった設問", value: `${questionMapDraft.matchedQuestionCount}問` },
@@ -5370,6 +5419,7 @@ function renderQuestionMapPanel() {
             <div>
               <p class="eyebrow">設問 ${escapeHtml(question.label)}</p>
               <h4>${escapeHtml(question.prompt)}</h4>
+              ${question.questionSourceName ? `<p class="muted">出典: ${escapeHtml(question.questionSourceName)}</p>` : ""}
             </div>
             <span class="meta-pill">${question.matches.length ? `候補 ${question.matches.length}件` : "候補なし"}</span>
           </div>
@@ -7411,14 +7461,15 @@ async function handleImportSubmit(event) {
     importLimitInput.value = String(limit);
     const subject = String(importSubjectInput.value || "").trim();
     const instructions = String(importInstructionsInput.value || "").trim();
-    const sourceName =
-      importFileInput.files?.[0]?.name || String(importDeckNameInput.value || "").trim() || "AI資料";
+    const bundle = await loadImportBundle();
+    const sourceName = bundle.sourceNames[0] || String(importDeckNameInput.value || "").trim() || "AI資料";
     const deckName = (importDeckNameInput.value || "").trim() || buildDeckNameFromSource(sourceName);
     importDeckNameInput.value = deckName;
 
     if (requestedEngine === "ai") {
       try {
         importDraft = await generateAiImportDraft({
+          bundle,
           deckName,
           focus,
           subject,
@@ -7426,16 +7477,14 @@ async function handleImportSubmit(event) {
           limit,
         });
         importDraft.targetDeckId = importContextDeckId || "";
-        importStatus.textContent = `AIが ${importDraft.cards.length} 枚の候補を作成しました。内容を確認してから保存できます。`;
+        importStatus.textContent = `AIが ${importDraft.cards.length} 枚の候補を作成しました。内容を確認してから保存できます。${buildLowTextWarning(bundle)}`;
         renderImportPanel();
         showToast(`${importDraft.cards.length}枚のAI候補を作成しました`);
         return;
       } catch (error) {
         const fallbackLabel = getAiFallbackMessage(error);
-        const source = await loadImportSource();
         importDraft = buildImportDraft({
-          text: source.text,
-          sourceName: source.sourceName,
+          bundle,
           deckName,
           focus,
           subject,
@@ -7443,17 +7492,15 @@ async function handleImportSubmit(event) {
           limit,
         });
         importDraft.targetDeckId = importContextDeckId || "";
-        importStatus.textContent = `${fallbackLabel} ローカル解析へ切り替えました。`;
+        importStatus.textContent = `${fallbackLabel} ローカル解析へ切り替えました。${buildLowTextWarning(bundle)}`;
         renderImportPanel();
         showToast(`${fallbackLabel} ローカル解析へ切り替えました`);
         return;
       }
     }
 
-    const source = await loadImportSource();
     importDraft = buildImportDraft({
-      text: source.text,
-      sourceName: source.sourceName,
+      bundle,
       deckName,
       focus,
       subject,
@@ -7491,11 +7538,11 @@ async function handleQuestionMapSubmit(event) {
   try {
     const topMatches = clampNumber(Number.parseInt(questionMapTopMatchesInput.value, 10), 1, 5, 3);
     questionMapTopMatchesInput.value = String(topMatches);
-    const sources = await loadQuestionMapSources();
+    const bundles = await loadQuestionMapBundles();
     questionMapErrorMessage = "";
     const localDraft = buildQuestionMapDraft({
-      questionSource: sources.questionSource,
-      slidePages: sources.slidePages,
+      questionBundle: bundles.questionBundle,
+      slideBundle: bundles.slideBundle,
       topMatches,
     });
     questionMapDraft = localDraft;
@@ -7503,7 +7550,7 @@ async function handleQuestionMapSubmit(event) {
       renderQuestionMapPanel();
       questionMapStatus.textContent = "ローカル候補を作成したあと、AIで根拠と一致度を補強しています。";
       try {
-        const aiRefined = await generateAiQuestionMapDraft(localDraft, sources.slidePages);
+        const aiRefined = await generateAiQuestionMapDraft(localDraft);
         questionMapDraft = aiRefined;
       } catch (error) {
         questionMapDraft = localDraft;
@@ -7526,25 +7573,24 @@ async function handleQuestionMapSubmit(event) {
   }
 }
 
-async function generateAiImportDraft({ deckName, focus, subject, instructions, limit }) {
+async function generateAiImportDraft({ bundle, deckName, focus, subject, instructions, limit }) {
   const response = await requestAiGeneration({
     task: "deck_from_pdf",
-    payload: {
+    payload: buildAiImportPayload({
+      bundle,
       deckName,
       focus,
       subject,
       instructions,
       limit,
-      pastedText: String(importTextInput.value || "").trim(),
-      sourceName: importFileInput.files?.[0]?.name || "貼り付けテキスト",
-    },
-    files: [...(importFileInput.files || [])].slice(0, 1),
+    }),
+    files: selectAiUploadFiles(bundle.files || []),
   });
 
   const cards = normalizeAiImportCards(response.cards, {
     focus,
     subject,
-    sourceName: response.sourceLabel || importFileInput.files?.[0]?.name || "AI資料",
+    sourceName: response.sourceLabel || bundle.sourceLabel || "AI資料",
   });
   if (!cards.length) {
     throw createAiClientError("AI_IMPORT_EMPTY", "AIがカード候補を返せませんでした。");
@@ -7552,23 +7598,93 @@ async function generateAiImportDraft({ deckName, focus, subject, instructions, l
 
   return {
     id: crypto.randomUUID(),
-    sourceName: response.sourceLabel || importFileInput.files?.[0]?.name || "AI資料",
+    sourceName: response.sourceLabel || bundle.sourceLabel || "AI資料",
     deckName,
     targetDeckId: "",
     focus,
     subject,
     instructions,
+    lowTextSourceNames: bundle.lowTextSourceNames || [],
     cards,
   };
 }
 
-async function generateAiQuestionMapDraft(localDraft, slidePages) {
+async function generateAiQuestionMapDraft(localDraft) {
   const response = await requestAiGeneration({
     task: "question_slide_refine",
-    payload: buildAiQuestionMapPayload(localDraft, slidePages),
+    payload: buildAiQuestionMapPayload(localDraft),
   });
 
   return mergeAiQuestionMapDraft(localDraft, response.questionMatches || []);
+}
+
+function buildAiImportPayload({ bundle, deckName, focus, subject, instructions, limit }) {
+  const selectedChunks = balanceBundlePages(bundle.pages || [], 24)
+    .map((page) => ({
+      sourceLabel: page.sourceName,
+      sourcePage: page.pageNumber,
+      text: normalizeImportedText(page.text).slice(0, 1400),
+    }))
+    .filter((page) => page.text);
+
+  return {
+    deckName,
+    focus,
+    subject,
+    instructions,
+    limit,
+    sourceName: bundle.sourceLabel,
+    sourceManifest: (bundle.sourceNames || []).map((name, index) => ({
+      sourceName: name,
+      sourceIndex: index + 1,
+    })),
+    selectedChunks,
+    pastedText: String(importTextInput.value || "").trim(),
+  };
+}
+
+function selectAiUploadFiles(files) {
+  const selected = [];
+  let totalBytes = 0;
+
+  for (const file of files || []) {
+    if (!file) {
+      continue;
+    }
+    if (selected.length >= AI_MAX_UPLOAD_FILES) {
+      break;
+    }
+    const nextSize = totalBytes + Number(file.size || 0);
+    if (nextSize > AI_MAX_UPLOAD_TOTAL_BYTES) {
+      break;
+    }
+    selected.push(file);
+    totalBytes = nextSize;
+  }
+
+  return selected;
+}
+
+function balanceBundlePages(pages, limit) {
+  const grouped = new Map();
+  (pages || []).forEach((page) => {
+    const key = String(page.sourceName || "資料");
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key).push(page);
+  });
+
+  const buckets = [...grouped.values()].map((items) => items.slice());
+  const balanced = [];
+  while (balanced.length < limit && buckets.some((bucket) => bucket.length)) {
+    buckets.forEach((bucket) => {
+      if (bucket.length && balanced.length < limit) {
+        balanced.push(bucket.shift());
+      }
+    });
+  }
+  return balanced;
 }
 
 async function generateAiStudyDraft() {
@@ -7817,51 +7933,29 @@ function normalizeAiImportCards(cards, { focus, subject, sourceName }) {
     .filter(Boolean);
 }
 
-function buildAiQuestionMapPayload(localDraft, slidePages) {
-  const pageMap = new Map(
-    slidePages.map((page) => [`${page.sourceName}::${page.pageNumber}`, page]),
-  );
-  const candidatePages = [];
-  const seen = new Set();
-
-  localDraft.questions.forEach((question) => {
-    question.matches.slice(0, 4).forEach((match) => {
-      const key = `${match.sourceName}::${match.pageNumber}`;
-      const page = pageMap.get(key);
-      if (!page || seen.has(key)) {
-        return;
-      }
-      seen.add(key);
-      candidatePages.push({
-        sourceName: page.sourceName,
-        pageNumber: page.pageNumber,
-        text: cleanImportedSegment(page.text).slice(0, 1200),
-      });
-    });
-  });
-
-  slidePages.slice(0, 12).forEach((page) => {
-    const key = `${page.sourceName}::${page.pageNumber}`;
-    if (seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    candidatePages.push({
-      sourceName: page.sourceName,
-      pageNumber: page.pageNumber,
-      text: cleanImportedSegment(page.text).slice(0, 1200),
-    });
-  });
-
+function buildAiQuestionMapPayload(localDraft) {
   return {
-    questionSourceName: localDraft.questionSourceName,
-    slideSourceLabel: localDraft.slideSourceLabel,
+    sourceManifest: {
+      questionSourceName: localDraft.questionSourceName,
+      slideSourceLabel: localDraft.slideSourceLabel,
+      slideFileCount: localDraft.slideFileCount,
+    },
     topMatches: 3,
-    candidatePages: candidatePages.slice(0, 18),
     questions: localDraft.questions.slice(0, 24).map((question) => ({
+      questionId: question.id,
       label: question.label,
+      questionSourceName: question.questionSourceName || "",
       prompt: question.prompt,
       options: question.options || [],
+      candidates: question.matches.slice(0, 4).map((match) => ({
+        sourceName: match.sourceName,
+        pageNumber: match.pageNumber,
+        snippet: cleanImportedSegment(match.snippet || match.evidenceSnippet || "").slice(0, 500),
+        evidenceSnippet: cleanImportedSegment(match.evidenceSnippet || match.snippet || "").slice(0, 500),
+        matchedTokens: (match.matchedTokens || []).slice(0, 8),
+        coverage: clampNumber(Number(match.coverage || 0), 0, 1, 0),
+        score: Number(match.score || 0),
+      })),
     })),
   };
 }
@@ -7869,12 +7963,12 @@ function buildAiQuestionMapPayload(localDraft, slidePages) {
 function mergeAiQuestionMapDraft(localDraft, questionMatches) {
   const matchMap = new Map(
     (Array.isArray(questionMatches) ? questionMatches : [])
-      .map((entry) => [String(entry.label || entry.questionLabel || "").trim(), entry])
-      .filter(([label]) => label),
+      .map((entry) => [String(entry.questionId || entry.label || entry.questionLabel || "").trim(), entry])
+      .filter(([key]) => key),
   );
 
   const questions = localDraft.questions.map((question) => {
-    const next = matchMap.get(question.label);
+    const next = matchMap.get(question.id) || matchMap.get(question.label);
     if (!next) {
       return question;
     }
@@ -8100,6 +8194,15 @@ function getAiFallbackMessage(error) {
     }
     if (code === "AI_FILE_TOO_LARGE") {
       return "PDFが大きすぎて無料AIへ直接送れなかったため、";
+    }
+    if (code === "AI_TOO_MANY_FILES") {
+      return "AIへ渡すファイル数が多すぎたため、";
+    }
+    if (code === "AI_TOTAL_SIZE_TOO_LARGE") {
+      return "AIへ渡す資料量が大きすぎたため、";
+    }
+    if (code === "AI_TIMEOUT") {
+      return "AI応答が時間内に返らなかったため、";
     }
     return "AI生成が使えなかったため、";
   }
@@ -8538,8 +8641,7 @@ function handleAssistantActions(event) {
     const targetDeck = selectedTarget === "new" ? null : getDeckById(selectedTarget);
     const deckName = targetDeck ? targetDeck.name : buildDeckNameFromSource(`ローカル検索 ${formatDateKey(new Date())}`);
     importDraft = buildImportDraft({
-      text: message.text,
-      sourceName: "ローカル検索結果",
+      bundle: buildInlineTextBundle(message.text, "ローカル検索結果", { kind: "import", chunkSize: 1400 }),
       deckName,
       focus,
       subject: focus === "medical" ? "ローカル検索要点" : focus === "english" ? "Local Search Notes" : "ローカル検索要点",
@@ -9117,8 +9219,7 @@ function handleBulkInputSubmit(event) {
 
   try {
     importDraft = buildImportDraft({
-      text: normalizeBulkInputSourceText(sourceText),
-      sourceName: "一括入力メモ",
+      bundle: buildInlineTextBundle(normalizeBulkInputSourceText(sourceText), "一括入力メモ", { kind: "import", chunkSize: 1400 }),
       deckName,
       focus,
       subject,
@@ -9290,15 +9391,149 @@ function applyImportFocusPreset() {
   importInstructionsInput.placeholder = "例: 覚えるべき定義と要点を優先";
 }
 
-function syncImportDeckNameFromFile() {
-  const file = importFileInput.files?.[0];
-  if (!file) {
+function handleImportFileSelection() {
+  importSelectedFiles = mergeSelectedFiles(importSelectedFiles, [...(importFileInput.files || [])]);
+  importFileInput.value = "";
+  syncImportDeckNameFromSelection();
+  renderImportPanel();
+}
+
+function handleQuestionMapQuestionFileSelection() {
+  questionMapSelectedQuestionFiles = mergeSelectedFiles(questionMapSelectedQuestionFiles, [...(questionMapQuestionFileInput.files || [])]);
+  questionMapQuestionFileInput.value = "";
+  renderQuestionMapPanel();
+}
+
+function handleQuestionMapSlideFileSelection() {
+  questionMapSelectedSlideFiles = mergeSelectedFiles(questionMapSelectedSlideFiles, [...(questionMapSlideFileInput.files || [])]);
+  questionMapSlideFileInput.value = "";
+  renderQuestionMapPanel();
+}
+
+function handleImportFileListActions(event) {
+  const removeButton = event.target.closest("[data-remove-import-file]");
+  if (!removeButton) {
     return;
   }
 
-  if (!importDeckNameInput.value.trim()) {
-    importDeckNameInput.value = buildDeckNameFromSource(file.name);
+  const fileKey = removeButton.dataset.removeImportFile;
+  importSelectedFiles = importSelectedFiles.filter((file) => buildSelectedFileKey(file) !== fileKey);
+  syncImportDeckNameFromSelection();
+  renderImportPanel();
+}
+
+function handleQuestionMapFileListActions(event) {
+  const removeQuestionButton = event.target.closest("[data-remove-question-map-question-file]");
+  if (removeQuestionButton) {
+    const fileKey = removeQuestionButton.dataset.removeQuestionMapQuestionFile;
+    questionMapSelectedQuestionFiles = questionMapSelectedQuestionFiles.filter((file) => buildSelectedFileKey(file) !== fileKey);
+    renderQuestionMapPanel();
+    return;
   }
+
+  const removeSlideButton = event.target.closest("[data-remove-question-map-slide-file]");
+  if (removeSlideButton) {
+    const fileKey = removeSlideButton.dataset.removeQuestionMapSlideFile;
+    questionMapSelectedSlideFiles = questionMapSelectedSlideFiles.filter((file) => buildSelectedFileKey(file) !== fileKey);
+    renderQuestionMapPanel();
+  }
+}
+
+function syncImportDeckNameFromSelection() {
+  const file = importSelectedFiles[0];
+  if (!file || importDeckNameInput.value.trim()) {
+    return;
+  }
+
+  importDeckNameInput.value = buildDeckNameFromSource(file.name);
+}
+
+function mergeSelectedFiles(existingFiles, incomingFiles) {
+  const merged = [...(existingFiles || [])];
+  const seen = new Set(merged.map((file) => buildSelectedFileKey(file)));
+
+  (incomingFiles || []).forEach((file) => {
+    if (!file) {
+      return;
+    }
+    const key = buildSelectedFileKey(file);
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    merged.push(file);
+  });
+
+  return merged;
+}
+
+function buildSelectedFileKey(file) {
+  return [String(file?.name || ""), Number(file?.size || 0), Number(file?.lastModified || 0)].join("::");
+}
+
+function renderSelectedFileList(container, files, { emptyText, removeDataAttr }) {
+  if (!container) {
+    return;
+  }
+
+  if (!files.length) {
+    container.innerHTML = `
+      <article class="library-card compact-source-card">
+        <p class="muted">${escapeHtml(emptyText)}</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = files
+    .map(
+      (file) => `
+        <article class="library-card compact-source-card">
+          <div class="card-row-header">
+            <div>
+              <h4>${escapeHtml(file.name || "資料")}</h4>
+              <p class="muted">${escapeHtml(formatSelectedFileMeta(file))}</p>
+            </div>
+            <button class="ghost-button danger-button" type="button" ${removeDataAttr}="${escapeHtml(buildSelectedFileKey(file))}">
+              外す
+            </button>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function formatSelectedFileMeta(file) {
+  return `${isPdfFile(file) ? "PDF" : "テキスト"} / ${formatBytes(file?.size || 0)}`;
+}
+
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes < 1024) {
+    return `${bytes}B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${Math.round((bytes / 1024) * 10) / 10}KB`;
+  }
+  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10}MB`;
+}
+
+function buildSelectedSourcesSummary(files, { text = "", textLabel = "貼り付け本文" } = {}) {
+  const fileCount = Array.isArray(files) ? files.length : 0;
+  const hasText = Boolean(String(text || "").trim());
+  if (!fileCount && !hasText) {
+    return "複数ファイルもまとめて解析できます。";
+  }
+
+  const labels = [];
+  if (fileCount) {
+    labels.push(`${fileCount}件のファイルを選択中です。`);
+  }
+  if (hasText) {
+    labels.push(`${textLabel}も一緒に解析対象へ含めます。`);
+  }
+  return labels.join(" ");
 }
 
 function getStudyQueue() {
@@ -9390,97 +9625,224 @@ function installStarterPack(focus) {
   showToast(`${formatDeckFocus(focus)}スターターを追加しました（${addedDecks}デッキ / ${addedCards}枚）`);
 }
 
-async function loadImportSource() {
-  const file = importFileInput.files?.[0] || null;
+async function loadImportBundle() {
+  const files = [...importSelectedFiles];
   const pastedText = String(importTextInput.value || "").trim();
-
-  if (!file && !pastedText) {
+  if (!files.length && !pastedText) {
     throw new Error("PDFまたは本文を入れてください");
   }
 
-  if (file) {
-    const sourceName = file.name || "imported file";
-    if (!importDeckNameInput.value.trim()) {
-      importDeckNameInput.value = buildDeckNameFromSource(sourceName);
-    }
-
-    if (isPdfFile(file)) {
-      const text = await extractTextFromPdf(file);
-      return { text, sourceName };
-    }
-
-    const text = await file.text();
-    if (!text.trim()) {
-      throw new Error("ファイルから文字を読み取れませんでした");
-    }
-
-    return { text, sourceName };
-  }
-
-  return { text: pastedText, sourceName: "貼り付けテキスト" };
-}
-
-async function loadQuestionMapSources() {
-  const questionFile = questionMapQuestionFileInput.files?.[0] || null;
-  const questionText = String(questionMapQuestionTextInput.value || "").trim();
-  const slideFiles = [...(questionMapSlideFileInput.files || [])];
-  const slideText = String(questionMapSlideTextInput.value || "").trim();
-
-  if (!questionFile && !questionText) {
-    throw new Error("まず過去問 PDF か過去問本文を入れてください");
-  }
-
-  if (!slideFiles.length && !slideText) {
-    throw new Error("次に講義スライド PDF かスライド本文を入れてください");
-  }
-
-  const questionSource = await loadQuestionMapQuestionSource(questionFile, questionText);
-  const slidePages = await loadQuestionMapSlidePages(slideFiles, slideText);
-
-  if (!slidePages.length) {
-    throw new Error("スライド側から文字を読み取れませんでした");
-  }
-
-  return { questionSource, slidePages };
-}
-
-async function loadQuestionMapQuestionSource(file, pastedText) {
-  if (file) {
-    const pages = await loadPagedSourceFromFile(file, { maxPages: 80, chunkSize: 2200 });
-    const text = pages.map((page) => page.text).join("\n\n");
-    if (!text.trim()) {
-      throw new Error("過去問から文字を読み取れませんでした");
-    }
-    return {
-      sourceName: file.name || "過去問",
-      text,
-    };
-  }
-
-  return {
-    sourceName: "貼り付け過去問",
-    text: normalizeImportedText(pastedText),
-  };
-}
-
-async function loadQuestionMapSlidePages(files, pastedText) {
-  const pages = [];
-
+  const entries = [];
   for (const file of files) {
-    const filePages = await loadPagedSourceFromFile(file, { maxPages: 140, chunkSize: 1200 });
-    pages.push(...filePages);
+    entries.push(
+      await loadSourceBundleEntryFromFile(file, {
+        kind: "import",
+        maxPages: 48,
+        chunkSize: 1400,
+        errorLabel: "資料",
+      }),
+    );
   }
 
   if (pastedText) {
-    pages.push(...buildTextPageEntries(pastedText, "貼り付けスライド", { chunkSize: 1200 }));
+    entries.push(
+      buildSourceBundleEntry({
+        sourceName: "貼り付けテキスト",
+        kind: "import",
+        pages: buildTextPageEntries(pastedText, "貼り付けテキスト", { chunkSize: 1400, kind: "import" }),
+        fromText: true,
+      }),
+    );
   }
 
-  return pages.filter((page) => page.text && page.text.trim());
+  const bundle = buildSourceBundle(entries, { kind: "import", fallbackSourceName: files[0]?.name || "貼り付けテキスト" });
+  if (!bundle.pages.length) {
+    throw new Error("資料から文字を読み取れませんでした");
+  }
+
+  if (!importDeckNameInput.value.trim() && bundle.sourceNames[0]) {
+    importDeckNameInput.value = buildDeckNameFromSource(bundle.sourceNames[0]);
+  }
+
+  return bundle;
 }
 
-async function loadPagedSourceFromFile(file, { maxPages = 24, chunkSize = 1200 } = {}) {
+async function loadQuestionMapBundles() {
+  const questionText = String(questionMapQuestionTextInput.value || "").trim();
+  const slideText = String(questionMapSlideTextInput.value || "").trim();
+  if (!questionMapSelectedQuestionFiles.length && !questionText) {
+    throw new Error("まず過去問 PDF か過去問本文を入れてください");
+  }
+
+  if (!questionMapSelectedSlideFiles.length && !slideText) {
+    throw new Error("次に講義スライド PDF かスライド本文を入れてください");
+  }
+
+  const questionEntries = [];
+  for (const file of questionMapSelectedQuestionFiles) {
+    questionEntries.push(
+      await loadSourceBundleEntryFromFile(file, {
+        kind: "question",
+        maxPages: 80,
+        chunkSize: 2200,
+        errorLabel: "過去問",
+      }),
+    );
+  }
+  if (questionText) {
+    questionEntries.push(
+      buildSourceBundleEntry({
+        sourceName: "貼り付け過去問",
+        kind: "question",
+        pages: buildTextPageEntries(questionText, "貼り付け過去問", { chunkSize: 2200, kind: "question" }),
+        fromText: true,
+      }),
+    );
+  }
+
+  const slideEntries = [];
+  for (const file of questionMapSelectedSlideFiles) {
+    slideEntries.push(
+      await loadSourceBundleEntryFromFile(file, {
+        kind: "slide",
+        maxPages: 140,
+        chunkSize: 1200,
+        errorLabel: "講義スライド",
+      }),
+    );
+  }
+  if (slideText) {
+    slideEntries.push(
+      buildSourceBundleEntry({
+        sourceName: "貼り付けスライド",
+        kind: "slide",
+        pages: buildTextPageEntries(slideText, "貼り付けスライド", { chunkSize: 1200, kind: "slide" }),
+        fromText: true,
+      }),
+    );
+  }
+
+  const questionBundle = buildSourceBundle(questionEntries, { kind: "question", fallbackSourceName: "過去問" });
+  const slideBundle = buildSourceBundle(slideEntries, { kind: "slide", fallbackSourceName: "講義スライド" });
+
+  if (!questionBundle.pages.length) {
+    throw new Error("過去問側から文字を読み取れませんでした");
+  }
+  if (!slideBundle.pages.length) {
+    throw new Error("スライド側から文字を読み取れませんでした");
+  }
+
+  return { questionBundle, slideBundle };
+}
+
+async function loadSourceBundleEntryFromFile(file, { kind = "import", maxPages = 24, chunkSize = 1200, errorLabel = "資料" } = {}) {
+  const pages = await loadPagedSourceFromFile(file, { maxPages, chunkSize, kind });
+  const entry = buildSourceBundleEntry({
+    sourceName: file?.name || errorLabel,
+    kind,
+    pages,
+    file,
+  });
+
+  if (!entry.text.trim()) {
+    throw new Error(`${file?.name || errorLabel} から文字を読み取れませんでした`);
+  }
+
+  return entry;
+}
+
+function buildSourceBundleEntry({ sourceName, kind = "import", pages = [], file = null, fromText = false }) {
+  const normalizedPages = (pages || [])
+    .map((page) => ({
+      sourceName: sourceName || page?.sourceName || "資料",
+      kind,
+      pageNumber: Number(page?.pageNumber || 1),
+      text: normalizeImportedText(page?.text || ""),
+    }))
+    .filter((page) => page.text);
+  const text = normalizedPages.map((page) => page.text).join("\n\n");
+  return {
+    id: crypto.randomUUID(),
+    sourceName: sourceName || "資料",
+    kind,
+    file,
+    fromText,
+    pages: normalizedPages,
+    text,
+    charCount: text.length,
+  };
+}
+
+function buildSourceBundle(entries, { kind = "import", fallbackSourceName = "資料" } = {}) {
+  const normalizedEntries = (entries || []).filter((entry) => entry && entry.text);
+  const pages = normalizedEntries.flatMap((entry) =>
+    entry.pages.map((page) => ({
+      ...page,
+      entryId: entry.id,
+      kind: entry.kind || kind,
+    })),
+  );
+  const sourceNames = [...new Set(normalizedEntries.map((entry) => entry.sourceName).filter(Boolean))];
+  const fileCount = normalizedEntries.filter((entry) => entry.file).length;
+  const lowTextSourceNames = normalizedEntries.filter((entry) => entry.charCount < 180).map((entry) => entry.sourceName);
+
+  return {
+    id: crypto.randomUUID(),
+    kind,
+    entries: normalizedEntries,
+    pages,
+    text: normalizedEntries.map((entry) => entry.text).join("\n\n"),
+    files: normalizedEntries.map((entry) => entry.file).filter(Boolean),
+    sourceNames,
+    sourceLabel: formatBundleSourceLabel(sourceNames, fallbackSourceName),
+    totalPages: pages.length,
+    fileCount,
+    pastedEntryCount: normalizedEntries.filter((entry) => entry.fromText).length,
+    lowTextSourceNames: [...new Set(lowTextSourceNames)],
+  };
+}
+
+function buildInlineTextBundle(text, sourceName, { kind = "import", chunkSize = 1400 } = {}) {
+  return buildSourceBundle(
+    [
+      buildSourceBundleEntry({
+        sourceName,
+        kind,
+        pages: buildTextPageEntries(text, sourceName, { chunkSize, kind }),
+        fromText: true,
+      }),
+    ],
+    { kind, fallbackSourceName: sourceName },
+  );
+}
+
+function formatBundleSourceLabel(sourceNames, fallbackSourceName = "資料") {
+  if (!Array.isArray(sourceNames) || !sourceNames.length) {
+    return fallbackSourceName;
+  }
+  if (sourceNames.length === 1) {
+    return sourceNames[0];
+  }
+  return `${sourceNames[0]} ほか${sourceNames.length - 1}件`;
+}
+
+function formatLowTextWarning(sourceNames) {
+  const lowTextSources = Array.isArray(sourceNames) ? sourceNames : [];
+  if (!lowTextSources.length) {
+    return "";
+  }
+  const label = lowTextSources.length === 1 ? lowTextSources[0] : `${lowTextSources[0]} ほか${lowTextSources.length - 1}件`;
+  return `文字が少ない資料（${label}）は精度が下がる可能性があります。`;
+}
+
+function buildLowTextWarning(bundle) {
+  const warning = formatLowTextWarning(bundle?.lowTextSourceNames);
+  return warning ? ` ${warning}` : "";
+}
+
+async function loadPagedSourceFromFile(file, { maxPages = 24, chunkSize = 1200, kind = "import" } = {}) {
   if (isPdfFile(file)) {
-    return extractPdfPages(file, maxPages);
+    return extractPdfPages(file, maxPages, kind);
   }
 
   const text = await file.text();
@@ -9488,10 +9850,10 @@ async function loadPagedSourceFromFile(file, { maxPages = 24, chunkSize = 1200 }
     throw new Error(`${file.name || "ファイル"} から文字を読み取れませんでした`);
   }
 
-  return buildTextPageEntries(text, file.name || "テキスト資料", { chunkSize });
+  return buildTextPageEntries(text, file.name || "テキスト資料", { chunkSize, kind });
 }
 
-function buildTextPageEntries(text, sourceName, { chunkSize = 1200 } = {}) {
+function buildTextPageEntries(text, sourceName, { chunkSize = 1200, kind = "import" } = {}) {
   const normalized = normalizeImportedText(text);
   const paragraphs = normalized
     .split(/\n{2,}/)
@@ -9500,10 +9862,11 @@ function buildTextPageEntries(text, sourceName, { chunkSize = 1200 } = {}) {
 
   const sourceLabel = sourceName || "テキスト資料";
   if (!paragraphs.length) {
-    return normalized
+        return normalized
       ? [
           {
             sourceName: sourceLabel,
+            kind,
             pageNumber: 1,
             text: normalized,
           },
@@ -9520,6 +9883,7 @@ function buildTextPageEntries(text, sourceName, { chunkSize = 1200 } = {}) {
     if (next.length > chunkSize && buffer) {
       pages.push({
         sourceName: sourceLabel,
+        kind,
         pageNumber,
         text: buffer,
       });
@@ -9534,6 +9898,7 @@ function buildTextPageEntries(text, sourceName, { chunkSize = 1200 } = {}) {
   if (buffer) {
     pages.push({
       sourceName: sourceLabel,
+      kind,
       pageNumber,
       text: buffer,
     });
@@ -9543,7 +9908,7 @@ function buildTextPageEntries(text, sourceName, { chunkSize = 1200 } = {}) {
 }
 
 async function extractTextFromPdf(file) {
-  const merged = (await extractPdfPages(file, 24)).map((page) => page.text).join("\n\n");
+  const merged = (await extractPdfPages(file, 24, "import")).map((page) => page.text).join("\n\n");
   if (!merged.trim()) {
     throw new Error("PDFから文字を抽出できませんでした。画像PDFの可能性があります");
   }
@@ -9551,7 +9916,7 @@ async function extractTextFromPdf(file) {
   return merged;
 }
 
-async function extractPdfPages(file, maxPages = 24) {
+async function extractPdfPages(file, maxPages = 24, kind = "import") {
   let pdfjsLib;
 
   try {
@@ -9577,6 +9942,7 @@ async function extractPdfPages(file, maxPages = 24) {
     if (pageText.trim()) {
       pages.push({
         sourceName: file.name || "PDF",
+        kind,
         pageNumber,
         text: pageText.trim(),
       });
@@ -9630,15 +9996,11 @@ function buildPageText(items) {
   }
 }
 
-function buildImportDraft({ text, sourceName, deckName, focus, subject, instructions, limit }) {
-  const normalizedText = normalizeImportedText(text);
-  const lines = extractMeaningfulLines(normalizedText);
-  const cards = dedupeImportCards([
-    ...buildDelimitedLineCards(lines, focus, subject),
-    ...buildAdjacentPairCards(lines, focus, subject),
-    ...buildBulletGroupCards(lines, focus, subject),
-    ...buildParagraphFallbackCards(normalizedText, focus, subject),
-  ]).slice(0, limit);
+function buildImportDraft({ bundle, deckName, focus, subject, instructions, limit }) {
+  const candidates = dedupeImportCards(
+    bundle.pages.flatMap((page) => buildImportCardsFromPage(page, focus, subject)),
+  );
+  const cards = balanceImportCandidates(candidates, limit).slice(0, limit);
 
   if (!cards.length) {
     throw new Error("カード候補を作れませんでした。本文を少し整理してもう一度試してください");
@@ -9646,40 +10008,81 @@ function buildImportDraft({ text, sourceName, deckName, focus, subject, instruct
 
   return {
     id: crypto.randomUUID(),
-    sourceName,
+    sourceName: bundle.sourceLabel,
     deckName,
     targetDeckId: "",
     focus,
     subject,
     instructions,
+    lowTextSourceNames: bundle.lowTextSourceNames || [],
     cards: cards.map((card) => ({
       ...card,
       id: crypto.randomUUID(),
-      note: card.note || buildImportNote(sourceName, instructions),
+      note: card.note || buildImportNote(card.sourceLabel || bundle.sourceLabel, instructions),
       tags: dedupeTags([formatDeckFocus(focus), ...(card.tags || []), ...splitSubjectTags(subject)]),
     })),
   };
 }
 
-function buildQuestionMapDraft({ questionSource, slidePages, topMatches }) {
-  const questions = parseQuestionBlocks(questionSource.text);
+function buildImportCardsFromPage(page, focus, subject) {
+  const lines = extractMeaningfulLines(page.text);
+  return [
+    ...buildDelimitedLineCards(lines, focus, subject, page),
+    ...buildAdjacentPairCards(lines, focus, subject, page),
+    ...buildBulletGroupCards(lines, focus, subject, page),
+    ...buildParagraphFallbackCards(page.text, focus, subject, page),
+  ];
+}
+
+function balanceImportCandidates(cards, limit) {
+  const grouped = new Map();
+  (cards || []).forEach((card) => {
+    const key = String(card.sourceLabel || "資料");
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key).push(card);
+  });
+
+  const buckets = [...grouped.values()].map((items) => items.slice());
+  const balanced = [];
+  while (balanced.length < limit && buckets.some((bucket) => bucket.length)) {
+    buckets.forEach((bucket) => {
+      if (bucket.length && balanced.length < limit) {
+        balanced.push(bucket.shift());
+      }
+    });
+  }
+  return balanced;
+}
+
+function buildQuestionMapDraft({ questionBundle, slideBundle, topMatches }) {
+  const questions = questionBundle.entries.flatMap((entry) =>
+    parseQuestionBlocks(entry.text).map((question, index) => ({
+      ...question,
+      id: `${entry.id}::${question.label}::${index + 1}`,
+      questionSourceName: entry.sourceName,
+    })),
+  );
   if (!questions.length) {
     throw new Error("過去問から設問を切り出せませんでした。番号付きの設問か、改行入りの本文を入れてください");
   }
 
   const enrichedQuestions = questions.map((question) => ({
     ...question,
-    matches: matchQuestionToSlidePages(question, slidePages, topMatches),
+    matches: matchQuestionToSlidePages(question, slideBundle.pages, topMatches),
   }));
-  const sourceNames = [...new Set(slidePages.map((page) => page.sourceName).filter(Boolean))];
+  const sourceNames = [...new Set(slideBundle.pages.map((page) => page.sourceName).filter(Boolean))];
 
   return {
     id: crypto.randomUUID(),
-    questionSourceName: questionSource.sourceName,
+    questionSourceName: questionBundle.sourceLabel,
+    questionFileCount: questionBundle.fileCount,
+    slideFileCount: slideBundle.fileCount,
     slideSourceNames: sourceNames,
     slideSourceLabel:
       sourceNames.length <= 2 ? sourceNames.join(" / ") : `${sourceNames.slice(0, 2).join(" / ")} ほか${sourceNames.length - 2}件`,
-    slidePageCount: slidePages.length,
+    slidePageCount: slideBundle.pages.length,
     questions: enrichedQuestions,
     matchedQuestionCount: enrichedQuestions.filter((question) => question.matches.length > 0).length,
   };
@@ -9818,20 +10221,49 @@ function matchQuestionToSlidePages(question, slidePages, topMatches) {
     .map((page) => scoreQuestionAgainstSlidePage(question, page))
     .filter((match) => match.score > 0)
     .sort((left, right) => right.score - left.score || left.pageNumber - right.pageNumber)
-    .slice(0, topMatches);
+    .slice(0, Math.max(topMatches * 4, topMatches));
 
   if (!ranked.length) {
     return [];
   }
 
   const bestScore = ranked[0].score || 1;
-  return ranked
-    .filter((match, index) => index === 0 || match.score >= Math.max(2, Math.round(bestScore * 0.35)))
+  const filtered = ranked.filter((match, index) => index === 0 || match.score >= Math.max(2, Math.round(bestScore * 0.35)));
+  return pickDiverseQuestionMatches(filtered, topMatches)
     .map((match) => ({
       ...match,
       coverageLabel:
         match.coverage >= 0.55 ? "一致度 高め" : match.coverage >= 0.28 ? "一致度 中くらい" : "一致度 参考",
     }));
+}
+
+function pickDiverseQuestionMatches(matches, topMatches) {
+  const selected = [];
+  const seenSources = new Set();
+  const remaining = (matches || []).slice();
+
+  while (selected.length < topMatches && remaining.length) {
+    let bestIndex = 0;
+    let bestScore = -Infinity;
+
+    remaining.forEach((match, index) => {
+      const diversityBonus = seenSources.has(match.sourceName) ? 0 : 1.5;
+      const weightedScore = match.score + diversityBonus;
+      if (weightedScore > bestScore) {
+        bestScore = weightedScore;
+        bestIndex = index;
+      }
+    });
+
+    const [next] = remaining.splice(bestIndex, 1);
+    if (!next) {
+      break;
+    }
+    selected.push(next);
+    seenSources.add(next.sourceName);
+  }
+
+  return selected;
 }
 
 function scoreQuestionAgainstSlidePage(question, page) {
@@ -9932,7 +10364,7 @@ function formatQuestionMatchConfidence(match) {
   return "設問との重なりは弱めですが、見直しの起点として使える候補です";
 }
 
-function buildDelimitedLineCards(lines, focus, subject) {
+function buildDelimitedLineCards(lines, focus, subject, sourcePage) {
   const cards = [];
 
   lines.forEach((line) => {
@@ -9957,6 +10389,8 @@ function buildDelimitedLineCards(lines, focus, subject) {
         title: left,
         body: right,
         sourceLine: line,
+        sourcePage,
+        evidenceSnippet: line,
       }),
     );
   });
@@ -9964,7 +10398,7 @@ function buildDelimitedLineCards(lines, focus, subject) {
   return cards;
 }
 
-function buildAdjacentPairCards(lines, focus, subject) {
+function buildAdjacentPairCards(lines, focus, subject, sourcePage) {
   const cards = [];
 
   for (let index = 0; index < lines.length - 1; index += 1) {
@@ -9998,6 +10432,8 @@ function buildAdjacentPairCards(lines, focus, subject) {
         title: current,
         body: next,
         sourceLine: `${current} / ${next}`,
+        sourcePage,
+        evidenceSnippet: next,
       }),
     );
   }
@@ -10005,7 +10441,7 @@ function buildAdjacentPairCards(lines, focus, subject) {
   return cards;
 }
 
-function buildBulletGroupCards(lines, focus, subject) {
+function buildBulletGroupCards(lines, focus, subject, sourcePage) {
   const cards = [];
 
   for (let index = 0; index < lines.length - 1; index += 1) {
@@ -10032,6 +10468,8 @@ function buildBulletGroupCards(lines, focus, subject) {
         title: heading,
         body: bullets.join(" / "),
         sourceLine: heading,
+        sourcePage,
+        evidenceSnippet: bullets[0] || heading,
       }),
     );
 
@@ -10041,7 +10479,7 @@ function buildBulletGroupCards(lines, focus, subject) {
   return cards;
 }
 
-function buildParagraphFallbackCards(text, focus, subject) {
+function buildParagraphFallbackCards(text, focus, subject, sourcePage) {
   return text
     .split(/\n{2,}/)
     .map((paragraph) => cleanImportedSegment(paragraph))
@@ -10058,15 +10496,20 @@ function buildParagraphFallbackCards(text, focus, subject) {
         title,
         body,
         sourceLine: paragraph.slice(0, 120),
+        sourcePage,
+        evidenceSnippet: paragraph.slice(0, 180),
       });
     })
     .filter((card) => isViableCardPair(card.front, card.back));
 }
 
-function createImportedCard({ focus, subject, title, body, sourceLine }) {
+function createImportedCard({ focus, subject, title, body, sourceLine, sourcePage = null, evidenceSnippet = "" }) {
   const cleanTitle = cleanImportedSegment(title);
   const cleanBody = cleanImportedSegment(body);
   const topic = inferImportedTopic(cleanTitle, subject, focus);
+  const sourceLabel = cleanImportedSegment(sourcePage?.sourceName || "");
+  const sourcePageNumber = Number.isFinite(Number(sourcePage?.pageNumber)) ? Number(sourcePage.pageNumber) : null;
+  const resolvedEvidence = cleanImportedSegment(evidenceSnippet || sourceLine || "");
 
   return {
     front: buildImportedFront(cleanTitle, focus),
@@ -10076,7 +10519,10 @@ function createImportedCard({ focus, subject, title, body, sourceLine }) {
     tags: buildImportedTags(cleanTitle, subject, focus),
     note: "",
     example: focus === "english" && /[A-Za-z]/.test(cleanBody) ? cleanBody : "",
-    sourceLine,
+    sourceLine: sourceLabel ? (sourcePageNumber ? `${sourceLabel} / p.${sourcePageNumber}` : sourceLabel) : sourceLine,
+    sourceLabel,
+    sourcePage: sourcePageNumber,
+    evidenceSnippet: resolvedEvidence,
   };
 }
 
