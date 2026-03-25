@@ -1089,6 +1089,68 @@
                 <div class="stack-list" id="shareMemberList"></div>
               </section>
 
+              <section class="subpanel">
+                <p class="eyebrow">公開カタログ</p>
+                <h4>アプリ内の公開デッキに載せる</h4>
+                <p class="muted" id="publicShareStatus">
+                  公開デッキにすると、アプリ内の一覧から見つけてもらえるようになります。外部検索には載りません。
+                </p>
+                <div class="stack-form">
+                  <label>
+                    <span>公開範囲</span>
+                    <select id="publicVisibilitySelect">
+                      <option value="private">private: owner と既存メンバーだけ</option>
+                      <option value="link_only">link_only: リンク参加のみ</option>
+                      <option value="public_listed">public: アプリ内で公開</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>公開タイトル</span>
+                    <input id="publicTitleInput" maxlength="80" placeholder="公開一覧に表示するタイトル" />
+                  </label>
+                  <label>
+                    <span>公開説明</span>
+                    <textarea
+                      id="publicDescriptionInput"
+                      rows="3"
+                      maxlength="220"
+                      placeholder="このデッキで何を学べるか、対象や使い方を短く書く"
+                    ></textarea>
+                  </label>
+                  <label>
+                    <span>公開タグ</span>
+                    <input id="publicTagsInput" maxlength="180" placeholder="医学, 腎, 病理, 医学英語, 長文" />
+                  </label>
+                  <label>
+                    <span>対象学年</span>
+                    <input id="publicTargetGradeInput" maxlength="40" placeholder="1年 / 2年 / CBT前 / 国家試験前" />
+                  </label>
+                  <label>
+                    <span>更新ノート</span>
+                    <textarea
+                      id="publicUpdateNoteInput"
+                      rows="2"
+                      maxlength="160"
+                      placeholder="今回の更新内容や注意点を短く残します"
+                    ></textarea>
+                  </label>
+                  <label class="share-permission-toggle">
+                    <input id="publicAiAssistedCheckbox" type="checkbox" />
+                    <span>AI 補助ありのデッキとして表示する</span>
+                  </label>
+                  <label class="share-permission-toggle">
+                    <input id="publicPublishConfirmCheckbox" type="checkbox" />
+                    <span>公開責任は投稿者にあることを理解して公開します</span>
+                  </label>
+                  <div class="form-actions">
+                    <button class="primary-button" id="publishDeckButton" type="button">公開 / 公開更新</button>
+                    <button class="ghost-button" id="unpublishDeckButton" type="button">非公開に戻す</button>
+                    <button class="ghost-button" id="openPublicCatalogButton" type="button">公開デッキ一覧を開く</button>
+                  </div>
+                </div>
+                <div class="stack-list" id="publicShareMetaList"></div>
+              </section>
+
               <section class="subpanel tip-card">
                 <p class="eyebrow">共有ガイド</p>
                 <h4>共有の使い分け</h4>
@@ -1120,6 +1182,19 @@
                 <div class="stack-list" id="shareEventList"></div>
               </section>
             </div>
+
+            <section class="subpanel" id="publicModerationPanel" hidden>
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">公開モデレーション</p>
+                  <h4>通報された公開デッキ</h4>
+                </div>
+              </div>
+              <p class="muted" id="publicModerationStatus">
+                通報された公開デッキの公開停止、復帰、解決処理をここで行えます。
+              </p>
+              <div class="stack-list" id="publicModerationList"></div>
+            </section>
           </section>
         </section>
 
@@ -1134,6 +1209,22 @@
               <button class="ghost-button" id="clearAssistantButton" type="button">検索履歴を消す</button>
             </div>
           </div>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">表示</p>
+                <h3>ライブラリモード</h3>
+              </div>
+            </div>
+            <div class="button-row" id="libraryModeNav">
+              <button class="chip-button is-active" data-library-mode="cards" type="button">登録済みカード</button>
+              <button class="chip-button" data-library-mode="public" type="button">公開デッキ</button>
+            </div>
+            <p class="muted" id="libraryModeSummary">
+              登録済みカードの検索と、みんなが公開したデッキの検索をここで切り替えられます。
+            </p>
+          </section>
 
           <section class="panel">
             <div class="section-heading">
@@ -1212,8 +1303,56 @@
             </div>
           </section>
 
+          <section class="panel" id="publicLibraryFilterPanel" hidden>
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">絞り込み</p>
+                <h3>公開デッキを探す</h3>
+              </div>
+            </div>
+            <div class="filter-grid">
+              <label class="inline-select">
+                <span>検索</span>
+                <input id="publicDeckSearchInput" type="search" placeholder="腎、生理、医学英語、作成者..." />
+              </label>
+              <label class="inline-select">
+                <span>分野</span>
+                <select id="publicDeckFocusFilter">
+                  <option value="all">すべて</option>
+                  <option value="medical">医学</option>
+                  <option value="english">英語</option>
+                  <option value="general">汎用</option>
+                </select>
+              </label>
+              <label class="inline-select">
+                <span>タグ</span>
+                <input id="publicDeckTagFilter" type="search" placeholder="循環、腎、読解..." />
+              </label>
+              <label class="inline-select">
+                <span>対象学年</span>
+                <input id="publicDeckGradeFilter" type="search" placeholder="1年、CBT前..." />
+              </label>
+              <label class="inline-select">
+                <span>並び順</span>
+                <select id="publicDeckSortSelect">
+                  <option value="recent">最近更新</option>
+                  <option value="popular">人気順</option>
+                  <option value="rating">評価順</option>
+                </select>
+              </label>
+              <label class="share-permission-toggle">
+                <input id="publicDeckImageOnlyCheckbox" type="checkbox" />
+                <span>画像付きのみ</span>
+              </label>
+              <label class="share-permission-toggle">
+                <input id="publicDeckAiOnlyCheckbox" type="checkbox" />
+                <span>AI補助ありのみ</span>
+              </label>
+            </div>
+          </section>
+
           <div class="library-layout">
-            <section class="panel">
+            <section class="panel" id="libraryCardsPanel">
               <div class="section-heading">
                 <div>
                   <p class="eyebrow">カード一覧</p>
@@ -1221,6 +1360,16 @@
                 </div>
               </div>
               <div id="libraryList" class="library-list"></div>
+            </section>
+
+            <section class="panel" id="publicDecksPanel" hidden>
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">公開デッキ</p>
+                  <h3>アプリ内で公開されているデッキ</h3>
+                </div>
+              </div>
+              <div id="publicDeckList" class="library-list"></div>
             </section>
 
             <section class="panel deck-detail-card" id="deckDetailCard">

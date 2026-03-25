@@ -1371,6 +1371,103 @@ button:disabled {
   margin-bottom: 6px;
 }
 
+#libraryModeNav,
+.library-mode-nav {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(24, 49, 83, 0.08);
+}
+
+#libraryModeNav .chip-button,
+.library-mode-button {
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  border: 1px solid transparent;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+#libraryModeNav .chip-button.is-active,
+.library-mode-button.is-active {
+  background: var(--surface-strong);
+  color: var(--text);
+  border-color: var(--line);
+  box-shadow: 0 8px 20px rgba(24, 49, 83, 0.08);
+}
+
+.compact-stat-card {
+  padding: 14px;
+  border-radius: 18px;
+}
+
+.compact-stat-card small {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-soft);
+}
+
+.compact-stat-card strong {
+  font-size: 1.1rem;
+}
+
+.public-deck-stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+}
+
+.public-rating-row {
+  flex-wrap: wrap;
+}
+
+.is-active-public-rating {
+  background: var(--accent-soft);
+  border-color: rgba(240, 138, 75, 0.5);
+  color: var(--text);
+}
+
+.is-selected-public-deck {
+  border-color: rgba(240, 138, 75, 0.45);
+  box-shadow: 0 18px 40px rgba(240, 138, 75, 0.12);
+}
+
+.public-sample-card {
+  gap: 12px;
+}
+
+.public-sample-card h4 {
+  margin: 0;
+}
+
+#publicShareMetaList,
+#publicModerationList,
+.public-share-meta-list,
+.moderation-list {
+  display: grid;
+  gap: 12px;
+}
+
+#publicShareMetaList .meta-pill,
+.public-share-meta-list .meta-pill {
+  margin-right: 6px;
+}
+
+#publicModerationPanel,
+.share-grid .share-public-panel,
+.share-grid .moderation-panel {
+  border-style: dashed;
+}
+
+.moderation-panel {
+  background: rgba(255, 252, 246, 0.92);
+}
+
+.public-report-detail {
+  white-space: pre-wrap;
+}
+
 @media (min-width: 760px) {
   .board-hero {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -1478,5 +1575,10 @@ button:disabled {
   .study-quick-action-card .button-row,
   .compact-form-panel .form-actions {
     flex-direction: column;
+  }
+
+  #libraryModeNav,
+  .library-mode-nav {
+    width: 100%;
   }
 }

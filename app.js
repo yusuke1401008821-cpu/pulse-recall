@@ -32,6 +32,9 @@ const SHARE_LOCK_LEASE_SECONDS = 10 * 60;
 const SHARE_LOCK_HEARTBEAT_MS = 30 * 1000;
 const SHARE_EVENT_LIMIT = 36;
 const SHARE_NOTIFICATION_LIMIT = 24;
+const PUBLIC_DECK_SAMPLE_LIMIT = 4;
+const PUBLIC_VERSION_LIMIT = 6;
+const PUBLIC_REPORT_REASONS = ["著作権", "誤情報", "不適切", "重複スパム", "その他"];
 const SHARE_PERMISSION_KEYS = [
   "edit_deck_meta",
   "add_cards",
@@ -334,6 +337,8 @@ let selectedEditDeckId = "";
 let editSubview = "deck";
 let editCardQuery = "";
 let editWorkspaceCardId = "";
+let libraryMode = "cards";
+let selectedPublicDeckId = "";
 let cardMediaDraft = createEmptyMediaDraft();
 let quickCaptureMediaDraft = createEmptyMediaDraft();
 let editCardMediaDraft = createEmptyMediaDraft();
@@ -359,6 +364,16 @@ let cloudState = {
   notifications: [],
   deckEventsByDeck: {},
   editLocksByDeck: {},
+  publicCatalog: [],
+  publicDeckDetail: null,
+  publicDeckSamplesByDeck: {},
+  publicVersionsByDeck: {},
+  publicFollowsByDeck: {},
+  publicFavoritesByDeck: {},
+  publicRatingsByDeck: {},
+  publicRequestStatusByDeck: {},
+  publicReports: [],
+  isPublicModerator: false,
   lastSharePreview: null,
   backupSnapshots: [],
   backupStatus: "idle",
@@ -440,6 +455,16 @@ const librarySubjectFilter = document.getElementById("librarySubjectFilter");
 const libraryStorageFilter = document.getElementById("libraryStorageFilter");
 const libraryStudyStateFilter = document.getElementById("libraryStudyStateFilter");
 const libraryTextFilter = document.getElementById("libraryTextFilter");
+const libraryModeButtons = [...document.querySelectorAll("[data-library-mode]")];
+const libraryModeSummary = document.getElementById("libraryModeSummary");
+const publicLibraryFilterPanel = document.getElementById("publicLibraryFilterPanel");
+const publicDeckSearchInput = document.getElementById("publicDeckSearchInput");
+const publicDeckFocusFilter = document.getElementById("publicDeckFocusFilter");
+const publicDeckTagFilter = document.getElementById("publicDeckTagFilter");
+const publicDeckGradeFilter = document.getElementById("publicDeckGradeFilter");
+const publicDeckSortSelect = document.getElementById("publicDeckSortSelect");
+const publicDeckImageOnlyCheckbox = document.getElementById("publicDeckImageOnlyCheckbox");
+const publicDeckAiOnlyCheckbox = document.getElementById("publicDeckAiOnlyCheckbox");
 const cardDeckId = document.getElementById("cardDeckId");
 const searchCardifyTarget = document.getElementById("searchCardifyTarget");
 const emptyState = document.getElementById("emptyState");
@@ -499,6 +524,9 @@ const ratingButtons = Object.fromEntries(
   [...document.querySelectorAll("[data-rating]")].map((button) => [button.dataset.rating, button]),
 );
 const libraryList = document.getElementById("libraryList");
+const libraryCardsPanel = document.getElementById("libraryCardsPanel");
+const publicDecksPanel = document.getElementById("publicDecksPanel");
+const publicDeckList = document.getElementById("publicDeckList");
 const toast = document.getElementById("toast");
 const startReviewButton = document.getElementById("startReviewButton");
 const seedDemoButton = document.getElementById("seedDemoButton");
@@ -679,12 +707,28 @@ const exportJsonButton = document.getElementById("exportJsonButton");
 const importJsonFileInput = document.getElementById("importJsonFileInput");
 const refreshCloudButton = document.getElementById("refreshCloudButton");
 const shareStatus = document.getElementById("shareStatus");
+const publicShareStatus = document.getElementById("publicShareStatus");
+const publicVisibilitySelect = document.getElementById("publicVisibilitySelect");
+const publicTitleInput = document.getElementById("publicTitleInput");
+const publicDescriptionInput = document.getElementById("publicDescriptionInput");
+const publicTagsInput = document.getElementById("publicTagsInput");
+const publicTargetGradeInput = document.getElementById("publicTargetGradeInput");
+const publicUpdateNoteInput = document.getElementById("publicUpdateNoteInput");
+const publicAiAssistedCheckbox = document.getElementById("publicAiAssistedCheckbox");
+const publicPublishConfirmCheckbox = document.getElementById("publicPublishConfirmCheckbox");
+const publishDeckButton = document.getElementById("publishDeckButton");
+const unpublishDeckButton = document.getElementById("unpublishDeckButton");
+const openPublicCatalogButton = document.getElementById("openPublicCatalogButton");
+const publicShareMetaList = document.getElementById("publicShareMetaList");
 const shareRequestList = document.getElementById("shareRequestList");
 const shareMemberList = document.getElementById("shareMemberList");
 const shareNotificationStatus = document.getElementById("shareNotificationStatus");
 const shareNotificationList = document.getElementById("shareNotificationList");
 const shareEventStatus = document.getElementById("shareEventStatus");
 const shareEventList = document.getElementById("shareEventList");
+const publicModerationPanel = document.getElementById("publicModerationPanel");
+const publicModerationStatus = document.getElementById("publicModerationStatus");
+const publicModerationList = document.getElementById("publicModerationList");
 const markAllNotificationsReadButton = document.getElementById("markAllNotificationsReadButton");
 const shareGuideSummary = document.getElementById("shareGuideSummary");
 const shareGuideList = document.getElementById("shareGuideList");
@@ -1035,6 +1079,18 @@ function bindEvents() {
       renderDeckDetail();
     });
   });
+  libraryModeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      libraryMode = button.dataset.libraryMode === "public" ? "public" : "cards";
+      if (libraryMode === "public") {
+        refreshPublicCatalog({ silent: true }).catch((error) => {
+          console.warn("Failed to refresh public catalog:", error);
+        });
+      }
+      renderLibrary();
+      renderDeckDetail();
+    });
+  });
 
   toggleAnswerButton.addEventListener("click", toggleAnswer);
   if (startReviewButton) {
@@ -1236,6 +1292,27 @@ function bindEvents() {
   libraryStorageFilter.addEventListener("change", renderLibrary);
   libraryStudyStateFilter.addEventListener("change", renderLibrary);
   libraryTextFilter.addEventListener("input", renderLibrary);
+  if (publicDeckSearchInput) {
+    publicDeckSearchInput.addEventListener("input", renderLibrary);
+  }
+  if (publicDeckFocusFilter) {
+    publicDeckFocusFilter.addEventListener("change", renderLibrary);
+  }
+  if (publicDeckTagFilter) {
+    publicDeckTagFilter.addEventListener("input", renderLibrary);
+  }
+  if (publicDeckGradeFilter) {
+    publicDeckGradeFilter.addEventListener("input", renderLibrary);
+  }
+  if (publicDeckSortSelect) {
+    publicDeckSortSelect.addEventListener("change", renderLibrary);
+  }
+  if (publicDeckImageOnlyCheckbox) {
+    publicDeckImageOnlyCheckbox.addEventListener("change", renderLibrary);
+  }
+  if (publicDeckAiOnlyCheckbox) {
+    publicDeckAiOnlyCheckbox.addEventListener("change", renderLibrary);
+  }
   if (libraryQuickCaptureButton) {
     libraryQuickCaptureButton.addEventListener("click", () => openQuickCapture(libraryDeckFilter.value?.startsWith("focus:") ? "" : libraryDeckFilter.value || ""));
   }
@@ -1346,6 +1423,31 @@ function bindEvents() {
   duplicateSharedDeckButton.addEventListener("click", duplicateSelectedDeck);
   refreshShareLinkButton.addEventListener("click", () => regenerateShareLinkForDeck());
   leaveSharedDeckButton.addEventListener("click", stopOrLeaveSelectedDeck);
+  if (publishDeckButton) {
+    publishDeckButton.addEventListener("click", () => {
+      publishSelectedDeck().catch((error) => {
+        console.warn("Failed to publish deck:", error);
+        showToast(error.message || "公開設定の保存に失敗しました");
+      });
+    });
+  }
+  if (unpublishDeckButton) {
+    unpublishDeckButton.addEventListener("click", () => {
+      unpublishSelectedDeck().catch((error) => {
+        console.warn("Failed to unpublish deck:", error);
+        showToast(error.message || "非公開への切り替えに失敗しました");
+      });
+    });
+  }
+  if (openPublicCatalogButton) {
+    openPublicCatalogButton.addEventListener("click", () => {
+      libraryMode = "public";
+      switchSection("assistant");
+      refreshPublicCatalog({ silent: true }).catch((error) => {
+        console.warn("Failed to refresh public catalog:", error);
+      });
+    });
+  }
   markAllNotificationsReadButton.addEventListener("click", () => {
     markNotificationsRead().catch((error) => {
       console.warn("Failed to mark notifications read:", error);
@@ -1435,12 +1537,18 @@ function bindEvents() {
     dashboardSection.addEventListener("click", handleDeckActions);
   }
   libraryList.addEventListener("click", handleLibraryActions);
+  if (publicDeckList) {
+    publicDeckList.addEventListener("click", handleLibraryActions);
+  }
   createGuideActions.addEventListener("click", handleGuideActions);
   shareRequestList.addEventListener("click", handleDeckDetailActions);
   shareMemberList.addEventListener("click", handleDeckDetailActions);
   shareMemberList.addEventListener("change", handleShareMemberPermissionChanges);
   deckDetailContent.addEventListener("click", handleDeckDetailActions);
   deckDetailContent.addEventListener("change", handleShareMemberPermissionChanges);
+  if (publicModerationList) {
+    publicModerationList.addEventListener("click", handleDeckDetailActions);
+  }
   editCardList.addEventListener("click", handleEditCardListActions);
   studySmartListGrid.addEventListener("click", handleStudySmartListActions);
   importPreview.addEventListener("click", handleImportPreviewActions);
@@ -4167,6 +4275,29 @@ function formatStorageMode(mode) {
   return mode === "shared" ? "共有" : "ローカル";
 }
 
+function normalizePublicVisibility(value = "") {
+  const safeValue = String(value || "").trim();
+  if (safeValue === "private" || safeValue === "link_only" || safeValue === "public_listed") {
+    return safeValue;
+  }
+  return "private";
+}
+
+function isPublicListedDeck(deck) {
+  return normalizePublicVisibility(deck?.visibility) === "public_listed" && !deck?.publicIsHidden;
+}
+
+function isPublicFollowDeck(deck) {
+  return Boolean(deck?.publicFollowMode === "following" && String(deck?.publicSourceDeckId || "").trim());
+}
+
+function formatDeckStorageLabel(deck) {
+  if (isPublicFollowDeck(deck)) {
+    return "公開フォロー";
+  }
+  return formatStorageMode(deck?.storageMode || "local");
+}
+
 function formatSyncState(syncState) {
   if (syncState === "synced") {
     return "同期済み";
@@ -4236,6 +4367,9 @@ function getMemberPermissionMap(member) {
 
 function hasDeckPermission(deck, permissionKey = "") {
   if (!deck) {
+    return false;
+  }
+  if (isPublicFollowDeck(deck)) {
     return false;
   }
   if (deck.storageMode !== "shared") {
@@ -4425,7 +4559,10 @@ function renderShareRequestsMarkup(deck, canApprove) {
       (request) => `
         <article class="library-card">
           <h4>${escapeHtml(request.requesterEmail || "参加申請")}</h4>
-          <p class="muted">希望ロール: ${escapeHtml(formatRoleLabel(request.requestedRole || "viewer"))}</p>
+          <p class="muted">
+            ${escapeHtml(request.requestKind === "public_editor" ? "公開デッキの編集参加申請" : "共有リンクからの参加申請")}
+            / 希望ロール: ${escapeHtml(formatRoleLabel(request.requestedRole || "viewer"))}
+          </p>
           <div class="button-row">
             <button
               class="primary-button"
@@ -4644,7 +4781,7 @@ function getCurrentShareUrl(deck) {
   if (!deck) {
     return "";
   }
-  if (deck.storageMode === "shared" && deck.shareToken) {
+  if (deck.storageMode === "shared" && deck.shareToken && normalizePublicVisibility(deck.visibility) === "link_only") {
     return buildShareUrl(deck.shareToken);
   }
   if (!canUseLocalShare(deck)) {
@@ -4701,6 +4838,73 @@ function renderShareGuidePanel(deck) {
   `;
 }
 
+function syncPublicShareForm(deck) {
+  if (!publicVisibilitySelect) {
+    return;
+  }
+
+  if (!deck) {
+    publicVisibilitySelect.value = "private";
+    publicTitleInput.value = "";
+    publicDescriptionInput.value = "";
+    publicTagsInput.value = "";
+    publicTargetGradeInput.value = "";
+    publicUpdateNoteInput.value = "";
+    publicAiAssistedCheckbox.checked = false;
+    publicPublishConfirmCheckbox.checked = false;
+    return;
+  }
+
+  publicVisibilitySelect.value = normalizePublicVisibility(deck.visibility || (deck.storageMode === "shared" ? "link_only" : "private"));
+  publicTitleInput.value = deck.publicTitle || deck.name || "";
+  publicDescriptionInput.value = deck.publicDescription || deck.description || "";
+  publicTagsInput.value = Array.isArray(deck.publicTags) ? deck.publicTags.join(", ") : "";
+  publicTargetGradeInput.value = deck.publicTargetGrade || "";
+  publicUpdateNoteInput.value = deck.publicUpdateNote || "";
+  publicAiAssistedCheckbox.checked = Boolean(deck.publicAiAssisted);
+}
+
+function renderPublicShareMeta(deck) {
+  if (!publicShareMetaList) {
+    return;
+  }
+
+  if (!deck || !deck.sharedDeckId) {
+    publicShareMetaList.innerHTML = `
+      <article class="library-card">
+        <h4>公開前の準備</h4>
+        <p class="muted">共有デッキ化すると、ここからアプリ内の公開デッキ一覧へ載せるかどうかを選べます。</p>
+      </article>
+    `;
+    return;
+  }
+
+  publicShareMetaList.innerHTML = `
+    <article class="library-card">
+      <h4>${escapeHtml(deck.publicTitle || deck.name)}</h4>
+      <p class="muted">${
+        isPublicListedDeck(deck)
+          ? `アプリ内で公開中です。Version ${escapeHtml(String(deck.publicVersion || 1))} / 最終公開 ${escapeHtml(formatMessageTime(deck.publicPublishedAt || deck.updatedAt))}`
+          : deck.visibility === "link_only"
+            ? "リンク限定の共有です。公開カタログには載っていません。"
+            : "private 設定です。owner と既存メンバーだけがアクセスできます。"
+      }</p>
+      <div class="card-row-meta">
+        <span class="meta-pill">${escapeHtml(formatDeckFocus(deck.focus))}</span>
+        ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
+        ${deck.publicTargetGrade ? `<span class="meta-pill">${escapeHtml(deck.publicTargetGrade)}</span>` : ""}
+        <span class="meta-pill">フォロー ${deck.publicFollowCount || 0}</span>
+        <span class="meta-pill">複製 ${deck.publicCloneCount || 0}</span>
+        <span class="meta-pill">お気に入り ${deck.publicFavoriteCount || 0}</span>
+        <span class="meta-pill">${deck.publicRatingCount ? `評価 ${deck.publicRatingAverage.toFixed(1)} / 5` : "評価なし"}</span>
+        <span class="meta-pill">カード ${deck.publicCardCount || 0}</span>
+        ${deck.publicImageCount ? `<span class="meta-pill">画像 ${deck.publicImageCount}枚</span>` : ""}
+      </div>
+      ${(deck.publicTags || []).length ? `<div class="card-row-meta">${renderPillRow(deck.publicTags, deck.focus)}</div>` : ""}
+    </article>
+  `;
+}
+
 function renderSharePanel() {
   const deck = getSelectedShareDeck();
   const hasClientConfig = Boolean(cloudState.config?.supabaseUrl && cloudState.config?.supabaseAnonKey);
@@ -4711,6 +4915,7 @@ function renderSharePanel() {
   const primaryAuthIssue = authDiagnostics.find((item) => item.level === "danger") || authDiagnostics[0];
 
   renderShareGuidePanel(deck);
+  syncPublicShareForm(deck);
 
   authStatus.textContent = !hasClientConfig
     ? primaryAuthIssue?.text || "Supabase 未設定ならローカル専用のまま使えます。共有やアカウント保存を使う時だけ接続してください。"
@@ -4760,6 +4965,27 @@ function renderSharePanel() {
     shareEventStatus.textContent = "共有デッキを選ぶと、更新履歴がここに表示されます。";
     shareEventList.innerHTML = renderShareEventsMarkup(null);
     markAllNotificationsReadButton.disabled = true;
+    if (publicShareStatus) {
+      publicShareStatus.textContent = "公開設定を行うには、まず対象デッキを選んでください。";
+    }
+    if (publishDeckButton) {
+      publishDeckButton.disabled = true;
+    }
+    if (unpublishDeckButton) {
+      unpublishDeckButton.disabled = true;
+    }
+    if (openPublicCatalogButton) {
+      openPublicCatalogButton.disabled = false;
+    }
+    [publicVisibilitySelect, publicTitleInput, publicDescriptionInput, publicTagsInput, publicTargetGradeInput, publicUpdateNoteInput, publicAiAssistedCheckbox, publicPublishConfirmCheckbox].forEach((element) => {
+      if (element) {
+        element.disabled = true;
+      }
+    });
+    if (publicModerationPanel) {
+      publicModerationPanel.hidden = true;
+    }
+    renderPublicShareMeta(null);
     return;
   }
 
@@ -4819,6 +5045,74 @@ function renderSharePanel() {
     ? `${Math.min(deckEvents.length, SHARE_EVENT_LIMIT)}件の共有履歴を表示しています。`
     : "共有デッキの更新履歴はまだありません。";
   shareEventList.innerHTML = renderShareEventsMarkup(deck);
+
+  const canPublishPublicly = Boolean(hasClientConfig && isSignedIn && deck.storageMode === "shared" && deck.role === "owner");
+  [publicVisibilitySelect, publicTitleInput, publicDescriptionInput, publicTagsInput, publicTargetGradeInput, publicUpdateNoteInput, publicAiAssistedCheckbox, publicPublishConfirmCheckbox].forEach((element) => {
+    if (element) {
+      element.disabled = !canPublishPublicly;
+    }
+  });
+  if (publishDeckButton) {
+    publishDeckButton.disabled = !canPublishPublicly;
+    publishDeckButton.textContent = isPublicListedDeck(deck) ? "公開更新" : "公開 / 公開更新";
+  }
+  if (unpublishDeckButton) {
+    unpublishDeckButton.disabled = !canPublishPublicly || deck.visibility === "private";
+  }
+  if (publicShareStatus) {
+    publicShareStatus.textContent = !deck.sharedDeckId
+      ? "公開デッキにするには、先にこのデッキを共有デッキ化します。"
+      : isPublicListedDeck(deck)
+        ? "現在はアプリ内の公開デッキ一覧に掲載中です。フォロー、複製、評価、通報の対象になります。"
+        : deck.visibility === "link_only"
+          ? "現在はリンク限定共有です。必要ならこのまま公開に切り替えて一覧へ載せられます。"
+          : "現在は private 設定です。公開一覧にも共有リンク参加にも出ません。";
+  }
+  renderPublicShareMeta(deck);
+  renderPublicModerationPanel();
+}
+
+function renderPublicModerationPanel() {
+  if (!publicModerationPanel || !publicModerationList || !publicModerationStatus) {
+    return;
+  }
+
+  publicModerationPanel.hidden = !cloudState.isPublicModerator;
+  if (!cloudState.isPublicModerator) {
+    return;
+  }
+
+  if (!cloudState.publicReports.length) {
+    publicModerationStatus.textContent = "未処理の通報はありません。";
+    publicModerationList.innerHTML = `
+      <article class="library-card">
+        <h4>通報待ちはありません</h4>
+        <p class="muted">公開デッキへの通報があると、ここに一覧表示されます。</p>
+      </article>
+    `;
+    return;
+  }
+
+  publicModerationStatus.textContent = `${cloudState.publicReports.length}件の通報を表示しています。`;
+  publicModerationList.innerHTML = cloudState.publicReports
+    .map((report) => `
+      <article class="library-card">
+        <h4>${escapeHtml(report.deckTitle || "公開デッキ")}</h4>
+        <p class="muted">${escapeHtml(report.reason || "その他")} / ${escapeHtml(formatMessageTime(report.createdAt))}</p>
+        <p class="muted">${escapeHtml(report.detail || "詳細はありません")}</p>
+        <div class="card-row-meta">
+          ${report.deckSubject ? `<span class="meta-pill">${escapeHtml(report.deckSubject)}</span>` : ""}
+          ${report.reporterEmail ? `<span class="meta-pill">${escapeHtml(report.reporterEmail)}</span>` : ""}
+          <span class="meta-pill">${escapeHtml(report.statusLabel)}</span>
+        </div>
+        <div class="button-row">
+          <button class="ghost-button danger-button" data-moderate-public-report="${report.id}" data-next-status="resolved" data-hide-deck="true" type="button">公開停止</button>
+          <button class="ghost-button" data-moderate-public-report="${report.id}" data-next-status="reviewed" data-hide-deck="false" type="button">公開復帰</button>
+          <button class="ghost-button" data-moderate-public-report="${report.id}" data-next-status="resolved" type="button">解決済みにする</button>
+        </div>
+      </article>
+    `)
+    .join("");
 }
 
 function syncDeckForm() {
@@ -5888,6 +6182,350 @@ function renderLibraryFilterControls() {
   }
 }
 
+function getSelectedPublicDeck() {
+  return cloudState.publicCatalog.find((deck) => deck.id === selectedPublicDeckId) || null;
+}
+
+function getPublicDeckUserState(deckId = "") {
+  const followRow = cloudState.publicFollowsByDeck[deckId] || null;
+  const localFollowDeck = state.decks.find((deck) => deck.publicSourceDeckId === deckId && isPublicFollowDeck(deck)) || null;
+  const membershipDeck = state.decks.find((deck) => deck.sharedDeckId === deckId && deck.storageMode === "shared") || null;
+  return {
+    isFollowing: Boolean(followRow),
+    localFollowDeckId: localFollowDeck?.id || "",
+    isFavorite: Boolean(cloudState.publicFavoritesByDeck[deckId]),
+    rating: Number(cloudState.publicRatingsByDeck[deckId] || 0),
+    requestStatus: String(cloudState.publicRequestStatusByDeck[deckId] || "").trim(),
+    membershipRole: membershipDeck?.role || "",
+    isOwner: membershipDeck?.role === "owner",
+    isEditor: membershipDeck?.role === "editor",
+    isViewer: membershipDeck?.role === "viewer",
+  };
+}
+
+function renderLibraryModeControls() {
+  libraryModeButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.libraryMode === libraryMode);
+  });
+
+  if (libraryCardsPanel) {
+    libraryCardsPanel.hidden = libraryMode !== "cards";
+  }
+  if (publicDecksPanel) {
+    publicDecksPanel.hidden = libraryMode !== "public";
+  }
+  if (publicLibraryFilterPanel) {
+    publicLibraryFilterPanel.hidden = libraryMode !== "public";
+  }
+  if (deckDetailNav) {
+    deckDetailNav.hidden = libraryMode === "public";
+  }
+
+  if (libraryModeSummary) {
+    libraryModeSummary.textContent =
+      libraryMode === "public"
+        ? "公開デッキの一覧、更新状況、品質シグナルを見ながら、フォローか複製かを選べます。"
+        : "登録済みカードを検索しながら、デッキ詳細や学習状態を確認できます。";
+  }
+}
+
+function getFilteredPublicDecks() {
+  const searchText = String(publicDeckSearchInput?.value || "").trim().toLowerCase();
+  const focusFilter = String(publicDeckFocusFilter?.value || "all").trim();
+  const tagFilter = String(publicDeckTagFilter?.value || "").trim().toLowerCase();
+  const gradeFilter = String(publicDeckGradeFilter?.value || "").trim().toLowerCase();
+  const imageOnly = Boolean(publicDeckImageOnlyCheckbox?.checked);
+  const aiOnly = Boolean(publicDeckAiOnlyCheckbox?.checked);
+  const sortKey = String(publicDeckSortSelect?.value || "recent").trim();
+
+  return cloudState.publicCatalog
+    .filter((deck) => !deck.publicIsHidden && deck.visibility === "public_listed")
+    .filter((deck) => (focusFilter === "all" ? true : deck.focus === focusFilter))
+    .filter((deck) => (imageOnly ? deck.publicImageCount > 0 : true))
+    .filter((deck) => (aiOnly ? deck.publicAiAssisted : true))
+    .filter((deck) => (gradeFilter ? `${deck.publicTargetGrade} ${deck.subject}`.toLowerCase().includes(gradeFilter) : true))
+    .filter((deck) => (tagFilter ? deck.publicTags.some((tag) => tag.toLowerCase().includes(tagFilter)) : true))
+    .filter((deck) => {
+      if (!searchText) {
+        return true;
+      }
+      return [
+        deck.publicTitle,
+        deck.publicDescription,
+        deck.subject,
+        deck.publicAuthorLabel,
+        deck.publicTargetGrade,
+        ...(deck.publicTags || []),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(searchText);
+    })
+    .sort((left, right) => {
+      if (sortKey === "popular") {
+        const leftScore = left.publicFollowCount + left.publicCloneCount + left.publicFavoriteCount;
+        const rightScore = right.publicFollowCount + right.publicCloneCount + right.publicFavoriteCount;
+        return rightScore - leftScore || (right.publicPublishedAt || right.updatedAt) - (left.publicPublishedAt || left.updatedAt);
+      }
+      if (sortKey === "rating") {
+        return right.publicRatingAverage - left.publicRatingAverage || right.publicRatingCount - left.publicRatingCount || (right.publicPublishedAt || right.updatedAt) - (left.publicPublishedAt || left.updatedAt);
+      }
+      return (right.publicPublishedAt || right.updatedAt) - (left.publicPublishedAt || left.updatedAt);
+    });
+}
+
+function renderPublicDeckListMarkup(decks = []) {
+  if (!isCloudConfigured()) {
+    return `
+      <article class="library-card">
+        <h4>公開デッキはまだ読み込めません</h4>
+        <p class="muted">公開カタログを使うには Supabase 接続が必要です。接続後は未ログインでも公開デッキの閲覧とプレビューができます。</p>
+      </article>
+    `;
+  }
+
+  if (!decks.length) {
+    return `
+      <article class="library-card">
+        <h4>表示できる公開デッキがありません</h4>
+        <p class="muted">条件を変えるか、共有画面から自分のデッキを公開してカタログに追加できます。</p>
+      </article>
+    `;
+  }
+
+  return decks
+    .map((deck) => {
+      const stateForUser = getPublicDeckUserState(deck.id);
+      const popularity = deck.publicFollowCount + deck.publicCloneCount + deck.publicFavoriteCount;
+      return `
+        <article class="library-card ${selectedPublicDeckId === deck.id ? "is-selected-public-deck" : ""}">
+          <div class="card-row-header">
+            <div>
+              <h4>${escapeHtml(deck.publicTitle || deck.name)}</h4>
+              <p class="muted">${escapeHtml(deck.publicDescription || deck.description || "説明はまだありません")}</p>
+            </div>
+            <button class="ghost-button" data-open-public-deck="${deck.id}" type="button">詳細</button>
+          </div>
+          <div class="card-row-meta">
+            <span class="meta-pill ${escapeHtml(deck.focus || "general")}">${escapeHtml(formatDeckFocus(deck.focus))}</span>
+            ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
+            ${deck.publicTargetGrade ? `<span class="meta-pill">${escapeHtml(deck.publicTargetGrade)}</span>` : ""}
+            ${deck.publicAiAssisted ? '<span class="meta-pill">AI補助あり</span>' : ""}
+            ${deck.publicImageCount ? `<span class="meta-pill">画像 ${deck.publicImageCount}枚</span>` : ""}
+            <span class="meta-pill">カード ${deck.publicCardCount}枚</span>
+          </div>
+          ${(deck.publicTags || []).length ? `<div class="card-row-meta">${renderPillRow(deck.publicTags.slice(0, 6), deck.focus)}</div>` : ""}
+          <div class="action-grid public-deck-stats-grid">
+            <article class="stat-card compact-stat-card">
+              <small>作成者</small>
+              <strong>${escapeHtml(deck.publicAuthorLabel || "公開ユーザー")}</strong>
+            </article>
+            <article class="stat-card compact-stat-card">
+              <small>人気</small>
+              <strong>${popularity}</strong>
+            </article>
+            <article class="stat-card compact-stat-card">
+              <small>評価</small>
+              <strong>${deck.publicRatingCount ? `${deck.publicRatingAverage.toFixed(1)} / 5` : "未評価"}</strong>
+            </article>
+          </div>
+          <div class="button-row">
+            <button class="primary-button" data-follow-public-deck="${deck.id}" type="button" ${isCloudSignedIn() ? "" : "disabled"}>
+              ${stateForUser.isFollowing ? "フォロー中" : "フォローして使う"}
+            </button>
+            <button class="ghost-button" data-clone-public-deck="${deck.id}" type="button">自分用に複製</button>
+            <button
+              class="ghost-button"
+              data-request-public-edit="${deck.id}"
+              type="button"
+              ${(isCloudSignedIn() && !stateForUser.membershipRole && stateForUser.requestStatus !== "pending") ? "" : "disabled"}
+            >
+              ${
+                stateForUser.membershipRole
+                  ? `参加済み (${formatRoleLabel(stateForUser.membershipRole)})`
+                  : stateForUser.requestStatus === "pending"
+                    ? "申請中"
+                    : "編集参加を申請"
+              }
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function buildPublicSampleCardMarkup(card) {
+  const hasFrontMedia = Array.isArray(card.frontMedia) && card.frontMedia.length;
+  const hasBackMedia = Array.isArray(card.backMedia) && card.backMedia.length;
+  return `
+    <article class="library-card public-sample-card">
+      <h4>${escapeHtml(formatCardFrontLabel(card))}</h4>
+      ${hasFrontMedia ? `<div class="media-gallery">${buildMediaGalleryMarkup(card.frontMedia)}</div>` : ""}
+      <p class="muted">${escapeHtml(formatCardBackLabel(card))}</p>
+      ${hasBackMedia ? `<div class="media-gallery">${buildMediaGalleryMarkup(card.backMedia)}</div>` : ""}
+      <div class="card-row-meta">
+        ${card.topic ? `<span class="meta-pill">${escapeHtml(card.topic)}</span>` : ""}
+        ${(card.tags || []).slice(0, 4).map((tag) => `<span class="meta-pill">${escapeHtml(tag)}</span>`).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderPublicDeckDetail() {
+  const deck = getSelectedPublicDeck();
+  deckDetailTitle.textContent = deck ? "公開デッキ詳細" : "公開デッキ詳細";
+
+  if (!deck) {
+    deckDetailContent.innerHTML = `
+      <article class="library-card">
+        <h4>公開デッキを選ぶと詳細が見られます</h4>
+        <p class="muted">一覧から公開デッキを選ぶと、プレビュー、更新履歴、フォローや複製の導線がここに表示されます。</p>
+      </article>
+    `;
+    return;
+  }
+
+  const userState = getPublicDeckUserState(deck.id);
+  const samples = cloudState.publicDeckSamplesByDeck[deck.id] || [];
+  const versions = cloudState.publicVersionsByDeck[deck.id] || [];
+  const isSignedIn = isCloudSignedIn();
+  const canRequestEdit = isSignedIn && !userState.membershipRole && userState.requestStatus !== "pending";
+
+  deckDetailContent.innerHTML = `
+    <article class="library-card">
+      <h4>${escapeHtml(deck.publicTitle || deck.name)}</h4>
+      <p class="muted">${escapeHtml(deck.publicDescription || deck.description || "説明はまだありません")}</p>
+      <div class="card-row-meta">
+        <span class="meta-pill ${escapeHtml(deck.focus || "general")}">${escapeHtml(formatDeckFocus(deck.focus))}</span>
+        ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
+        ${deck.publicTargetGrade ? `<span class="meta-pill">${escapeHtml(deck.publicTargetGrade)}</span>` : ""}
+        <span class="meta-pill">更新 ${escapeHtml(formatMessageTime(deck.publicPublishedAt || deck.updatedAt))}</span>
+        <span class="meta-pill">Version ${escapeHtml(String(deck.publicVersion || 1))}</span>
+      </div>
+      <div class="action-grid public-deck-stats-grid">
+        <article class="stat-card compact-stat-card">
+          <small>カード</small>
+          <strong>${deck.publicCardCount}</strong>
+        </article>
+        <article class="stat-card compact-stat-card">
+          <small>画像</small>
+          <strong>${deck.publicImageCount}</strong>
+        </article>
+        <article class="stat-card compact-stat-card">
+          <small>フォロー</small>
+          <strong>${deck.publicFollowCount}</strong>
+        </article>
+        <article class="stat-card compact-stat-card">
+          <small>複製</small>
+          <strong>${deck.publicCloneCount}</strong>
+        </article>
+        <article class="stat-card compact-stat-card">
+          <small>お気に入り</small>
+          <strong>${deck.publicFavoriteCount}</strong>
+        </article>
+        <article class="stat-card compact-stat-card">
+          <small>評価</small>
+          <strong>${deck.publicRatingCount ? `${deck.publicRatingAverage.toFixed(1)} / 5` : "未評価"}</strong>
+        </article>
+      </div>
+      ${(deck.publicTags || []).length ? `<div class="card-row-meta">${renderPillRow(deck.publicTags, deck.focus)}</div>` : ""}
+      <p class="muted">作成者: ${escapeHtml(deck.publicAuthorLabel || "公開ユーザー")}${deck.publicUpdateNote ? ` / 更新ノート: ${escapeHtml(deck.publicUpdateNote)}` : ""}</p>
+      <div class="button-row">
+        <button class="primary-button" data-follow-public-deck="${deck.id}" type="button" ${isSignedIn ? "" : "disabled"}>
+          ${userState.isFollowing ? "更新を反映する" : "フォローして使う"}
+        </button>
+        <button class="ghost-button" data-clone-public-deck="${deck.id}" type="button">自分用に複製</button>
+        <button class="ghost-button" data-request-public-edit="${deck.id}" type="button" ${canRequestEdit ? "" : "disabled"}>
+          ${
+            userState.membershipRole
+              ? `参加済み (${formatRoleLabel(userState.membershipRole)})`
+              : userState.requestStatus === "pending"
+                ? "編集参加を申請済み"
+                : "編集参加を申請"
+          }
+        </button>
+      </div>
+      <div class="button-row">
+        <button class="ghost-button" data-toggle-public-favorite="${deck.id}" type="button" ${isSignedIn ? "" : "disabled"}>
+          ${userState.isFavorite ? "お気に入り済み" : "お気に入り"}
+        </button>
+        ${
+          userState.isFollowing
+            ? `<button class="ghost-button danger-button" data-unfollow-public-deck="${deck.id}" type="button">フォローをやめてローカル化</button>`
+            : ""
+        }
+      </div>
+    </article>
+    <article class="library-card">
+      <h4>評価</h4>
+      <p class="muted">使いやすさや品質の目安として、1〜5で評価できます。</p>
+      <div class="button-row public-rating-row">
+        ${[1, 2, 3, 4, 5]
+          .map(
+            (value) => `
+              <button
+                class="ghost-button ${userState.rating === value ? "is-active-public-rating" : ""}"
+                data-rate-public-deck="${deck.id}"
+                data-public-rating-value="${value}"
+                type="button"
+                ${isSignedIn ? "" : "disabled"}
+              >
+                ${value}
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+      <p class="muted">${userState.rating ? `あなたの評価: ${userState.rating} / 5` : "まだ評価していません。"}</p>
+    </article>
+    <article class="library-card">
+      <h4>プレビュー</h4>
+      <p class="muted">取り込む前に、サンプルカードと画像の有無を確認できます。</p>
+      <div class="stack-list">
+        ${samples.length ? samples.slice(0, PUBLIC_DECK_SAMPLE_LIMIT).map((card) => buildPublicSampleCardMarkup(card)).join("") : '<p class="muted">サンプルカードの読み込み待ちです。</p>'}
+      </div>
+    </article>
+    <article class="library-card">
+      <h4>更新履歴</h4>
+      <div class="stack-list">
+        ${
+          versions.length
+            ? versions
+                .slice(0, PUBLIC_VERSION_LIMIT)
+                .map(
+                  (version) => `
+                    <article class="library-card compact-library-card">
+                      <h4>Version ${escapeHtml(String(version.versionNumber || 1))}</h4>
+                      <p class="muted">${escapeHtml(version.updateNote || "更新ノートはありません")} / ${escapeHtml(formatMessageTime(version.createdAt))}</p>
+                    </article>
+                  `,
+                )
+                .join("")
+            : '<p class="muted">まだ公開更新履歴はありません。</p>'
+        }
+      </div>
+    </article>
+    <article class="library-card">
+      <h4>通報</h4>
+      <p class="muted">著作権や誤情報などの問題がある場合だけ送ってください。</p>
+      <label class="stack-form">
+        <span>理由</span>
+        <select id="publicReportReasonSelect">
+          ${PUBLIC_REPORT_REASONS.map((reason) => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join("")}
+        </select>
+      </label>
+      <label class="stack-form">
+        <span>詳細</span>
+        <textarea id="publicReportDetailInput" rows="3" maxlength="220" placeholder="必要なときだけ補足を書いてください"></textarea>
+      </label>
+      <div class="button-row">
+        <button class="ghost-button danger-button" data-report-public-deck="${deck.id}" type="button" ${isSignedIn ? "" : "disabled"}>通報する</button>
+      </div>
+    </article>
+  `;
+}
+
 function renderTrackGrid() {
   if (typeof trackGrid === "undefined" || !trackGrid) {
     return;
@@ -6844,7 +7482,7 @@ function handleStudySmartListActions(event) {
   setStudySource(sourceButton.dataset.studySource);
 }
 
-function renderLibrary() {
+function renderCardLibrary() {
   const filter = libraryDeckFilter.value || "all";
   const tagFilter = libraryTagFilter.value || "all";
   const subjectFilter = librarySubjectFilter.value || "all";
@@ -6926,7 +7564,29 @@ function renderLibrary() {
     .join("");
 }
 
+function renderPublicLibrary() {
+  const decks = getFilteredPublicDecks();
+  if (!selectedPublicDeckId || !decks.some((deck) => deck.id === selectedPublicDeckId)) {
+    selectedPublicDeckId = decks[0]?.id || "";
+  }
+  publicDeckList.innerHTML = renderPublicDeckListMarkup(decks);
+}
+
+function renderLibrary() {
+  renderLibraryModeControls();
+  if (libraryMode === "public") {
+    renderPublicLibrary();
+    return;
+  }
+  renderCardLibrary();
+}
+
 function renderDeckDetail() {
+  if (libraryMode === "public") {
+    renderPublicDeckDetail();
+    return;
+  }
+
   const deck = getDeckById(selectedDeckDetailId);
   deckDetailTitle.textContent = deck?.name || "デッキ詳細";
   deckDetailTabButtons.forEach((button) => {
@@ -6990,11 +7650,19 @@ function renderDeckDetail() {
     deckDetailContent.innerHTML = `
       <article class="library-card">
         <h4>${escapeHtml(deck.storageMode === "shared" ? "共有デッキ" : "ローカルデッキ")}</h4>
-        <p class="muted">${escapeHtml(deck.storageMode === "shared" ? "共有リンクで他メンバーと共同編集できます。" : "必要なときだけ共有デッキ化できます。")}</p>
+        <p class="muted">${escapeHtml(
+          isPublicFollowDeck(deck)
+            ? "このデッキは公開デッキをフォロー中の読み取り専用コピーです。内容更新は公開元に追従し、学習進捗はあなた専用に保持されます。"
+            : deck.storageMode === "shared"
+              ? "共有リンクで他メンバーと共同編集できます。"
+              : "必要なときだけ共有デッキ化できます。",
+        )}</p>
         <div class="card-row-meta">
-          <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
+          <span class="meta-pill">${escapeHtml(formatDeckStorageLabel(deck))}</span>
           ${deck.role ? `<span class="meta-pill">${escapeHtml(formatRoleLabel(deck.role))}</span>` : ""}
           <span class="meta-pill">${escapeHtml(formatSyncState(deck.syncState))}</span>
+          ${isPublicListedDeck(deck) ? '<span class="meta-pill">公開中</span>' : ""}
+          ${deck.visibility === "link_only" ? '<span class="meta-pill">リンク限定</span>' : ""}
         </div>
         <div class="button-row">
           <button class="primary-button" data-share-deck="${deck.id}" type="button" ${canEdit ? "" : "disabled"}>共有する</button>
@@ -8385,6 +9053,45 @@ function handleGuideActions(event) {
 }
 
 function handleLibraryActions(event) {
+  const openPublicDeckButton = event.target.closest("[data-open-public-deck]");
+  if (openPublicDeckButton) {
+    libraryMode = "public";
+    selectedPublicDeckId = openPublicDeckButton.dataset.openPublicDeck;
+    refreshPublicDeckDetail(selectedPublicDeckId, { silent: true }).catch((error) => {
+      console.warn("Failed to refresh public deck detail:", error);
+    });
+    renderLibrary();
+    renderDeckDetail();
+    return;
+  }
+
+  const followPublicDeckButton = event.target.closest("[data-follow-public-deck]");
+  if (followPublicDeckButton) {
+    followPublicDeck(followPublicDeckButton.dataset.followPublicDeck).catch((error) => {
+      console.warn("Failed to follow public deck:", error);
+      showToast(error.message || "公開デッキのフォローに失敗しました");
+    });
+    return;
+  }
+
+  const clonePublicDeckButton = event.target.closest("[data-clone-public-deck]");
+  if (clonePublicDeckButton) {
+    duplicatePublicDeckToLocal(clonePublicDeckButton.dataset.clonePublicDeck).catch((error) => {
+      console.warn("Failed to clone public deck:", error);
+      showToast(error.message || "公開デッキの複製に失敗しました");
+    });
+    return;
+  }
+
+  const requestPublicEditButton = event.target.closest("[data-request-public-edit]");
+  if (requestPublicEditButton) {
+    requestPublicDeckEditorAccess(requestPublicEditButton.dataset.requestPublicEdit).catch((error) => {
+      console.warn("Failed to request public deck edit access:", error);
+      showToast(error.message || "編集参加申請に失敗しました");
+    });
+    return;
+  }
+
   const detailButton = event.target.closest("[data-open-deck-detail]");
   if (detailButton) {
     selectedDeckDetailId = detailButton.dataset.openDeckDetail;
@@ -8406,6 +9113,95 @@ function handleLibraryActions(event) {
 }
 
 function handleDeckDetailActions(event) {
+  const openPublicDeckButton = event.target.closest("[data-open-public-deck]");
+  if (openPublicDeckButton) {
+    selectedPublicDeckId = openPublicDeckButton.dataset.openPublicDeck;
+    refreshPublicDeckDetail(selectedPublicDeckId, { silent: true }).catch((error) => {
+      console.warn("Failed to refresh public deck detail:", error);
+    });
+    renderDeckDetail();
+    return;
+  }
+
+  const followPublicDeckButton = event.target.closest("[data-follow-public-deck]");
+  if (followPublicDeckButton) {
+    followPublicDeck(followPublicDeckButton.dataset.followPublicDeck).catch((error) => {
+      console.warn("Failed to follow public deck:", error);
+      showToast(error.message || "公開デッキのフォローに失敗しました");
+    });
+    return;
+  }
+
+  const unfollowPublicDeckButton = event.target.closest("[data-unfollow-public-deck]");
+  if (unfollowPublicDeckButton) {
+    unfollowPublicDeck(unfollowPublicDeckButton.dataset.unfollowPublicDeck).catch((error) => {
+      console.warn("Failed to unfollow public deck:", error);
+      showToast(error.message || "公開フォローの解除に失敗しました");
+    });
+    return;
+  }
+
+  const clonePublicDeckButton = event.target.closest("[data-clone-public-deck]");
+  if (clonePublicDeckButton) {
+    duplicatePublicDeckToLocal(clonePublicDeckButton.dataset.clonePublicDeck).catch((error) => {
+      console.warn("Failed to clone public deck:", error);
+      showToast(error.message || "公開デッキの複製に失敗しました");
+    });
+    return;
+  }
+
+  const requestPublicEditButton = event.target.closest("[data-request-public-edit]");
+  if (requestPublicEditButton) {
+    requestPublicDeckEditorAccess(requestPublicEditButton.dataset.requestPublicEdit).catch((error) => {
+      console.warn("Failed to request public deck edit access:", error);
+      showToast(error.message || "編集参加申請に失敗しました");
+    });
+    return;
+  }
+
+  const toggleFavoriteButton = event.target.closest("[data-toggle-public-favorite]");
+  if (toggleFavoriteButton) {
+    togglePublicDeckFavorite(toggleFavoriteButton.dataset.togglePublicFavorite).catch((error) => {
+      console.warn("Failed to toggle public deck favorite:", error);
+      showToast(error.message || "お気に入りの更新に失敗しました");
+    });
+    return;
+  }
+
+  const ratePublicDeckButton = event.target.closest("[data-rate-public-deck]");
+  if (ratePublicDeckButton) {
+    ratePublicDeck(
+      ratePublicDeckButton.dataset.ratePublicDeck,
+      Number(ratePublicDeckButton.dataset.publicRatingValue || 0),
+    ).catch((error) => {
+      console.warn("Failed to rate public deck:", error);
+      showToast(error.message || "評価の保存に失敗しました");
+    });
+    return;
+  }
+
+  const reportPublicDeckButton = event.target.closest("[data-report-public-deck]");
+  if (reportPublicDeckButton) {
+    submitPublicDeckReport(reportPublicDeckButton.dataset.reportPublicDeck).catch((error) => {
+      console.warn("Failed to submit public deck report:", error);
+      showToast(error.message || "通報の送信に失敗しました");
+    });
+    return;
+  }
+
+  const moderateReportButton = event.target.closest("[data-moderate-public-report]");
+  if (moderateReportButton) {
+    moderatePublicDeckReport(
+      moderateReportButton.dataset.moderatePublicReport,
+      moderateReportButton.dataset.nextStatus || "resolved",
+      moderateReportButton.dataset.hideDeck === "true" ? true : moderateReportButton.dataset.hideDeck === "false" ? false : null,
+    ).catch((error) => {
+      console.warn("Failed to moderate public report:", error);
+      showToast(error.message || "公開モデレーションに失敗しました");
+    });
+    return;
+  }
+
   const startButton = event.target.closest("[data-start-deck]");
   if (startButton) {
     studyDeckFilter.value = startButton.dataset.startDeck;
@@ -11098,6 +11894,9 @@ async function getSupabaseClient() {
     refreshCloudData({ silent: true }).catch((error) => {
       console.warn("Failed to refresh cloud data:", error);
     });
+    refreshPublicCatalog({ silent: true }).catch((error) => {
+      console.warn("Failed to refresh public catalog:", error);
+    });
     refreshCloudBackups({ silent: true }).catch((error) => {
       console.warn("Failed to refresh cloud backups:", error);
     });
@@ -11106,6 +11905,8 @@ async function getSupabaseClient() {
         console.warn("Failed to handle post-login flow:", error);
       });
     }
+    renderLibrary();
+    renderDeckDetail();
     renderSharePanel();
     renderSettingsPanel();
   });
@@ -11155,6 +11956,7 @@ async function initializeCloud() {
   }
 
   await refreshCloudData({ silent: true });
+  await refreshPublicCatalog({ silent: true });
   await refreshCloudBackups({ silent: true });
   if (session?.user && getStoredAuthIntent()) {
     await handleSuccessfulCloudSignIn("SIGNED_IN");
@@ -11330,6 +12132,12 @@ function formatShareEventLabel(eventType = "") {
     member_removed: "メンバー除外",
     member_left: "共有から退出",
     copy_link_refreshed: "コピーリンク更新",
+    public_published: "公開デッキ公開",
+    public_updated: "公開デッキ更新",
+    public_hidden: "公開停止",
+    public_restored: "公開復帰",
+    public_edit_requested: "公開編集申請",
+    public_reported: "公開デッキ通報",
   };
   return labels[String(eventType || "").trim()] || "共有更新";
 }
@@ -11343,6 +12151,9 @@ function formatShareEntityLabel(entityType = "") {
     request: "申請",
     share: "共有",
     copy_package: "コピーリンク",
+    public_catalog: "公開カタログ",
+    public_report: "公開通報",
+    public_version: "公開バージョン",
   };
   return labels[String(entityType || "").trim()] || "";
 }
@@ -11420,7 +12231,9 @@ async function refreshCloudData({ silent = false } = {}) {
     const userId = cloudState.session.user.id;
     const membershipResponse = await client
       .from("deck_members")
-      .select("role, permissions, deck_id, shared_decks(id, name, focus, subject, description, share_token, owner_id, created_at, updated_at)")
+      .select(
+        "role, permissions, deck_id, shared_decks(id, name, focus, subject, description, share_token, owner_id, created_at, updated_at, visibility, public_title, public_description, public_tags, public_target_grade, public_update_note, public_author_label, public_ai_assisted, public_published_at, public_version, public_is_hidden, public_favorite_count, public_follow_count, public_clone_count, public_rating_average, public_rating_count, public_card_count, public_image_count)",
+      )
       .eq("user_id", userId);
 
     if (membershipResponse.error) {
@@ -11510,6 +12323,7 @@ async function refreshCloudData({ silent = false } = {}) {
         deckId: request.deck_id,
         requesterEmail: request.requester_email,
         requestedRole: request.requested_role,
+        requestKind: String(request.request_kind || "share_access").trim(),
       }));
     cloudState.membersByDeck = buildCloudMemberMap(memberResponse.data || [], requestResponse.data || [], userId);
     cloudState.deckEventsByDeck = buildCloudEventMap(eventResponse.data || []);
@@ -11518,6 +12332,7 @@ async function refreshCloudData({ silent = false } = {}) {
     cloudState.status = "ready";
     persist();
     render();
+    await refreshPublicCatalog({ silent: true });
     if (cloudState.shareToken) {
       await refreshShareJoinPreview();
     }
@@ -11550,6 +12365,24 @@ function mergeCloudDecks(sharedDecks, sharedCards, sharedCardMedia, progressRows
       role: sharedDeck.role || existingDeck?.role || "viewer",
       permissions: normalizePermissionMap(sharedDeck.permissions, sharedDeck.role || existingDeck?.role || "viewer"),
       syncState: "synced",
+      visibility: sharedDeck.visibility || existingDeck?.visibility || "link_only",
+      publicTitle: sharedDeck.public_title || existingDeck?.publicTitle || "",
+      publicDescription: sharedDeck.public_description || existingDeck?.publicDescription || "",
+      publicTags: Array.isArray(sharedDeck.public_tags) ? sharedDeck.public_tags : existingDeck?.publicTags || [],
+      publicTargetGrade: sharedDeck.public_target_grade || existingDeck?.publicTargetGrade || "",
+      publicUpdateNote: sharedDeck.public_update_note || existingDeck?.publicUpdateNote || "",
+      publicAuthorLabel: sharedDeck.public_author_label || existingDeck?.publicAuthorLabel || "",
+      publicAiAssisted: Boolean(sharedDeck.public_ai_assisted ?? existingDeck?.publicAiAssisted),
+      publicPublishedAt: parseCloudTimestamp(sharedDeck.public_published_at) || existingDeck?.publicPublishedAt || 0,
+      publicVersion: Number(sharedDeck.public_version || existingDeck?.publicVersion || 0),
+      publicIsHidden: Boolean(sharedDeck.public_is_hidden ?? existingDeck?.publicIsHidden),
+      publicFavoriteCount: Number(sharedDeck.public_favorite_count || existingDeck?.publicFavoriteCount || 0),
+      publicFollowCount: Number(sharedDeck.public_follow_count || existingDeck?.publicFollowCount || 0),
+      publicCloneCount: Number(sharedDeck.public_clone_count || existingDeck?.publicCloneCount || 0),
+      publicRatingAverage: Number(sharedDeck.public_rating_average || existingDeck?.publicRatingAverage || 0),
+      publicRatingCount: Number(sharedDeck.public_rating_count || existingDeck?.publicRatingCount || 0),
+      publicCardCount: Number(sharedDeck.public_card_count || existingDeck?.publicCardCount || 0),
+      publicImageCount: Number(sharedDeck.public_image_count || existingDeck?.publicImageCount || 0),
     });
 
     if (existingDeck?.syncState === "dirty" && canEditDeckContent(existingDeck)) {
@@ -11616,6 +12449,399 @@ function mergeCloudDecks(sharedDecks, sharedCards, sharedCardMedia, progressRows
 
     state.cards = state.cards.filter((card) => card.deckId !== localDeckId).concat(nextCards);
   });
+}
+
+function normalizePublicDeckRow(row = {}) {
+  return {
+    id: String(row.id || "").trim(),
+    name: String(row.name || "公開デッキ").trim(),
+    focus: normalizeDeckFocus(row.focus),
+    subject: String(row.subject || "").trim(),
+    description: String(row.description || "").trim(),
+    shareToken: String(row.share_token || "").trim(),
+    createdAt: parseCloudTimestamp(row.created_at),
+    updatedAt: parseCloudTimestamp(row.updated_at),
+    visibility: normalizePublicVisibility(row.visibility),
+    publicTitle: String(row.public_title || row.name || "").trim(),
+    publicDescription: String(row.public_description || row.description || "").trim(),
+    publicTags: Array.isArray(row.public_tags) ? row.public_tags.map((tag) => String(tag || "").trim()).filter(Boolean) : [],
+    publicTargetGrade: String(row.public_target_grade || "").trim(),
+    publicUpdateNote: String(row.public_update_note || "").trim(),
+    publicAuthorLabel: String(row.public_author_label || "").trim(),
+    publicAiAssisted: Boolean(row.public_ai_assisted),
+    publicPublishedAt: parseCloudTimestamp(row.public_published_at),
+    publicVersion: Number(row.public_version || 0),
+    publicIsHidden: Boolean(row.public_is_hidden),
+    publicFavoriteCount: Number(row.public_favorite_count || 0),
+    publicFollowCount: Number(row.public_follow_count || 0),
+    publicCloneCount: Number(row.public_clone_count || 0),
+    publicRatingAverage: Number(row.public_rating_average || 0),
+    publicRatingCount: Number(row.public_rating_count || 0),
+    publicCardCount: Number(row.public_card_count || 0),
+    publicImageCount: Number(row.public_image_count || 0),
+  };
+}
+
+function normalizePublicVersionRow(row = {}) {
+  const summary = row.summary_json && typeof row.summary_json === "object" ? row.summary_json : {};
+  return {
+    id: String(row.id || "").trim(),
+    deckId: String(row.deck_id || "").trim(),
+    versionNumber: Number(row.version_number || 0),
+    updateNote: String(row.update_note || "").trim(),
+    summary,
+    createdAt: parseCloudTimestamp(row.created_at),
+  };
+}
+
+function normalizePublicReportRow(row = {}) {
+  const meta = row.meta_json && typeof row.meta_json === "object" ? row.meta_json : {};
+  return {
+    id: String(row.id || "").trim(),
+    deckId: String(row.deck_id || "").trim(),
+    reporterUserId: String(row.user_id || "").trim(),
+    reporterEmail: String(meta.reporterEmail || "").trim(),
+    reason: String(row.reason || "").trim(),
+    detail: String(row.detail || "").trim(),
+    status: String(row.status || "open").trim(),
+    statusLabel: String(row.status || "open") === "resolved" ? "解決済み" : String(row.status || "open") === "reviewed" ? "確認中" : "未処理",
+    deckTitle: String(meta.deckTitle || "").trim(),
+    deckSubject: String(meta.deckSubject || "").trim(),
+    createdAt: parseCloudTimestamp(row.created_at),
+    updatedAt: parseCloudTimestamp(row.updated_at),
+  };
+}
+
+function buildPublicCardPreviewList(deckId, cardRows = [], mediaRows = []) {
+  return (cardRows || []).map((cardRow, index) => {
+    const rowMedia = (mediaRows || [])
+      .filter((row) => row.shared_card_id === cardRow.id)
+      .sort((left, right) => left.side.localeCompare(right.side) || Number(left.sort_index || 0) - Number(right.sort_index || 0));
+    return normalizeCard({
+      id: String(cardRow.id || crypto.randomUUID()),
+      deckId,
+      front: cardRow.front,
+      back: cardRow.back,
+      hint: cardRow.hint || "",
+      topic: cardRow.topic || "",
+      tags: Array.isArray(cardRow.tags) ? cardRow.tags : parseTags(cardRow.tags),
+      note: cardRow.note || "",
+      example: cardRow.example || "",
+      frontMedia: rowMedia
+        .filter((row) => row.side === "front")
+        .map((row) => ({
+          assetId: row.asset_id || crypto.randomUUID(),
+          name: row.name || "画像",
+          mimeType: row.mime_type || "",
+          size: Number(row.size || 0),
+          width: Number(row.width || 0),
+          height: Number(row.height || 0),
+          source: "shared",
+          sharedPath: row.storage_path || "",
+          sharedMediaId: row.id,
+          publicUrl: getSharedMediaPublicUrl(row.storage_path || ""),
+        })),
+      backMedia: rowMedia
+        .filter((row) => row.side === "back")
+        .map((row) => ({
+          assetId: row.asset_id || crypto.randomUUID(),
+          name: row.name || "画像",
+          mimeType: row.mime_type || "",
+          size: Number(row.size || 0),
+          width: Number(row.width || 0),
+          height: Number(row.height || 0),
+          source: "shared",
+          sharedPath: row.storage_path || "",
+          sharedMediaId: row.id,
+          publicUrl: getSharedMediaPublicUrl(row.storage_path || ""),
+        })),
+      createdAt: parseCloudTimestamp(cardRow.created_at) || Date.now() + index,
+      updatedAt: parseCloudTimestamp(cardRow.updated_at) || Date.now() + index,
+      sharedCardId: String(cardRow.id || "").trim(),
+    });
+  });
+}
+
+async function fetchPublicDeckCardBundle(deckId, { limit = 0 } = {}) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !deckId) {
+    return [];
+  }
+
+  let cardsQuery = client.from("shared_cards").select("*").eq("deck_id", deckId).order("order_index", { ascending: true });
+  if (limit > 0) {
+    cardsQuery = cardsQuery.limit(limit);
+  }
+  const { data: cardRows, error: cardError } = await cardsQuery;
+  if (cardError) {
+    throw cardError;
+  }
+  const cardIds = (cardRows || []).map((row) => row.id);
+  const { data: mediaRows, error: mediaError } = cardIds.length
+    ? await client.from("shared_card_media").select("*").in("shared_card_id", cardIds).order("sort_index", { ascending: true })
+    : { data: [], error: null };
+  if (mediaError) {
+    throw mediaError;
+  }
+  return buildPublicCardPreviewList(deckId, cardRows || [], mediaRows || []);
+}
+
+function detachPublicFollowDeck(deck, reasonText = "") {
+  if (!deck || !isPublicFollowDeck(deck)) {
+    return;
+  }
+  deck.publicFollowMode = "none";
+  deck.publicSourceDeckId = "";
+  deck.publicLastSyncedVersion = 0;
+  deck.updatedAt = Date.now();
+  if (reasonText && !String(deck.description || "").includes(reasonText)) {
+    deck.description = [String(deck.description || "").trim(), reasonText].filter(Boolean).join(" / ");
+  }
+}
+
+async function createOrUpdateLocalDeckFromPublicSource(sourceDeck, sourceCards = [], { follow = false } = {}) {
+  if (!sourceDeck?.id) {
+    throw new Error("公開デッキが見つかりません");
+  }
+
+  const now = Date.now();
+  const existingDeck = follow
+    ? state.decks.find((deck) => deck.publicSourceDeckId === sourceDeck.id && isPublicFollowDeck(deck)) || null
+    : null;
+  const nextDeckId = existingDeck?.id || crypto.randomUUID();
+  const nextDeck = normalizeDeck({
+    ...existingDeck,
+    id: nextDeckId,
+    name: existingDeck?.name || (follow ? `${sourceDeck.publicTitle || sourceDeck.name}` : createUniqueDeckName(`${sourceDeck.publicTitle || sourceDeck.name} 自分用`)),
+    focus: sourceDeck.focus,
+    subject: sourceDeck.subject,
+    description: [
+      sourceDeck.publicDescription || sourceDeck.description,
+      follow ? "公開デッキをフォロー中" : "公開デッキから複製",
+    ]
+      .filter(Boolean)
+      .join(" / "),
+    createdAt: existingDeck?.createdAt || now,
+    updatedAt: now,
+    storageMode: "local",
+    role: "owner",
+    syncState: "local-only",
+    visibility: "private",
+    publicTitle: sourceDeck.publicTitle,
+    publicDescription: sourceDeck.publicDescription,
+    publicTags: sourceDeck.publicTags,
+    publicTargetGrade: sourceDeck.publicTargetGrade,
+    publicUpdateNote: sourceDeck.publicUpdateNote,
+    publicAuthorLabel: sourceDeck.publicAuthorLabel,
+    publicAiAssisted: sourceDeck.publicAiAssisted,
+    publicPublishedAt: sourceDeck.publicPublishedAt,
+    publicVersion: sourceDeck.publicVersion,
+    publicIsHidden: false,
+    publicFollowMode: follow ? "following" : "none",
+    publicSourceDeckId: follow ? sourceDeck.id : "",
+    publicLastSyncedVersion: follow ? sourceDeck.publicVersion : 0,
+    publicFavoriteCount: sourceDeck.publicFavoriteCount,
+    publicFollowCount: sourceDeck.publicFollowCount,
+    publicCloneCount: sourceDeck.publicCloneCount,
+    publicRatingAverage: sourceDeck.publicRatingAverage,
+    publicRatingCount: sourceDeck.publicRatingCount,
+    publicCardCount: sourceDeck.publicCardCount,
+    publicImageCount: sourceDeck.publicImageCount,
+  });
+
+  upsertDeck(nextDeck);
+
+  const existingCardsBySharedId = new Map(
+    state.cards
+      .filter((card) => card.deckId === nextDeckId && card.sharedCardId)
+      .map((card) => [card.sharedCardId, card]),
+  );
+  const nextCards = sourceCards.map((card, index) => {
+    const existing = existingCardsBySharedId.get(card.sharedCardId);
+    return normalizeCard({
+      ...clone(card),
+      id: existing?.id || crypto.randomUUID(),
+      deckId: nextDeckId,
+      createdAt: existing?.createdAt || now + index,
+      updatedAt: now + index,
+      sharedCardId: follow ? card.sharedCardId : "",
+      study: existing?.study || clone(card.study),
+    });
+  });
+
+  state.cards = state.cards.filter((card) => card.deckId !== nextDeckId).concat(nextCards);
+  persist();
+  render();
+  return nextDeck;
+}
+
+async function refreshPublicDeckDetail(deckId = "", { silent = false } = {}) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !deckId) {
+    return null;
+  }
+
+  try {
+    const { data: deckRow, error: deckError } = await client.from("shared_decks").select("*").eq("id", deckId).single();
+    if (deckError) {
+      throw deckError;
+    }
+    const detail = normalizePublicDeckRow(deckRow || {});
+    cloudState.publicDeckDetail = detail;
+    selectedPublicDeckId = detail.id;
+    cloudState.publicDeckSamplesByDeck[deckId] = await fetchPublicDeckCardBundle(deckId, { limit: PUBLIC_DECK_SAMPLE_LIMIT });
+    const { data: versionRows, error: versionError } = await client
+      .from("public_deck_versions")
+      .select("*")
+      .eq("deck_id", deckId)
+      .order("version_number", { ascending: false })
+      .limit(PUBLIC_VERSION_LIMIT);
+    if (versionError) {
+      throw versionError;
+    }
+    cloudState.publicVersionsByDeck[deckId] = (versionRows || []).map((row) => normalizePublicVersionRow(row));
+    if (!silent) {
+      renderLibrary();
+      renderDeckDetail();
+    }
+    return detail;
+  } catch (error) {
+    console.warn("Failed to refresh public deck detail:", error);
+    if (!silent) {
+      showToast("公開デッキ詳細の読み込みに失敗しました");
+    }
+    return null;
+  }
+}
+
+async function syncFollowedPublicDecks() {
+  const followedDeckIds = new Set(Object.keys(cloudState.publicFollowsByDeck));
+
+  state.decks
+    .filter((deck) => isPublicFollowDeck(deck))
+    .forEach((deck) => {
+      if (!followedDeckIds.has(deck.publicSourceDeckId)) {
+        detachPublicFollowDeck(deck, "公開フォローを解除したためローカルコピーへ切り替え");
+      }
+    });
+
+  for (const [deckId, followRow] of Object.entries(cloudState.publicFollowsByDeck)) {
+    const sourceDeck = cloudState.publicCatalog.find((deck) => deck.id === deckId);
+    if (!sourceDeck) {
+      continue;
+    }
+    const localFollowDeck = state.decks.find((deck) => deck.publicSourceDeckId === deckId && isPublicFollowDeck(deck)) || null;
+    if (!localFollowDeck || sourceDeck.publicVersion > (localFollowDeck.publicLastSyncedVersion || 0) || sourceDeck.publicVersion > (followRow.lastSeenVersion || 0)) {
+      await syncPublicFollowDeck(deckId, { silent: true });
+    }
+  }
+}
+
+async function refreshPublicCatalog({ silent = false } = {}) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client) {
+    cloudState.publicCatalog = [];
+    cloudState.publicDeckDetail = null;
+    cloudState.publicDeckSamplesByDeck = {};
+    cloudState.publicVersionsByDeck = {};
+    if (!silent) {
+      renderLibrary();
+      renderDeckDetail();
+    }
+    return;
+  }
+
+  try {
+    const { data: deckRows, error: deckError } = await client
+      .from("shared_decks")
+      .select("*")
+      .eq("visibility", "public_listed")
+      .eq("public_is_hidden", false)
+      .order("public_published_at", { ascending: false });
+    if (deckError) {
+      throw deckError;
+    }
+
+    cloudState.publicCatalog = (deckRows || []).map((row) => normalizePublicDeckRow(row));
+    cloudState.publicFollowsByDeck = {};
+    cloudState.publicFavoritesByDeck = {};
+    cloudState.publicRatingsByDeck = {};
+    cloudState.publicRequestStatusByDeck = {};
+    cloudState.publicReports = [];
+    cloudState.isPublicModerator = false;
+
+    if (cloudState.session?.user) {
+      const userId = cloudState.session.user.id;
+      const [{ data: followRows, error: followError }, { data: favoriteRows, error: favoriteError }, { data: ratingRows, error: ratingError }, { data: requestRows, error: requestError }, { data: moderatorRows, error: moderatorError }] = await Promise.all([
+        client.from("public_deck_follows").select("deck_id, last_seen_version").eq("user_id", userId),
+        client.from("public_deck_favorites").select("deck_id").eq("user_id", userId),
+        client.from("public_deck_ratings").select("deck_id, rating").eq("user_id", userId),
+        client.from("deck_access_requests").select("deck_id, status, request_kind").eq("user_id", userId).eq("request_kind", "public_editor"),
+        client.from("public_moderators").select("user_id").eq("user_id", userId),
+      ]);
+
+      if (followError) throw followError;
+      if (favoriteError) throw favoriteError;
+      if (ratingError) throw ratingError;
+      if (requestError) throw requestError;
+      if (moderatorError) throw moderatorError;
+
+      cloudState.publicFollowsByDeck = Object.fromEntries(
+        (followRows || []).map((row) => [
+          String(row.deck_id || "").trim(),
+          {
+            deckId: String(row.deck_id || "").trim(),
+            lastSeenVersion: Number(row.last_seen_version || 0),
+          },
+        ]),
+      );
+      cloudState.publicFavoritesByDeck = Object.fromEntries((favoriteRows || []).map((row) => [String(row.deck_id || "").trim(), true]));
+      cloudState.publicRatingsByDeck = Object.fromEntries((ratingRows || []).map((row) => [String(row.deck_id || "").trim(), Number(row.rating || 0)]));
+      cloudState.publicRequestStatusByDeck = Object.fromEntries(
+        (requestRows || []).map((row) => [String(row.deck_id || "").trim(), String(row.status || "").trim()]),
+      );
+      cloudState.isPublicModerator = Boolean((moderatorRows || []).length);
+
+      if (cloudState.isPublicModerator) {
+        const { data: reportRows, error: reportError } = await client
+          .from("public_deck_reports")
+          .select("*")
+          .in("status", ["open", "reviewed"])
+          .order("created_at", { ascending: false })
+          .limit(24);
+        if (reportError) {
+          throw reportError;
+        }
+        cloudState.publicReports = (reportRows || []).map((row) => normalizePublicReportRow(row));
+      }
+
+      await syncFollowedPublicDecks();
+    }
+
+    if (selectedPublicDeckId && !cloudState.publicCatalog.some((deck) => deck.id === selectedPublicDeckId)) {
+      selectedPublicDeckId = "";
+    }
+    if (!selectedPublicDeckId) {
+      selectedPublicDeckId = cloudState.publicCatalog[0]?.id || "";
+    }
+
+    if (selectedPublicDeckId) {
+      await refreshPublicDeckDetail(selectedPublicDeckId, { silent: true });
+    } else {
+      cloudState.publicDeckDetail = null;
+    }
+
+    if (!silent) {
+      renderLibrary();
+      renderDeckDetail();
+      renderSharePanel();
+    }
+  } catch (error) {
+    console.warn("Failed to refresh public catalog:", error);
+    if (!silent) {
+      showToast(error.message || "公開デッキ一覧の読み込みに失敗しました");
+    }
+  }
 }
 
 function upsertDeck(nextDeck) {
@@ -13594,6 +14820,363 @@ function duplicateSelectedDeck() {
   showToast("自分用のローカルデッキを複製しました");
 }
 
+async function refreshPublicDeckContentStatsForDeck(deck) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !deck?.sharedDeckId || !isPublicListedDeck(deck)) {
+    return;
+  }
+  await client.rpc("refresh_public_deck_content_stats", {
+    target_deck_id: deck.sharedDeckId,
+  });
+}
+
+function getPublicDeckSource(deckId = "") {
+  return cloudState.publicCatalog.find((deck) => deck.id === deckId) || (cloudState.publicDeckDetail?.id === deckId ? cloudState.publicDeckDetail : null);
+}
+
+async function syncPublicFollowDeck(deckId, { silent = false } = {}) {
+  const sourceDeck = getPublicDeckSource(deckId) || (await refreshPublicDeckDetail(deckId, { silent: true }));
+  if (!sourceDeck) {
+    throw new Error("公開デッキが見つかりません");
+  }
+
+  const cards = await fetchPublicDeckCardBundle(deckId);
+  const nextDeck = await createOrUpdateLocalDeckFromPublicSource(sourceDeck, cards, { follow: true });
+
+  const client = cloudState.client || (await getSupabaseClient());
+  if (client && cloudState.session?.user) {
+    await client
+      .from("public_deck_follows")
+      .update({ last_seen_version: sourceDeck.publicVersion })
+      .eq("deck_id", deckId)
+      .eq("user_id", cloudState.session.user.id);
+  }
+  cloudState.publicFollowsByDeck[deckId] = {
+    deckId,
+    lastSeenVersion: sourceDeck.publicVersion,
+  };
+  if (!silent) {
+    selectedDeckDetailId = nextDeck.id;
+    render();
+    showToast(`公開デッキ「${sourceDeck.publicTitle || sourceDeck.name}」をフォローしました`);
+  }
+  return nextDeck;
+}
+
+async function followPublicDeck(deckId) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    openAccountBackupSettings({ intent: "settings-backup" });
+    throw new Error("フォローして使うにはログインが必要です");
+  }
+
+  const sourceDeck = getPublicDeckSource(deckId) || (await refreshPublicDeckDetail(deckId, { silent: true }));
+  if (!sourceDeck) {
+    throw new Error("公開デッキが見つかりません");
+  }
+
+  await client.from("public_deck_follows").upsert(
+    {
+      deck_id: deckId,
+      user_id: cloudState.session.user.id,
+      last_seen_version: Number(sourceDeck.publicVersion || 0),
+    },
+    { onConflict: "deck_id,user_id" },
+  );
+
+  await syncPublicFollowDeck(deckId, { silent: true });
+  await refreshPublicCatalog({ silent: true });
+  render();
+  showToast(`公開デッキ「${sourceDeck.publicTitle || sourceDeck.name}」をフォローしました`);
+}
+
+async function unfollowPublicDeck(deckId) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    throw new Error("フォロー解除にはログインが必要です");
+  }
+
+  const localDeck = state.decks.find((deck) => deck.publicSourceDeckId === deckId && isPublicFollowDeck(deck));
+  await client.from("public_deck_follows").delete().eq("deck_id", deckId).eq("user_id", cloudState.session.user.id);
+  delete cloudState.publicFollowsByDeck[deckId];
+  if (localDeck) {
+    detachPublicFollowDeck(localDeck, "公開フォローを解除したためローカルコピーへ切り替え");
+  }
+  persist();
+  await refreshPublicCatalog({ silent: true });
+  render();
+  showToast("公開フォローを解除し、この端末ではローカルコピーとして残しました");
+}
+
+async function duplicatePublicDeckToLocal(deckId) {
+  const sourceDeck = getPublicDeckSource(deckId) || (await refreshPublicDeckDetail(deckId, { silent: true }));
+  if (!sourceDeck) {
+    throw new Error("公開デッキが見つかりません");
+  }
+  const cards = await fetchPublicDeckCardBundle(deckId);
+  const nextDeck = await createOrUpdateLocalDeckFromPublicSource(sourceDeck, cards, { follow: false });
+
+  const client = cloudState.client || (await getSupabaseClient());
+  if (client && cloudState.session?.user) {
+    await client.from("public_deck_clones").upsert(
+      {
+        deck_id: deckId,
+        user_id: cloudState.session.user.id,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "deck_id,user_id" },
+    );
+  }
+
+  selectedDeckDetailId = nextDeck.id;
+  selectedPublicDeckId = deckId;
+  libraryMode = "cards";
+  await refreshPublicCatalog({ silent: true });
+  switchSection("assistant");
+  renderLibrary();
+  renderDeckDetail();
+  showToast(`公開デッキ「${sourceDeck.publicTitle || sourceDeck.name}」を自分用に複製しました`);
+}
+
+async function requestPublicDeckEditorAccess(deckId) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    openAccountBackupSettings({ intent: "settings-backup" });
+    throw new Error("編集参加申請にはログインが必要です");
+  }
+
+  const { error } = await client.rpc("request_public_deck_editor_access", {
+    target_deck_id: deckId,
+  });
+  if (error) {
+    throw error;
+  }
+
+  await refreshPublicCatalog({ silent: true });
+  await refreshCloudData({ silent: true });
+  render();
+  showToast("公開デッキへの編集参加を申請しました");
+}
+
+async function togglePublicDeckFavorite(deckId) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    openAccountBackupSettings({ intent: "settings-backup" });
+    throw new Error("お気に入りにはログインが必要です");
+  }
+
+  const isFavorite = Boolean(cloudState.publicFavoritesByDeck[deckId]);
+  if (isFavorite) {
+    const { error } = await client.from("public_deck_favorites").delete().eq("deck_id", deckId).eq("user_id", cloudState.session.user.id);
+    if (error) {
+      throw error;
+    }
+  } else {
+    const { error } = await client.from("public_deck_favorites").upsert(
+      {
+        deck_id: deckId,
+        user_id: cloudState.session.user.id,
+      },
+      { onConflict: "deck_id,user_id" },
+    );
+    if (error) {
+      throw error;
+    }
+  }
+
+  await refreshPublicCatalog({ silent: true });
+  render();
+  showToast(isFavorite ? "お気に入りを外しました" : "お気に入りに追加しました");
+}
+
+async function ratePublicDeck(deckId, ratingValue) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    openAccountBackupSettings({ intent: "settings-backup" });
+    throw new Error("評価にはログインが必要です");
+  }
+  const safeRating = clampNumber(Number(ratingValue || 0), 1, 5, 0);
+  if (!safeRating) {
+    throw new Error("評価の値が正しくありません");
+  }
+
+  const { error } = await client.from("public_deck_ratings").upsert(
+    {
+      deck_id: deckId,
+      user_id: cloudState.session.user.id,
+      rating: safeRating,
+    },
+    { onConflict: "deck_id,user_id" },
+  );
+  if (error) {
+    throw error;
+  }
+
+  await refreshPublicCatalog({ silent: true });
+  render();
+  showToast(`評価を ${safeRating} / 5 で保存しました`);
+}
+
+async function submitPublicDeckReport(deckId) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    openAccountBackupSettings({ intent: "settings-backup" });
+    throw new Error("通報にはログインが必要です");
+  }
+
+  const deck = getPublicDeckSource(deckId) || cloudState.publicDeckDetail;
+  const reason = String(document.getElementById("publicReportReasonSelect")?.value || "").trim();
+  const detail = String(document.getElementById("publicReportDetailInput")?.value || "").trim();
+  if (!reason) {
+    throw new Error("通報理由を選んでください");
+  }
+
+  const { error } = await client.from("public_deck_reports").insert({
+    deck_id: deckId,
+    user_id: cloudState.session.user.id,
+    reason,
+    detail,
+    meta_json: {
+      deckTitle: deck?.publicTitle || deck?.name || "",
+      deckSubject: deck?.subject || "",
+      reporterEmail: String(cloudState.session.user.email || cloudState.profile?.email || "").trim(),
+    },
+  });
+  if (error) {
+    throw error;
+  }
+
+  const detailInput = document.getElementById("publicReportDetailInput");
+  if (detailInput) {
+    detailInput.value = "";
+  }
+  showToast("通報を送信しました");
+}
+
+async function moderatePublicDeckReport(reportId, nextStatus = "resolved", hideDeck = null) {
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    throw new Error("モデレーションにはログインが必要です");
+  }
+
+  const { error } = await client.rpc("moderate_public_deck", {
+    target_report_id: reportId,
+    next_status: nextStatus,
+    hide_public_deck: hideDeck,
+  });
+  if (error) {
+    throw error;
+  }
+
+  await refreshPublicCatalog({ silent: true });
+  await refreshCloudData({ silent: true });
+  render();
+  showToast("公開デッキの通報処理を更新しました");
+}
+
+async function publishSelectedDeck() {
+  let deck = getSelectedShareDeck();
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    openAccountBackupSettings({ intent: "settings-backup" });
+    throw new Error("公開機能にはログインが必要です");
+  }
+  if (!deck) {
+    throw new Error("公開するデッキを選んでください");
+  }
+
+  if (!deck.sharedDeckId) {
+    await shareDeck();
+    deck = getSelectedShareDeck();
+  }
+  if (!deck?.sharedDeckId) {
+    throw new Error("先に共有デッキ化してください");
+  }
+
+  if (canEditDeckContent(deck) && deck.syncState === "dirty") {
+    await syncDeckToCloud(deck);
+  }
+
+  const { data, error } = await client.rpc("publish_shared_deck", {
+    target_deck_id: deck.sharedDeckId,
+    next_visibility: publicVisibilitySelect?.value || "public_listed",
+    next_title: String(publicTitleInput?.value || deck.name || "").trim(),
+    next_description: String(publicDescriptionInput?.value || deck.description || "").trim(),
+    next_tags: parseTags(publicTagsInput?.value || ""),
+    next_target_grade: String(publicTargetGradeInput?.value || "").trim(),
+    next_update_note: String(publicUpdateNoteInput?.value || "").trim(),
+    next_ai_assisted: Boolean(publicAiAssistedCheckbox?.checked),
+    acknowledge_public_responsibility: Boolean(publicPublishConfirmCheckbox?.checked),
+  });
+  if (error) {
+    throw error;
+  }
+
+  const publishedRow = Array.isArray(data) ? data[0] : data;
+  if (publishedRow) {
+    const mergedDeck = normalizeDeck({
+      ...deck,
+      visibility: publishedRow.visibility,
+      publicTitle: publishedRow.public_title,
+      publicDescription: publishedRow.public_description,
+      publicTags: publishedRow.public_tags,
+      publicTargetGrade: publishedRow.public_target_grade,
+      publicUpdateNote: publishedRow.public_update_note,
+      publicAuthorLabel: publishedRow.public_author_label,
+      publicAiAssisted: publishedRow.public_ai_assisted,
+      publicPublishedAt: parseCloudTimestamp(publishedRow.public_published_at),
+      publicVersion: Number(publishedRow.public_version || 0),
+      publicIsHidden: Boolean(publishedRow.public_is_hidden),
+      publicFavoriteCount: Number(publishedRow.public_favorite_count || 0),
+      publicFollowCount: Number(publishedRow.public_follow_count || 0),
+      publicCloneCount: Number(publishedRow.public_clone_count || 0),
+      publicRatingAverage: Number(publishedRow.public_rating_average || 0),
+      publicRatingCount: Number(publishedRow.public_rating_count || 0),
+      publicCardCount: Number(publishedRow.public_card_count || 0),
+      publicImageCount: Number(publishedRow.public_image_count || 0),
+    });
+    upsertDeck(mergedDeck);
+  }
+
+  await refreshCloudData({ silent: true });
+  await refreshPublicCatalog({ silent: true });
+  render();
+  showToast(publicVisibilitySelect?.value === "public_listed" ? "公開デッキを更新しました" : "公開範囲を更新しました");
+}
+
+async function unpublishSelectedDeck() {
+  const deck = getSelectedShareDeck();
+  const client = cloudState.client || (await getSupabaseClient());
+  if (!client || !cloudState.session?.user) {
+    openAccountBackupSettings({ intent: "settings-backup" });
+    throw new Error("非公開化にはログインが必要です");
+  }
+  if (!deck?.sharedDeckId) {
+    throw new Error("共有デッキを選んでください");
+  }
+
+  const nextVisibility = publicVisibilitySelect?.value === "private" ? "private" : "link_only";
+  const { error } = await client.rpc("publish_shared_deck", {
+    target_deck_id: deck.sharedDeckId,
+    next_visibility: nextVisibility,
+    next_title: String(publicTitleInput?.value || deck.publicTitle || deck.name || "").trim(),
+    next_description: String(publicDescriptionInput?.value || deck.publicDescription || deck.description || "").trim(),
+    next_tags: parseTags(publicTagsInput?.value || ""),
+    next_target_grade: String(publicTargetGradeInput?.value || "").trim(),
+    next_update_note: String(publicUpdateNoteInput?.value || "").trim(),
+    next_ai_assisted: Boolean(publicAiAssistedCheckbox?.checked),
+    acknowledge_public_responsibility: false,
+  });
+  if (error) {
+    throw error;
+  }
+
+  await refreshCloudData({ silent: true });
+  await refreshPublicCatalog({ silent: true });
+  render();
+  showToast(nextVisibility === "private" ? "private 設定に戻しました" : "リンク限定共有に戻しました");
+}
+
 async function refreshShareJoinPreview() {
   if (!cloudState.shareToken) {
     shareJoinModal.hidden = true;
@@ -14586,6 +16169,16 @@ function normalizeAssistantState(assistant) {
 function normalizeDeck(deck) {
   const safeDeck = deck || {};
   const focus = normalizeDeckFocus(safeDeck.focus);
+  const storageMode = safeDeck.storageMode === "shared" ? "shared" : "local";
+  const role = ["owner", "editor", "viewer", "pending_request"].includes(String(safeDeck.role || ""))
+    ? String(safeDeck.role)
+    : "owner";
+  const visibility = normalizePublicVisibility(
+    safeDeck.visibility || (storageMode === "shared" ? "link_only" : "private"),
+  );
+  const publicTitle = String(safeDeck.publicTitle || "").trim();
+  const publicDescription = String(safeDeck.publicDescription || "").trim();
+  const publicTags = Array.isArray(safeDeck.publicTags) ? safeDeck.publicTags.map((tag) => String(tag || "").trim()).filter(Boolean) : parseTags(safeDeck.publicTags);
 
   return {
     id: String(safeDeck.id || crypto.randomUUID()),
@@ -14595,19 +16188,40 @@ function normalizeDeck(deck) {
     description: String(safeDeck.description || "").trim(),
     createdAt: Number.isFinite(safeDeck.createdAt) ? safeDeck.createdAt : Date.now(),
     updatedAt: Number.isFinite(safeDeck.updatedAt) ? safeDeck.updatedAt : Number.isFinite(safeDeck.createdAt) ? safeDeck.createdAt : Date.now(),
-    storageMode: safeDeck.storageMode === "shared" ? "shared" : "local",
+    storageMode,
     sharedDeckId: String(safeDeck.sharedDeckId || "").trim(),
     shareToken: String(safeDeck.shareToken || "").trim(),
-    role: ["owner", "editor", "viewer", "pending_request"].includes(String(safeDeck.role || ""))
-      ? String(safeDeck.role)
-      : "owner",
+    role,
     defaults: normalizeDeckDefaults(safeDeck.defaults, focus),
-    permissions: normalizePermissionMap(safeDeck.permissions, safeDeck.role),
+    permissions: normalizePermissionMap(safeDeck.permissions, role),
     syncState: ["local-only", "synced", "dirty", "syncing", "offline"].includes(String(safeDeck.syncState || ""))
       ? String(safeDeck.syncState)
-      : safeDeck.storageMode === "shared"
+      : storageMode === "shared"
         ? "dirty"
         : "local-only",
+    visibility,
+    publicTitle,
+    publicDescription,
+    publicTags,
+    publicTargetGrade: String(safeDeck.publicTargetGrade || "").trim(),
+    publicUpdateNote: String(safeDeck.publicUpdateNote || "").trim(),
+    publicAuthorLabel: String(safeDeck.publicAuthorLabel || "").trim(),
+    publicAiAssisted: Boolean(safeDeck.publicAiAssisted),
+    publicPublishedAt: Number.isFinite(safeDeck.publicPublishedAt) ? safeDeck.publicPublishedAt : parseCloudTimestamp(safeDeck.publicPublishedAt),
+    publicVersion: Number.isFinite(safeDeck.publicVersion) ? Math.max(0, safeDeck.publicVersion) : Number(safeDeck.publicVersion || 0) || 0,
+    publicIsHidden: Boolean(safeDeck.publicIsHidden),
+    publicFollowMode: isPublicFollowDeck(safeDeck) ? "following" : String(safeDeck.publicFollowMode || "").trim() === "following" ? "following" : "none",
+    publicSourceDeckId: String(safeDeck.publicSourceDeckId || "").trim(),
+    publicLastSyncedVersion: Number.isFinite(safeDeck.publicLastSyncedVersion)
+      ? Math.max(0, safeDeck.publicLastSyncedVersion)
+      : Number(safeDeck.publicLastSyncedVersion || 0) || 0,
+    publicFavoriteCount: Number.isFinite(safeDeck.publicFavoriteCount) ? safeDeck.publicFavoriteCount : Number(safeDeck.publicFavoriteCount || 0) || 0,
+    publicFollowCount: Number.isFinite(safeDeck.publicFollowCount) ? safeDeck.publicFollowCount : Number(safeDeck.publicFollowCount || 0) || 0,
+    publicCloneCount: Number.isFinite(safeDeck.publicCloneCount) ? safeDeck.publicCloneCount : Number(safeDeck.publicCloneCount || 0) || 0,
+    publicRatingAverage: Number.isFinite(safeDeck.publicRatingAverage) ? safeDeck.publicRatingAverage : Number(safeDeck.publicRatingAverage || 0) || 0,
+    publicRatingCount: Number.isFinite(safeDeck.publicRatingCount) ? safeDeck.publicRatingCount : Number(safeDeck.publicRatingCount || 0) || 0,
+    publicCardCount: Number.isFinite(safeDeck.publicCardCount) ? safeDeck.publicCardCount : Number(safeDeck.publicCardCount || 0) || 0,
+    publicImageCount: Number.isFinite(safeDeck.publicImageCount) ? safeDeck.publicImageCount : Number(safeDeck.publicImageCount || 0) || 0,
   };
 }
 

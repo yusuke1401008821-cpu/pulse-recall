@@ -1669,3 +1669,961 @@ using (
     or public.is_deck_owner((storage.foldername(name))[1]::uuid)
   )
 );
+
+alter table public.shared_decks
+add column if not exists visibility text not null default 'link_only',
+add column if not exists public_title text not null default '',
+add column if not exists public_description text not null default '',
+add column if not exists public_tags text[] not null default '{}'::text[],
+add column if not exists public_target_grade text not null default '',
+add column if not exists public_update_note text not null default '',
+add column if not exists public_author_label text not null default '',
+add column if not exists public_ai_assisted boolean not null default false,
+add column if not exists public_published_at timestamptz,
+add column if not exists public_version integer not null default 0,
+add column if not exists public_is_hidden boolean not null default false,
+add column if not exists public_follow_count integer not null default 0,
+add column if not exists public_clone_count integer not null default 0,
+add column if not exists public_favorite_count integer not null default 0,
+add column if not exists public_rating_average double precision not null default 0,
+add column if not exists public_rating_count integer not null default 0,
+add column if not exists public_card_count integer not null default 0,
+add column if not exists public_image_count integer not null default 0;
+
+alter table public.shared_decks
+drop constraint if exists shared_decks_visibility_check;
+
+alter table public.shared_decks
+add constraint shared_decks_visibility_check
+check (visibility in ('private', 'link_only', 'public_listed'));
+
+update public.shared_decks
+set visibility = case
+  when visibility in ('private', 'link_only', 'public_listed') then visibility
+  else 'link_only'
+end;
+
+alter table public.deck_access_requests
+add column if not exists request_kind text not null default 'share_access';
+
+alter table public.deck_access_requests
+drop constraint if exists deck_access_requests_request_kind_check;
+
+alter table public.deck_access_requests
+add constraint deck_access_requests_request_kind_check
+check (request_kind in ('share_access', 'public_editor'));
+
+create table if not exists public.public_deck_versions (
+  id uuid primary key default gen_random_uuid(),
+  deck_id uuid not null references public.shared_decks (id) on delete cascade,
+  version_number integer not null,
+  update_note text not null default '',
+  summary_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.public_deck_follows (
+  id uuid primary key default gen_random_uuid(),
+  deck_id uuid not null references public.shared_decks (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  last_seen_version integer not null default 0,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  unique (deck_id, user_id)
+);
+
+create table if not exists public.public_deck_favorites (
+  id uuid primary key default gen_random_uuid(),
+  deck_id uuid not null references public.shared_decks (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default timezone('utc', now()),
+  unique (deck_id, user_id)
+);
+
+create table if not exists public.public_deck_ratings (
+  id uuid primary key default gen_random_uuid(),
+  deck_id uuid not null references public.shared_decks (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  rating integer not null check (rating between 1 and 5),
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  unique (deck_id, user_id)
+);
+
+create table if not exists public.public_deck_clones (
+  id uuid primary key default gen_random_uuid(),
+  deck_id uuid not null references public.shared_decks (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default timezone('utc', now()),
+  unique (deck_id, user_id)
+);
+
+create table if not exists public.public_deck_reports (
+  id uuid primary key default gen_random_uuid(),
+  deck_id uuid not null references public.shared_decks (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  reason text not null default '',
+  detail text not null default '',
+  status text not null default 'open' check (status in ('open', 'reviewed', 'resolved', 'dismissed')),
+  meta_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.public_moderators (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  note text not null default '',
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists idx_public_deck_versions_deck_id on public.public_deck_versions (deck_id, version_number desc);
+create index if not exists idx_public_deck_follows_deck_id on public.public_deck_follows (deck_id);
+create index if not exists idx_public_deck_follows_user_id on public.public_deck_follows (user_id);
+create index if not exists idx_public_deck_favorites_deck_id on public.public_deck_favorites (deck_id);
+create index if not exists idx_public_deck_ratings_deck_id on public.public_deck_ratings (deck_id);
+create index if not exists idx_public_deck_reports_status on public.public_deck_reports (status, created_at desc);
+
+drop trigger if exists set_public_deck_follows_updated_at on public.public_deck_follows;
+create trigger set_public_deck_follows_updated_at
+before update on public.public_deck_follows
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists set_public_deck_ratings_updated_at on public.public_deck_ratings;
+create trigger set_public_deck_ratings_updated_at
+before update on public.public_deck_ratings
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists set_public_deck_reports_updated_at on public.public_deck_reports;
+create trigger set_public_deck_reports_updated_at
+before update on public.public_deck_reports
+for each row
+execute function public.set_updated_at();
+
+alter table public.public_deck_versions enable row level security;
+alter table public.public_deck_follows enable row level security;
+alter table public.public_deck_favorites enable row level security;
+alter table public.public_deck_ratings enable row level security;
+alter table public.public_deck_clones enable row level security;
+alter table public.public_deck_reports enable row level security;
+alter table public.public_moderators enable row level security;
+
+create or replace function public.is_public_deck_visible(target_deck_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.shared_decks
+    where id = target_deck_id
+      and visibility = 'public_listed'
+      and public_is_hidden = false
+  );
+$$;
+
+create or replace function public.is_public_moderator()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.public_moderators
+    where user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.refresh_public_deck_stats(target_deck_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.shared_decks
+  set
+    public_follow_count = (select count(*)::integer from public.public_deck_follows where deck_id = target_deck_id),
+    public_clone_count = (select count(*)::integer from public.public_deck_clones where deck_id = target_deck_id),
+    public_favorite_count = (select count(*)::integer from public.public_deck_favorites where deck_id = target_deck_id),
+    public_rating_count = (select count(*)::integer from public.public_deck_ratings where deck_id = target_deck_id),
+    public_rating_average = coalesce((select round(avg(rating)::numeric, 2)::double precision from public.public_deck_ratings where deck_id = target_deck_id), 0)
+  where id = target_deck_id;
+end;
+$$;
+
+create or replace function public.refresh_public_deck_content_stats(target_deck_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.shared_decks
+  set
+    public_card_count = (select count(*)::integer from public.shared_cards where deck_id = target_deck_id),
+    public_image_count = (select count(*)::integer from public.shared_card_media where deck_id = target_deck_id)
+  where id = target_deck_id;
+end;
+$$;
+
+create or replace function public.refresh_public_deck_stats_from_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_id uuid;
+begin
+  if tg_op = 'DELETE' then
+    target_id := old.deck_id;
+  else
+    target_id := new.deck_id;
+  end if;
+  if target_id is not null then
+    perform public.refresh_public_deck_stats(target_id);
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+create or replace function public.refresh_public_deck_content_stats_from_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  next_deck_id uuid;
+  previous_deck_id uuid;
+begin
+  if tg_op = 'DELETE' then
+    next_deck_id := null;
+    previous_deck_id := old.deck_id;
+  elsif tg_op = 'INSERT' then
+    next_deck_id := new.deck_id;
+    previous_deck_id := null;
+  else
+    next_deck_id := new.deck_id;
+    previous_deck_id := old.deck_id;
+  end if;
+
+  if previous_deck_id is not null then
+    perform public.refresh_public_deck_content_stats(previous_deck_id);
+  end if;
+  if next_deck_id is not null and next_deck_id is distinct from previous_deck_id then
+    perform public.refresh_public_deck_content_stats(next_deck_id);
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists refresh_public_stats_on_follow on public.public_deck_follows;
+create trigger refresh_public_stats_on_follow
+after insert or update or delete on public.public_deck_follows
+for each row
+execute function public.refresh_public_deck_stats_from_trigger();
+
+drop trigger if exists refresh_public_stats_on_favorite on public.public_deck_favorites;
+create trigger refresh_public_stats_on_favorite
+after insert or delete on public.public_deck_favorites
+for each row
+execute function public.refresh_public_deck_stats_from_trigger();
+
+drop trigger if exists refresh_public_stats_on_rating on public.public_deck_ratings;
+create trigger refresh_public_stats_on_rating
+after insert or update or delete on public.public_deck_ratings
+for each row
+execute function public.refresh_public_deck_stats_from_trigger();
+
+drop trigger if exists refresh_public_stats_on_clone on public.public_deck_clones;
+create trigger refresh_public_stats_on_clone
+after insert or delete on public.public_deck_clones
+for each row
+execute function public.refresh_public_deck_stats_from_trigger();
+
+drop trigger if exists refresh_public_content_on_cards on public.shared_cards;
+create trigger refresh_public_content_on_cards
+after insert or update or delete on public.shared_cards
+for each row
+execute function public.refresh_public_deck_content_stats_from_trigger();
+
+drop trigger if exists refresh_public_content_on_media on public.shared_card_media;
+create trigger refresh_public_content_on_media
+after insert or update or delete on public.shared_card_media
+for each row
+execute function public.refresh_public_deck_content_stats_from_trigger();
+
+drop policy if exists "shared_decks_select_public_catalog" on public.shared_decks;
+create policy "shared_decks_select_public_catalog"
+on public.shared_decks
+for select
+to public
+using (public.is_public_deck_visible(id));
+
+drop policy if exists "shared_cards_select_public_catalog" on public.shared_cards;
+create policy "shared_cards_select_public_catalog"
+on public.shared_cards
+for select
+to public
+using (public.is_public_deck_visible(deck_id));
+
+drop policy if exists "shared_card_media_select_public_catalog" on public.shared_card_media;
+create policy "shared_card_media_select_public_catalog"
+on public.shared_card_media
+for select
+to public
+using (public.is_public_deck_visible(deck_id));
+
+drop policy if exists "public_deck_versions_select_visible" on public.public_deck_versions;
+create policy "public_deck_versions_select_visible"
+on public.public_deck_versions
+for select
+to public
+using (public.is_public_deck_visible(deck_id));
+
+drop policy if exists "public_deck_follows_select_self" on public.public_deck_follows;
+create policy "public_deck_follows_select_self"
+on public.public_deck_follows
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "public_deck_follows_insert_self" on public.public_deck_follows;
+create policy "public_deck_follows_insert_self"
+on public.public_deck_follows
+for insert
+to authenticated
+with check (user_id = auth.uid() and public.is_public_deck_visible(deck_id));
+
+drop policy if exists "public_deck_follows_update_self" on public.public_deck_follows;
+create policy "public_deck_follows_update_self"
+on public.public_deck_follows
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "public_deck_follows_delete_self" on public.public_deck_follows;
+create policy "public_deck_follows_delete_self"
+on public.public_deck_follows
+for delete
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "public_deck_favorites_select_self" on public.public_deck_favorites;
+create policy "public_deck_favorites_select_self"
+on public.public_deck_favorites
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "public_deck_favorites_insert_self" on public.public_deck_favorites;
+create policy "public_deck_favorites_insert_self"
+on public.public_deck_favorites
+for insert
+to authenticated
+with check (user_id = auth.uid() and public.is_public_deck_visible(deck_id));
+
+drop policy if exists "public_deck_favorites_delete_self" on public.public_deck_favorites;
+create policy "public_deck_favorites_delete_self"
+on public.public_deck_favorites
+for delete
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "public_deck_favorites_update_self" on public.public_deck_favorites;
+create policy "public_deck_favorites_update_self"
+on public.public_deck_favorites
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "public_deck_ratings_select_self" on public.public_deck_ratings;
+create policy "public_deck_ratings_select_self"
+on public.public_deck_ratings
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "public_deck_ratings_insert_self" on public.public_deck_ratings;
+create policy "public_deck_ratings_insert_self"
+on public.public_deck_ratings
+for insert
+to authenticated
+with check (user_id = auth.uid() and public.is_public_deck_visible(deck_id));
+
+drop policy if exists "public_deck_ratings_update_self" on public.public_deck_ratings;
+create policy "public_deck_ratings_update_self"
+on public.public_deck_ratings
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "public_deck_clones_insert_self" on public.public_deck_clones;
+create policy "public_deck_clones_insert_self"
+on public.public_deck_clones
+for insert
+to authenticated
+with check (user_id = auth.uid() and public.is_public_deck_visible(deck_id));
+
+drop policy if exists "public_deck_clones_update_self" on public.public_deck_clones;
+create policy "public_deck_clones_update_self"
+on public.public_deck_clones
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "public_deck_reports_select_moderators" on public.public_deck_reports;
+create policy "public_deck_reports_select_moderators"
+on public.public_deck_reports
+for select
+to authenticated
+using (public.is_public_moderator());
+
+drop policy if exists "public_deck_reports_insert_users" on public.public_deck_reports;
+create policy "public_deck_reports_insert_users"
+on public.public_deck_reports
+for insert
+to authenticated
+with check (user_id = auth.uid() and public.is_public_deck_visible(deck_id));
+
+drop policy if exists "public_deck_reports_update_moderators" on public.public_deck_reports;
+create policy "public_deck_reports_update_moderators"
+on public.public_deck_reports
+for update
+to authenticated
+using (public.is_public_moderator())
+with check (public.is_public_moderator());
+
+drop policy if exists "public_moderators_select_self" on public.public_moderators;
+create policy "public_moderators_select_self"
+on public.public_moderators
+for select
+to authenticated
+using (user_id = auth.uid());
+
+create or replace function public.publish_shared_deck(
+  target_deck_id uuid,
+  next_visibility text,
+  next_title text,
+  next_description text,
+  next_tags text[],
+  next_target_grade text,
+  next_update_note text,
+  next_ai_assisted boolean default false,
+  acknowledge_public_responsibility boolean default false
+)
+returns setof public.shared_decks
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_deck public.shared_decks%rowtype;
+  profile_row public.profiles%rowtype;
+  safe_visibility text;
+  safe_title text;
+  safe_description text;
+  safe_tags text[];
+  safe_target_grade text;
+  safe_update_note text;
+  safe_ai_assisted boolean;
+  next_version integer;
+  next_event_type text;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select * into target_deck
+  from public.shared_decks
+  where id = target_deck_id
+    and owner_id = auth.uid()
+  limit 1;
+
+  if target_deck.id is null then
+    raise exception 'Only the owner can publish this deck';
+  end if;
+
+  safe_visibility := case
+    when next_visibility in ('private', 'link_only', 'public_listed') then next_visibility
+    else 'link_only'
+  end;
+
+  if safe_visibility = 'public_listed' and not acknowledge_public_responsibility then
+    raise exception '公開責任への同意が必要です';
+  end if;
+
+  select * into profile_row
+  from public.profiles
+  where id = auth.uid()
+  limit 1;
+
+  safe_title := coalesce(nullif(trim(next_title), ''), target_deck.name);
+  safe_description := coalesce(nullif(trim(next_description), ''), target_deck.description);
+  safe_tags := coalesce(next_tags, '{}'::text[]);
+  safe_target_grade := coalesce(trim(next_target_grade), '');
+  safe_update_note := coalesce(trim(next_update_note), '');
+  safe_ai_assisted := coalesce(next_ai_assisted, false);
+
+  if safe_visibility = 'public_listed' then
+    next_version := greatest(coalesce(target_deck.public_version, 0), 0) + 1;
+    next_event_type := case
+      when target_deck.visibility = 'public_listed' then 'public_updated'
+      else 'public_published'
+    end;
+  else
+    next_version := coalesce(target_deck.public_version, 0);
+    next_event_type := 'deck_updated';
+  end if;
+
+  update public.shared_decks
+  set
+    visibility = safe_visibility,
+    public_title = safe_title,
+    public_description = safe_description,
+    public_tags = safe_tags,
+    public_target_grade = safe_target_grade,
+    public_update_note = safe_update_note,
+    public_author_label = coalesce(nullif(profile_row.display_name, ''), nullif(profile_row.email, ''), '公開ユーザー'),
+    public_ai_assisted = safe_ai_assisted,
+    public_published_at = case when safe_visibility = 'public_listed' then timezone('utc', now()) else public_published_at end,
+    public_version = next_version,
+    public_is_hidden = case when safe_visibility = 'public_listed' then false else public_is_hidden end,
+    updated_at = timezone('utc', now())
+  where id = target_deck_id;
+
+  perform public.refresh_public_deck_content_stats(target_deck_id);
+  perform public.refresh_public_deck_stats(target_deck_id);
+
+  if safe_visibility = 'public_listed' then
+    insert into public.public_deck_versions (
+      deck_id,
+      version_number,
+      update_note,
+      summary_json
+    )
+    values (
+      target_deck_id,
+      next_version,
+      safe_update_note,
+      jsonb_build_object(
+        'cardCount', (select public_card_count from public.shared_decks where id = target_deck_id),
+        'imageCount', (select public_image_count from public.shared_decks where id = target_deck_id),
+        'title', safe_title,
+        'targetGrade', safe_target_grade
+      )
+    );
+
+    insert into public.shared_deck_events (
+      deck_id,
+      actor_user_id,
+      actor_email,
+      event_type,
+      entity_type,
+      entity_id,
+      summary,
+      meta_json
+    )
+    values (
+      target_deck_id,
+      auth.uid(),
+      coalesce(nullif(auth.jwt() ->> 'email', ''), profile_row.email, ''),
+      next_event_type,
+      'public_catalog',
+      target_deck_id::text,
+      case
+        when next_event_type = 'public_published' then '公開デッキとして掲載しました'
+        else '公開デッキを更新しました'
+      end,
+      jsonb_build_object(
+        'publicTitle', safe_title,
+        'version', next_version,
+        'updateNote', safe_update_note,
+        'visibility', safe_visibility
+      )
+    );
+
+    insert into public.user_notifications (user_id, deck_id, notification_type, title, body, meta_json)
+    select
+      f.user_id,
+      target_deck_id,
+      'public_update',
+      safe_title || ' が更新されました',
+      coalesce(nullif(safe_update_note, ''), '公開デッキに新しい更新があります。'),
+      jsonb_build_object(
+        'deckName', safe_title,
+        'version', next_version
+      )
+    from public.public_deck_follows f
+    where f.deck_id = target_deck_id
+      and f.user_id <> auth.uid();
+  end if;
+
+  return query
+  select *
+  from public.shared_decks
+  where id = target_deck_id;
+end;
+$$;
+
+create or replace function public.request_public_deck_editor_access(target_deck_id uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_deck public.shared_decks%rowtype;
+  requester_email text;
+  request_row public.deck_access_requests%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select * into target_deck
+  from public.shared_decks
+  where id = target_deck_id
+    and visibility = 'public_listed'
+    and public_is_hidden = false
+  limit 1;
+
+  if target_deck.id is null then
+    raise exception 'Public deck not found';
+  end if;
+
+  if target_deck.owner_id = auth.uid() then
+    return target_deck.id;
+  end if;
+
+  if exists (
+    select 1
+    from public.deck_members
+    where deck_id = target_deck.id
+      and user_id = auth.uid()
+  ) then
+    return target_deck.id;
+  end if;
+
+  requester_email := coalesce(nullif(auth.jwt() ->> 'email', ''), '');
+
+  insert into public.deck_access_requests (
+    deck_id,
+    user_id,
+    requester_email,
+    requested_role,
+    request_kind,
+    status
+  )
+  values (
+    target_deck.id,
+    auth.uid(),
+    requester_email,
+    'editor',
+    'public_editor',
+    'pending'
+  )
+  on conflict (deck_id, user_id)
+  do update set
+    requester_email = excluded.requester_email,
+    requested_role = 'editor',
+    request_kind = 'public_editor',
+    status = 'pending',
+    updated_at = timezone('utc', now())
+  returning * into request_row;
+
+  insert into public.shared_deck_events (
+    deck_id,
+    actor_user_id,
+    actor_email,
+    event_type,
+    entity_type,
+    entity_id,
+    summary,
+    meta_json
+  )
+  values (
+    target_deck.id,
+    auth.uid(),
+    requester_email,
+    'public_edit_requested',
+    'request',
+    request_row.id::text,
+    coalesce(requester_email, '公開ユーザー') || ' が公開デッキの編集参加を申請しました',
+    jsonb_build_object(
+      'requestKind', 'public_editor',
+      'requestedRole', 'editor',
+      'deckName', coalesce(nullif(target_deck.public_title, ''), target_deck.name)
+    )
+  );
+
+  insert into public.user_notifications (user_id, deck_id, notification_type, title, body, meta_json)
+  values (
+    target_deck.owner_id,
+    target_deck.id,
+    'public_editor_request',
+    coalesce(nullif(target_deck.public_title, ''), target_deck.name) || ' へ編集参加申請が届きました',
+    coalesce(requester_email, '公開ユーザー') || ' が editor 権限を希望しています。',
+    jsonb_build_object(
+      'requestId', request_row.id,
+      'requestKind', 'public_editor',
+      'deckName', coalesce(nullif(target_deck.public_title, ''), target_deck.name)
+    )
+  );
+
+  return target_deck.id;
+end;
+$$;
+
+create or replace function public.moderate_public_deck(
+  target_report_id uuid,
+  next_status text default 'resolved',
+  hide_public_deck boolean default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  report_row public.public_deck_reports%rowtype;
+  target_deck public.shared_decks%rowtype;
+  safe_status text;
+begin
+  if auth.uid() is null or not public.is_public_moderator() then
+    raise exception 'Moderator access required';
+  end if;
+
+  select * into report_row
+  from public.public_deck_reports
+  where id = target_report_id
+  limit 1;
+
+  if report_row.id is null then
+    raise exception 'Report not found';
+  end if;
+
+  select * into target_deck
+  from public.shared_decks
+  where id = report_row.deck_id
+  limit 1;
+
+  safe_status := case
+    when next_status in ('open', 'reviewed', 'resolved', 'dismissed') then next_status
+    else 'resolved'
+  end;
+
+  update public.public_deck_reports
+  set
+    status = safe_status,
+    updated_at = timezone('utc', now())
+  where id = report_row.id;
+
+  if hide_public_deck is not null and target_deck.id is not null then
+    update public.shared_decks
+    set
+      public_is_hidden = hide_public_deck,
+      updated_at = timezone('utc', now())
+    where id = target_deck.id;
+
+    insert into public.shared_deck_events (
+      deck_id,
+      actor_user_id,
+      actor_email,
+      event_type,
+      entity_type,
+      entity_id,
+      summary,
+      meta_json
+    )
+    values (
+      target_deck.id,
+      auth.uid(),
+      coalesce(nullif(auth.jwt() ->> 'email', ''), ''),
+      case when hide_public_deck then 'public_hidden' else 'public_restored' end,
+      'public_report',
+      report_row.id::text,
+      case when hide_public_deck then '通報対応で公開停止にしました' else '通報対応で公開へ戻しました' end,
+      jsonb_build_object(
+        'reason', report_row.reason,
+        'status', safe_status
+      )
+    );
+  end if;
+
+  return report_row.deck_id;
+end;
+$$;
+
+create or replace function public.get_share_preview(target_token text)
+returns table (
+  deck_id uuid,
+  deck_name text,
+  focus text,
+  subject text,
+  description text,
+  membership_role text,
+  request_status text,
+  request_id uuid
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+  select
+    d.id,
+    d.name,
+    d.focus,
+    d.subject,
+    d.description,
+    m.role,
+    r.status,
+    r.id
+  from public.shared_decks d
+  left join public.deck_members m
+    on m.deck_id = d.id
+   and m.user_id = auth.uid()
+  left join public.deck_access_requests r
+    on r.deck_id = d.id
+   and r.user_id = auth.uid()
+   and r.request_kind = 'share_access'
+  where d.share_token = target_token
+    and d.visibility = 'link_only'
+  limit 1;
+end;
+$$;
+
+create or replace function public.request_deck_access(target_token text, requested_role text default 'viewer')
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_deck public.shared_decks%rowtype;
+  safe_role text;
+  requester_email text;
+  request_row public.deck_access_requests%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select *
+  into target_deck
+  from public.shared_decks
+  where share_token = target_token
+    and visibility = 'link_only'
+  limit 1;
+
+  if target_deck.id is null then
+    raise exception 'Shared deck not found';
+  end if;
+
+  if target_deck.owner_id = auth.uid() then
+    return target_deck.id;
+  end if;
+
+  if exists (
+    select 1
+    from public.deck_members
+    where deck_id = target_deck.id
+      and user_id = auth.uid()
+  ) then
+    return target_deck.id;
+  end if;
+
+  safe_role := case
+    when requested_role = 'editor' then 'editor'
+    else 'viewer'
+  end;
+
+  requester_email := coalesce(nullif(auth.jwt() ->> 'email', ''), '');
+
+  insert into public.deck_access_requests (
+    deck_id,
+    user_id,
+    requester_email,
+    requested_role,
+    request_kind,
+    status
+  )
+  values (
+    target_deck.id,
+    auth.uid(),
+    requester_email,
+    safe_role,
+    'share_access',
+    'pending'
+  )
+  on conflict (deck_id, user_id)
+  do update set
+    requester_email = excluded.requester_email,
+    requested_role = excluded.requested_role,
+    request_kind = 'share_access',
+    status = 'pending',
+    updated_at = timezone('utc', now())
+  returning * into request_row;
+
+  insert into public.shared_deck_events (
+    deck_id,
+    actor_user_id,
+    actor_email,
+    event_type,
+    entity_type,
+    entity_id,
+    summary,
+    meta_json
+  )
+  values (
+    target_deck.id,
+    auth.uid(),
+    requester_email,
+    'request_created',
+    'request',
+    request_row.id::text,
+    coalesce(requester_email, '参加申請') || ' が ' || safe_role || ' で参加申請しました',
+    jsonb_build_object(
+      'requestedRole', safe_role,
+      'requestKind', 'share_access',
+      'deckName', target_deck.name
+    )
+  );
+
+  return target_deck.id;
+end;
+$$;
+
+drop policy if exists "shared_card_media_public_read" on storage.objects;
+create policy "shared_card_media_public_read"
+on storage.objects
+for select
+to public
+using (
+  bucket_id = 'shared-card-media'
+  and (
+    public.is_accepted_member((storage.foldername(name))[1]::uuid)
+    or public.is_public_deck_visible((storage.foldername(name))[1]::uuid)
+  )
+);
+
+grant execute on function public.refresh_public_deck_stats(uuid) to authenticated;
+grant execute on function public.refresh_public_deck_content_stats(uuid) to authenticated;
+grant execute on function public.publish_shared_deck(uuid, text, text, text, text[], text, text, boolean, boolean) to authenticated;
+grant execute on function public.request_public_deck_editor_access(uuid) to authenticated;
+grant execute on function public.moderate_public_deck(uuid, text, boolean) to authenticated;
+grant execute on function public.get_share_preview(text) to anon, authenticated;
+grant execute on function public.request_deck_access(text, text) to authenticated;
