@@ -132,6 +132,10 @@ const BODY_PART_DECK_NAME = "身体部位の名称";
 const BODY_PART_DECK_DESCRIPTION = "身体部位・臓器・組織の医療英単語を、名詞と形容詞に分けて覚える解剖デッキ。";
 const BODY_PART_DECK_SUBJECT = "解剖 / 身体部位";
 const BODY_PART_DECK_SEEDED_FLAG = "seededBodyPartDeckV1";
+const MEDICAL_TERM_INTRO_DECK_NAME = "医学単語入門";
+const MEDICAL_TERM_INTRO_DECK_DESCRIPTION = "接頭辞・接尾辞の意味と単語例をまとめて覚える、医療英単語の入門デッキ。";
+const MEDICAL_TERM_INTRO_DECK_SUBJECT = "医学英単語 / 構成要素";
+const MEDICAL_TERM_INTRO_DECK_SEEDED_FLAG = "seededMedicalTermIntroDeckV1";
 const BODY_PART_VOCAB_ROWS = [
   { section: "頭部・顔面", japanese: "頭", noun: "head", adjective: "cephalic; cranial" },
   { section: "頭部・顔面", japanese: "頭蓋[骨]", noun: "skull; cranium", adjective: "cranial" },
@@ -229,10 +233,425 @@ const BODY_PART_VOCAB_ROWS = [
   { section: "泌尿器・生殖器", japanese: "卵巣", noun: "ovary", adjective: "ovarian" },
   { section: "泌尿器・生殖器", japanese: "子宮", noun: "womb; uterus", adjective: "uterine" },
 ];
+const MEDICAL_TERM_PREFIX_ROWS = [
+  ["a-; an-", "無、欠乏、失", "asymptomatic 無症候[性]の、atypical 非定型の、anemia 貧血"],
+  ["ab-", "離れて", "abduct 外転させる、abnormal 異常な、abortion 妊娠中絶"],
+  ["abdomin[o]-", "腹部", "abdominoplasty 腹壁形成術"],
+  ["acr[o]-", "四肢、先端、頂点、頂上", "acrocyanosis 先端チアノーゼ、acrophobia 高所恐怖症"],
+  ["ad-", "方向、増加、付加、近似", "adduct 内転させる、addiction 中毒、adhere 付着する"],
+  ["aden[o; i]-", "腺", "adenoma 腺腫、adenocarcinoma 腺癌"],
+  ["adip[o]- = lip[o]-", "脂肪", "adipose 脂肪[の]、adipocyte 脂肪細胞"],
+  ["aer[o; i]-", "空気", "aerobic 好気性の、aerosol 噴霧器(剤)"],
+  ["alb[o; i]-", "白", "albino 白子、albinism 色素欠乏症"],
+  ["alg[i;o]-; alge[si]-", "苦痛", "algometer 痛覚計、algesia 痛覚"],
+  ["all[o]-", "他、異質", "allograft 同種[異系]移植[片]、allogeneic graft 同種移植片"],
+  ["amb[i; o]-", "両方、周", "ambidextrous 両手利きの、ambivalence 両面感情[価値]"],
+  ["andr[o]-", "男性、人間", "androgen アンドロゲン、android 人造人間"],
+  ["angi[o]- = vas[o]-; vascu[o]-", "脈管（血管、リンパ管）", "angiography 血管造影法、angioma 血管腫"],
+  ["ante- = pre-", "…の前", "antenatal 出生前の、prenatal 出生前の"],
+  ["anti-", "反、非、対", "antibiotic 抗生物質、antibody 抗体"],
+  ["ap[o]-", "分離、派生", "apocrine アポクリン、apoptosis アポトーシス"],
+  ["append[o]- = appendic[o]-", "虫垂", "appendicitis 虫垂炎、appendectomy 虫垂切除術"],
+  ["arachn[o]-", "くも", "arachnoid くも膜、arachnophobia クモ恐怖症"],
+  ["arsen[o]-", "ヒ素", "arsenic ヒ素、arsenism ヒ素中毒"],
+  ["arteri[o]-", "動脈", "arteriosclerosis 動脈硬化[症]"],
+  ["arthr[o]-", "関節", "arthritis 関節炎、arthroscope 関節鏡"],
+  ["atel[o]-", "発育不全", "atelectasis 肺拡張不全、無気肺"],
+  ["audi[o]-", "聴覚", "audiometry 聴力検査、audiometer 聴力計"],
+  ["aur[i]- = ot[o]-", "耳", "auricle 耳介"],
+  ["aut[o]-", "自己", "autism spectrum disorder 自閉スペクトラム症、autoimmune disease 自己免疫疾患"],
+  ["ax[o; i]-", "軸", "axon 軸索"],
+  ["bacter[i;o]-; bacterio-", "細菌", "bacterium 細菌、bacteriology 細菌学"],
+  ["balan[o]-", "陰茎亀頭", "balanitis 亀頭炎、balanoplasty 亀頭形成術"],
+  ["basi-; baso-", "基底、塩基", "basophil 好塩基球"],
+  ["ben[e]- ⇔ mal-", "良、善", "benign 良性の"],
+  ["bi-", "二、双、両、複", "bilateral 両側[性]の、biceps 二頭筋"],
+  ["bi[o]-", "生物、生活", "biology 生物学、biopsy 生検"],
+  ["bili-", "胆汁", "bilirubin ビリルビン、biliary 胆汁の"],
+  ["blast[o]-", "胚、芽", "blastocyst 胚盤胞、blastoma 芽[細胞]腫"],
+  ["blephar[o]-", "眼瞼", "blepharitis 眼瞼炎、blepharoptosis 眼瞼下垂"],
+  ["brachi[o]-", "腕", "brachium 上腕、brachial 上腕の"],
+  ["brady-", "遅い、緩徐", "bradycardia 徐脈、bradykinesia 動作緩徐"],
+  ["bronch[i; o]-", "気管支", "bronchitis 気管支炎、bronchodilator 気管支拡張薬"],
+  ["capit[o]-", "頭", "caput 頭"],
+  ["cardi[o]-", "心臓", "cardiomyopathy 心筋症、cardiovascular 心[臓]血管の"],
+  ["carp[o]-", "手根[骨]、手首", "carpus 手根骨、carpal tunnel syndrome 手根管症候群"],
+  ["cata-; cath-", "下[方]", "catarrh カタル、catheter カテーテル"],
+  ["cephal[o]-", "頭", "cephalalgia 頭痛、cephalic 頭部の"],
+  ["cerat[o]- ⇒ kerat[o]-", "角、角質、角膜", "cerafin 角膜"],
+  ["cerebell[o]-", "小脳", "cerebellum 小脳、cerebellar 小脳の"],
+  ["cerebr[o]-", "大脳", "cerebrum 大脳、cerebral [大]脳の"],
+  ["cervic[i; o]-", "頸部、首", "cervical 頸[部]の、cervicitis 子宮頸[管]炎"],
+  ["cheil[o]-; chil[o]- ⇒ labi[o]-", "唇", "cheilitis 口唇炎、cheiloplasty 口唇形成術"],
+  ["cheir[o]-; chir[o]-", "手", "chiroplasty 手指形成術、chiropractic カイロプラクティク"],
+  ["chem[o]-", "化学", "chemistry 化学、chemotherapy 化学療法"],
+  ["chlor[o]-", "緑", "chlorophyll クロロフィル、葉緑素"],
+  ["chol[e; o]-", "胆汁", "cholesterol コレステロール、cholecyst 胆嚢"],
+  ["cholangi[o]-", "胆管", "cholangioma 胆管腫、cholangiocarcinoma 胆管がん"],
+  ["cholecyst[o]-", "胆嚢", "cholecystectomy 胆嚢切除[術]、胆嚢摘出[術]"],
+  ["choledoch[o]-", "総胆管", "choledochus 総胆管、choledochotomy 総胆管切開[術]"],
+  ["chondr[i; o; io]-", "軟骨、粒", "chondrodysplasia 軟骨形成不全、chondroid 軟骨様の"],
+  ["chori[o]-", "絨毛膜", "chorion 絨毛膜、chorionic 絨毛膜の"],
+  ["chrom[o]-; chromato-", "色", "chromosome 染色体、chromatography クロマトグラフィ"],
+  ["cili[i; o]-", "毛様体、睫毛", "cilium 睫毛、ciliary body 毛様体"],
+  ["circum-", "周囲", "circumference 腹囲、circumcision 包皮切除"],
+  ["co[m; l; r; n]-", "共同、共に、相互", "congenital 先天性の、complication 合併症"],
+  ["coel[o]-; cel-", "腔 = hollow; cavity", "coelom 体腔、celoma 体腔"],
+  ["coeli[o]-; celi-", "腹、腹腔", "celiac 腹腔の、celiac disease セリアック病"],
+  ["col[o]-; coli-", "結腸、大腸菌", "colon 結腸、colonoscope 結腸鏡"],
+  ["coll[o]-", "膠、糊、コロイド", "collagen コラーゲン、colloid コロイド"],
+  ["colp[o]-", "腟", "colpitis 腟炎、colpoplasty 腟形成[術]"],
+  ["contra-", "逆、反対", "contraception 避妊、contraindication 禁忌"],
+  ["corne[o]-", "角膜、角質", "cornea 角膜、corneocyte 角質細胞"],
+  ["cortic[o]-", "皮質 = cortex", "cortical 皮質[性]の、corticoid コルチコイド"],
+  ["cost[o]-", "肋骨", "costa 肋骨、costal 肋骨の"],
+  ["counter-", "反対、対立", "counteraction 拮抗(中和)作用"],
+  ["coxa-", "股関節、寛骨部", "coxalgia 股関節痛、coxitis 股関節炎"],
+  ["crani[o]-", "頭蓋", "cranium 頭蓋、craniotomy 開頭[術]"],
+  ["cry[o]-", "冷凍", "cryoablation 冷凍切除[術]、cryopreserve 凍結保存する"],
+  ["cyan[o]-", "藍色、青", "cyanide シアン化物、cyanosis チアノーゼ"],
+  ["cyst[i; o]-", "膀胱、胆嚢", "cyst 嚢胞、cystitis 膀胱炎"],
+  ["cyt[o]-", "細胞、細胞質", "cytoplasm 細胞質、cytokine サイトカイン"],
+  ["dacry[o]-", "涙", "dacryocyst 涙嚢、lacrimal sac 涙嚢"],
+  ["dactyl[o]-", "指、足指", "dactylalgia 指痛、dactylomegaly 巨指症"],
+  ["de-", "下降、分離、悪化", "dehydration 脱水、dementia 認知症"],
+  ["dendr[i; o]-", "樹状[構造]", "dendrite 樹状突起、dendritic 樹状突起の"],
+  ["dent[o]- = odont[o]-", "歯", "dental 歯の、dentist 歯科医"],
+  ["derm[a; o]-; dermat[o]-", "皮膚", "derma 真皮、dermatitis 皮膚炎"],
+  ["di-", "二、2回、分離", "dioxide 二酸化物、diamniotic 二羊膜性の"],
+  ["dia-", "…を通して", "diameter 直径、diarrhea 下痢"],
+  ["dipl[o]-", "二重、複", "diplegia 両側麻痺、diplopia 複視"],
+  ["dis-", "分離、脱、反対", "dissect 解剖する、dislocation 脱臼"],
+  ["dist[i; o]-", "遠位、末端", "distal 遠位の"],
+  ["dors[i; o]-", "背", "dorsal 背側面の、dorsolateral 側背の"],
+  ["duoden[o]-", "十二指腸", "duodenum 十二指腸、duodenal 十二指腸の"],
+  ["dys-", "困難、苦痛、障害", "dyspnea 呼吸困難、dysmenorrhea 月経困難症"],
+  ["electr[o]-", "電気", "electrocardiography 心電図検査、electromyogram 筋電図"],
+  ["embry[o]-", "胚、胎芽", "embryo 胚子、embryology 発生学"],
+  ["encephal[o]-", "脳", "encephalitis 脳炎、encephalopathy 脳症・脳障害"],
+  ["end[o]-", "内、内部", "endocrine 内分泌[の]、endoscope 内視鏡"],
+  ["enter[o]-", "腸", "enteritis 腸炎、enterology 腸病学"],
+  ["ep[i]-", "…の上、外、次、後", "epidural 硬膜外の、epidermis 表皮"],
+  ["erythr[o]-", "赤", "erythrocyte 赤血球、erythropoietin エリスロポエチン"],
+  ["esophag[o]-", "食道", "esophagus 食道、esophagitis 食道炎"],
+  ["esthesi[o]-", "感覚、知覚", "esthesiology 感覚学、esthesiometer 知覚計"],
+  ["eu-", "良、善、好、真", "euthanasia 安楽死"],
+  ["eury- ⇔ steno-", "広い、幅広い", "eurycephalous 広頭[蓋]の、eurycephalic 広頭[蓋]の"],
+  ["ex[o]-", "…から外へ、…から離れて", "excrete 排泄する、exoteric 外からの"],
+  ["extra-", "外部、外の", "extraordinary 異常な、extracorporeal 体外の"],
+  ["faci[o]-", "顔、面", "facial 顔の、facioplegia 顔面神経麻痺"],
+  ["fasci[o]-", "筋膜", "fascia 筋膜、fascicle 束"],
+  ["femor[o]-", "大腿[骨]", "femoral 大腿の、femur 大腿骨"],
+  ["fibr[o]-", "線維", "fibroma 線維腫、fibroblast 線維芽細胞"],
+  ["fibrin[o]-", "線維素", "fibrinogen フィブリノーゲン、fibrinolysin 線維素溶解酵素"],
+  ["fet[i;o]-; foet[i;o]-", "胎児", "fetus 胎児、fetal 胎児の"],
+  ["flav[o]-", "黄", "flavedo 黄色調、flavoprotein 黄色蛋白"],
+  ["fluor[o]-", "フッ素", "fluorine フッ素、fluoride フッ化物"],
+  ["fluor[i; o]-", "蛍光", "fluorescence 蛍光[性]、fluorescent 蛍光の"],
+  ["for[e]-", "前", "forearm 前腕、forefinger 人差し指"],
+  ["galact[o]-", "乳汁", "galactose ガラクトース、galactosemia ガラクトース血[症]"],
+  ["gastr[o; i]-", "胃", "gastric 胃の、gastritis 胃炎"],
+  ["gen[o]-", "生じる、性、遺伝子、因子、民族", "gene 遺伝子、genome ゲノム"],
+  ["ger[o]-", "老年", "geriatrics 老年医学、gerontology 老年学"],
+  ["gingiv[o]-", "歯肉", "gingiva 歯肉、gingivitis 歯肉炎"],
+  ["glomerul[o]-", "糸球体", "glomerulus 糸球体、glomerulonephritis 糸球体腎炎"],
+  ["gloss[o]-; glott[o]- = lingu[o]-", "舌、言語", "glossa 舌、glottis 声門"],
+  ["gluc[o]-", "ブドウ糖", "glucose グルコース、glucagon グルカゴン"],
+  ["glyc[o]-", "糖", "glycogen グリコーゲン、glycol グリコール"],
+  ["gnath[o]-", "顎", "gnathic 顎の、gnathal 顎の"],
+  ["gonad[o]-", "性腺", "gonadotropin 性腺刺激ホルモン"],
+  ["gon[o]-", "性の、生殖の", "gonad 生殖腺、gonococcal infection 淋菌感染症"],
+  ["granul[i; o]-", "小粒、微粒子", "granulocyte 顆粒球、granuloma 肉芽腫"],
+  ["grav[i]-", "重い = grave", "gravity 重力、gravida 妊婦"],
+  ["gyn[e;o]-; gynec[o]-", "女性", "gynecology 婦人科、gynecologist 婦人科医"],
+  ["hem[o]-; hemat[o]-", "血", "hemorrhage 出血、hemostasis 止血"],
+  ["hemi-", "半分", "hemisphere [脳]半球、hemiplegia 半身不随"],
+  ["hepat[o]-", "肝臓", "hepatitis 肝炎、hepatoma 肝[細胞]癌"],
+  ["herni[o]-", "脱出、突出", "hernia ヘルニア、herniated disc 椎間板ヘルニア"],
+  ["heter[o]- ⇔ hom[o]-", "異種、他の、不同", "heterogeneous 異質の、heterogenous 外生の"],
+  ["hidr[o]-", "汗", "hidrosis 多汗症"],
+  ["hist[o]-", "組織", "histology 組織学、histopathology 組織病理学"],
+  ["hom[o]- ⇔ heter[o]-", "同類、同一", "homogeneous 同質の、homograft 同種移植片"],
+  ["home[o]-; homoeo-", "類似", "homeopathy ホメオパシー、homeostasis 恒常性"],
+  ["hydr[o]-", "水、水素", "hydrogen 水素、hydrocephalus 水頭症"],
+  ["hygr[o]-", "湿気", "hygrometer 湿度計、hygroma ヒグローマ"],
+  ["hyper- ⇔ hyp[o]-", "過剰、過度、超過", "hypertension 高血圧症、hyperglycemia 高血糖[症]"],
+  ["hyp[o]- ⇔ hyper-", "下、[水準]以下、欠乏", "hypotension 低血圧[症]、hypocalcemia 低Ca血症"],
+  ["hyster[o]-", "子宮", "hysteromyoma 子宮筋腫、hysterectomy 子宮摘出術"],
+  ["iatr[o]-", "医師、医療、医薬", "iatrogenic 医原性の"],
+  ["idio-", "特殊、特有", "idiopathic 特発性の"],
+  ["ile[o]-", "回腸", "ileocecal 回盲の、ileocolitis 回結腸炎"],
+  ["immun[o]-", "免疫", "immunodeficiency 免疫不全、immunotherapy 免疫療法"],
+  ["in-; im-; ir-", "否定、無、不", "insomnia 不眠[症]、infertile 不妊の"],
+  ["in-; im-", "内へ", "insertion 挿入、implant インプラント"],
+  ["infra-", "下の、下位", "infraclavicular 鎖骨下の、infracostal 肋骨下の"],
+  ["inter-", "…の間、中、相互", "internal 内部の、intercostal 肋間の"],
+  ["intra- ⇔ extra-", "…内[部]の", "intravenous 静脈内の、intracranial 頭蓋内の"],
+  ["intro- ⇔ extro-", "…の中へ、内へ", "introvert 内向型の人、extrovert 外向型の人"],
+  ["isch[o]-", "抑制、欠乏", "ischemia 虚血、ischemic 虚血性の"],
+  ["ischi[o]-", "坐骨", "ischium 坐骨"],
+  ["jejun[o]-", "空腸", "jejunum 空腸、jejunal 空腸の"],
+  ["jugul[o]-", "のど、頸(くび)", "jugular 頸の、頸静脈の"],
+  ["kerat[o]-", "角膜、角質", "keratitis 角膜炎、keratoplasty 角膜移植"],
+  ["kin[e;o]-; kines[i;o]-", "運動", "kinetic 運動の、kinesia 乗物酔い"],
+  ["koil[o]-", "凹み、へこみ", "koilonychia 匙状爪、spoon nail 匙状爪"],
+  ["labi[o]- ⇒ cheil[o]-", "唇", "labium 唇・陰唇、labial 唇の"],
+  ["lacrim[o]-", "涙", "lacrima 涙、lacrimal 涙[液]の"],
+  ["lact[i; o]-", "乳[汁]", "lactate 乳汁を分泌する、lactation 授乳"],
+  ["lapar[o]-", "腹部、脇腹、腹壁", "laparoscope 腹腔鏡、laparotomy 開腹手術"],
+  ["laryng[o]-", "喉頭", "laryngeal 喉頭の、laryngitis 喉頭炎"],
+  ["later[i; o]-", "側方、外側、横側", "lateral 側方の、lateralization 側性化"],
+  ["leio-; lio-", "平滑、滑らか", "leiomyoma 平滑筋腫、leiomyosarcoma 平滑筋肉腫"],
+  ["leuk[o]-; leuc[o]-", "白", "leukocyte 白血球、leukemia 白血病"],
+  ["lip[o]-", "脂肪", "lipid 脂質、lipoprotein リポ蛋白"],
+  ["lith[o]-", "石、結石", "lithiasis 結石[症]、lithotripsy 砕石[術]"],
+  ["log[o]-", "言語、発話", "logopedia 言語医学、logopedics 言語治療"],
+  ["lumb[o]-", "腰、腰椎", "lumbago 腰痛[症]、lumbar 腰椎の"],
+  ["lute[o]-", "黄体、黄色", "luteal 黄体の、luteinization 黄体形成"],
+  ["lymph[o]-", "リンパ", "lymphocyte リンパ球、lymphedema リンパ浮腫"],
+  ["macr[o]- = meg[a]-; megal[o]-", "大きい、長い", "macrophage マクロファージ、大食細胞"],
+  ["mal- ⇔ ben[e]-", "悪い、不良", "malnutrition 栄養不良、malignant 悪性の"],
+  ["mamm[a; i; o]-", "乳房", "mammary 乳房の、mammography 乳房X線撮影法"],
+  ["mast[o]-", "乳房", "mastectomy 乳房切除[術]、mastitis 乳腺炎"],
+  ["meg[a]-; megal[o]-", "巨大", "megalomania 誇大妄想、megalopodia 巨足[症]"],
+  ["melan[o]-", "黒", "melena 黒色便、melanoma メラノーマ・悪性黒色腫"],
+  ["men[o]-", "月経", "menstruation 月経、menopause 閉経"],
+  ["mening[i; o]-", "髄膜", "meningitis 髄膜炎、meningoencephalitis 髄膜脳炎"],
+  ["mes[o]-", "中央、中間", "mesocolon 結腸間膜、mesothelioma 中皮腫"],
+  ["met[a]-", "変化、…の後の", "metastasis 転移、metabolism 代謝"],
+  ["metr[a; o]-", "子宮", "metria 産褥熱、metralgia 子宮痛"],
+  ["micr[o]-", "小", "microscope 顕微鏡、microbiology 微生物学"],
+  ["mon[o]-", "単一", "monoxide 一酸化物、carbon monoxide 一酸化炭素"],
+  ["morph[o]-", "形態", "morphogenesis 形態発生"],
+  ["muc[i; o]-", "粘液", "mucus 粘液、mucosa 粘膜"],
+  ["multi- = pluri-; poly-", "多数", "multiple 多発性の、multiple sclerosis 多発性硬化"],
+  ["my[o]-", "筋肉", "myalgia 筋肉痛、myocardium 心筋"],
+  ["myc[o]-", "[真]菌", "mycosis 真菌症、Mycoplasma マイコプラズマ属"],
+  ["myel[o]-", "髄、脊髄、骨髄", "myelogenous 骨髄性の、myeloplegia 脊髄麻痺"],
+  ["myring[o]- = tympan[o]-", "鼓膜", "myringitis 鼓膜炎、myringotomy 鼓膜切開[術]"],
+  ["narc[o]-", "麻酔、昏睡", "narcotic 麻薬・麻酔薬、narcolepsy ナルコレプシー"],
+  ["nas[i; o]-", "鼻", "nasal 鼻の、nasopharyngeal 鼻咽頭の"],
+  ["necr[o]-", "死、壊死", "necrosis 壊死、necropsy 検死"],
+  ["ne[o]-", "新しい、最近の", "neonate 新生児、neoplasm 新生物・腫瘍"],
+  ["nephr[o]- = ren[i;o]-", "腎臓", "nephric 腎臓の、nephrectomy 腎摘出[術]"],
+  ["neur[i; o]-", "神経[系]", "neuralgia 神経痛、neuropathy 神経障害"],
+  ["neutr[o]-", "中性、好中球", "neutral 中性の、neutrophil 好中球"],
+  ["nitr[o]-", "窒素", "nitrogen 窒素、nitroglycerin ニトログリセリン"],
+  ["noct[i;o]- = nyct[i;o]-", "夜", "nocturnal 夜行性の、nocturia 夜間多尿(頻尿)症"],
+  ["nos[o]-", "病気", "nosophobia 疾病恐怖[症]、nosocomial infection 院内感染"],
+  ["nucle[i; o]-", "核、核酸", "nucleus 核、nucleic acid 核酸"],
+  ["ocul[o]- = ophthalm[o]-", "眼", "oculus 眼、ocular 眼の"],
+  ["odont[o]-", "歯", "odontalgia 歯痛、odontoma 歯牙腫"],
+  ["olig[o]-", "少数、欠乏", "oliguria 乏尿症、oligomenorrhea 希発月経"],
+  ["onco-; oncho-", "腫瘍", "oncology 腫瘍学"],
+  ["o[o]-; ov[i; o]-", "卵[子]", "ovum 卵[子]、ovary 卵巣"],
+  ["oophor[o]-", "卵巣", "oophorectomy 卵巣摘出[術]、ovariectomy 卵巣摘出[術]"],
+  ["ophthalm[o]-", "眼", "ophthalmology 眼科、ophthalmoscope 検眼鏡"],
+  ["opt[o]-; optic[o]", "視覚、視力、光学", "optic 視覚の・光学の、optometry 検眼"],
+  ["orth[o]-", "直、正常、正規", "orthodontics 矯正歯科、orthopedics 整形外科"],
+  ["osm[o]-", "臭い、香り、浸透", "osmosis 浸透[現象]、osmotic pressure 浸透圧"],
+  ["ossi-; osseo-", "骨", "ossification 骨化、osseous 骨の"],
+  ["ost-; oste[o]-", "骨", "osteogenesis 骨形成、osteoporosis 骨粗鬆症"],
+  ["ot[o]-", "耳", "otalgia 耳痛、otitis media 中耳炎"],
+  ["pan-; pant[a; o]-", "全て、総、汎", "panacea 万能薬、pandemic パンデミック"],
+  ["para-", "副、傍", "parathyroid 副甲状腺、parasite 寄生虫"],
+  ["path[o]-", "病気、感情", "pathology 病理学、pathogen 病原体"],
+  ["p[a]ed[o]-; p[a]edi-", "小児", "pediatrics 小児科、pediatrician 小児科医"],
+  ["ped[o]-", "足", "pedal 足の、pedometer 歩数計"],
+  ["per-", "通過、過度", "percutaneous 経皮的な、perforate 穿孔する"],
+  ["peri-", "周囲、近い", "pericardium 心膜、peritoneum 腹膜"],
+  ["phag[o]-", "食べる", "phagocyte 食細胞"],
+  ["pharm[a]-; pharmac[o]-", "薬", "pharmacy 薬局、pharmacology 薬理学"],
+  ["phleb[o]-", "静脈", "phlebitis 静脈炎"],
+  ["phon[o]-", "音、音声", "phonic 音声の、phonate 発音する"],
+  ["physi[o]-", "身体、物理、生理学", "physical 身体の、physiology 生理学"],
+  ["pleur[a; o]-", "肋骨、体側、胸膜", "pleura 胸膜、pleuritis 胸膜炎"],
+  ["pneum[o]-", "肺、空気", "pneumonia 肺炎、pneumothorax 気胸[症]"],
+  ["poli[o]-", "灰色", "polio ポリオ、灰白髄炎"],
+  ["poly-", "多数", "polyuria 多尿[症]、polycystic 多嚢胞性の"],
+  ["post- ⇔ ante-; pre-", "後の、後部の", "postoperative 術後の、posterior 後ろの"],
+  ["pre-; pro-", "前の", "premature 早産の、prognosis [病気の]予後"],
+  ["proct[i; o]-", "直腸、肛門", "proctitis 直腸炎、proctoscope 直腸鏡"],
+  ["pseud[o]-", "偽りの、仮の", "pseudocyst 偽性嚢胞、pseudonym 仮名"],
+  ["psych[e; o]-", "精神、心理", "psychiatry 精神科、psychology 心理学"],
+  ["pulmo-; pulmon[i;o]-", "肺", "pulmonary 肺の、pulmonology 呼吸器内科"],
+  ["py[o]-", "膿", "pyothorax 膿胸、pyogenic 化膿性の"],
+  ["pyel[o]-", "腎盂、骨盤", "pyelitis 腎盂炎、pyelonephritis 腎盂腎炎"],
+  ["quadr[a; i; u]-", "四", "quadruple 四重の、quadriplegia 四肢麻痺"],
+  ["rachi[o]-", "脊柱、脊椎", "rachialgia 脊柱痛、rachilysis 脊柱弯曲矯正[法]"],
+  ["radi[o]-", "放射、光線、橈骨", "radiology 放射線科、radiotherapy 放射線治療"],
+  ["re-", "再び、後方へ", "relapse 再発、reproduction 生殖・再生"],
+  ["rect[o]- = proct[o]-", "直腸", "rectum 直腸、rectal 直腸の"],
+  ["retin[o]-", "網膜", "retina 網膜、retinopathy 網膜症"],
+  ["retr[o]-", "後方、後部", "retrograde 逆行性の、retroflexion 後屈"],
+  ["rhabd[o]-", "棒状、桿(かん)状", "rhabdomyoma 横紋筋腫、rhabdomyolysis 横紋筋融解[症]"],
+  ["rhin[o]-", "鼻", "rhinal 鼻の、rhinitis 鼻炎"],
+  ["sacr[o]-", "仙骨", "sacrum 仙骨、sacral 仙骨の"],
+  ["salping[o]-", "卵管、耳管", "salpingitis 卵管炎・耳管炎、salpingotomy 卵管切開[術]"],
+  ["sarc[o]-", "肉", "sarcoma 肉腫、sarcopenia サルコペニア・筋肉減少"],
+  ["scler[a; o]-", "堅い、硬化、強膜", "sclera 強膜、sclerosis 硬化[症]"],
+  ["seb[i; o]-", "皮脂", "sebum 皮脂、sebaceous gland 皮脂腺"],
+  ["sept[i]-; sept[o; i]-", "七、中隔", "septum 中隔・隔壁、septal 中隔の"],
+  ["somat[o]-", "体、身体", "somatic cell 体細胞、somatic nerve 体性神経"],
+  ["son[i; o]-", "音", "sonography 超音波検査[法]、ultrasound 超音波"],
+  ["spasmo-", "痙攣", "spasmodic 痙攣性の、spasmolytic 鎮痙薬"],
+  ["spermat[o]-; sperm[a;i;o]-", "精子、精液", "spermatic 精子の・精液の、spermatogenesis 精子形成"],
+  ["spin[i; o]-", "脊柱、脊髄、とげ", "spine 脊椎・脊柱、spinal cord 脊髄"],
+  ["spir[i; o]-", "らせん、呼吸", "spiral らせん状の、spirometer 肺活量計"],
+  ["spondyl[o]-", "椎骨、脊椎", "spondylitis 脊椎炎、spondylosis 脊椎症"],
+  ["staphyl[o]-", "ブドウ[の房]、ブドウ球菌", "staphylococcus ブドウ球菌、staphylococci ブドウ球菌(複数形)"],
+  ["sten[o]- ⇔ eury-", "狭い", "stenosis 狭窄[症]"],
+  ["stern[o]-", "胸骨", "sternum 胸骨、sternal 胸骨の"],
+  ["steth[o]-", "胸", "stethoscope 聴診器"],
+  ["stomat[o]-", "口腔", "stomatitis 口内炎、stomatorrhagia 口内出血"],
+  ["strept[o]-", "ねじれた、連鎖球菌", "streptococcus 連鎖球菌、streptococcal 連鎖球菌性の"],
+  ["styl[i; o]-", "茎[状]、柱、管", "styloid 茎状の、styliform 茎状の"],
+  ["sub-", "下、下位", "subcutaneous 皮下の、subarachnoid クモ膜下[の]"],
+  ["sulf[o]-; sulph[o]-", "硫黄、硫酸", "sulfide 硫化物、sulfuric acid 硫酸"],
+  ["super- = supra-", "過剰、上部", "superior 上部の、superficial 表在性の"],
+  ["supra- = super-", "上の", "supraclavicular 鎖骨上の"],
+  ["syn-; sym-; syl-; sys-", "合同、結合", "syndrome 症候群、synthesis 合成"],
+  ["syring[o]-", "管 = tube、瘻孔", "syringe 注射器、syringitis 耳管炎"],
+  ["tachy-", "速い", "tachycardia 頻脈、tachypnea 頻呼吸・多呼吸"],
+  ["therm[o]-", "熱", "thermometer 温度計、thermotherapy 温熱療法"],
+  ["thorac[i; o]-", "胸郭", "thoracic 胸郭の、thoracocentesis 胸腔穿刺"],
+  ["thromb[o]-", "凝固、血栓", "thrombus 血栓、thrombosis 血栓症"],
+  ["thym[o]-", "胸腺", "thymus 胸腺、thymic 胸腺の"],
+  ["thyr[o]-", "甲状腺", "thyroid[gland] 甲状腺、thyromegaly 甲状腺腫大"],
+  ["tonsill[o]-", "扁桃", "tonsil 扁桃、tonsillitis 扁桃炎"],
+  ["tox[i; o]-", "毒", "toxin 毒[素]、toxic 毒性の・有毒な"],
+  ["trache[o]-", "気管", "trachea 気管、tracheotomy 気管切開[術]"],
+  ["trans-", "横切って、別の場所へ", "transverse 横の、transfusion 輸血"],
+  ["tri-", "三", "tricuspid valve 三尖弁、triceps [brachii] 上腕三頭筋"],
+  ["troph[o]-", "栄養", "trophic 栄養の、trophoblast 栄養膜"],
+  ["tympan[o]-", "鼓室、鼓膜", "tympanum 鼓室・鼓膜、tympanitis 鼓室炎"],
+  ["ultra-", "超", "ultrasound 超音波検査、ultrasonogram 超音波検査図"],
+  ["un-", "無、否", "unconscious 無意識の"],
+  ["uni-", "単一", "unilateral 片側[性]の、bilateral 両側の"],
+  ["ur[o]-; urin[o]-", "尿", "urinary 尿の、urology 泌尿器科"],
+  ["ure[a; o]-", "尿素、尿", "urea 尿素、uremia 尿毒症"],
+  ["ureter[o]-", "尿管", "ureter 尿管、ureteral 尿管の"],
+  ["urethr[o]-", "尿道", "urethra 尿道、urethral 尿道の"],
+  ["uric[o]-", "尿酸", "uric acid 尿酸、uricosuria 尿酸尿[症]"],
+  ["uter[o]-", "子宮", "uterus 子宮、uterine 子宮の"],
+  ["vag[o]-", "迷走神経", "vagus nerve 迷走神経、vagal 迷走神経の"],
+  ["vagin[i;o]- = colp[o]-", "腟、鞘", "vagina 腟、vaginitis 腟炎"],
+  ["valvul[o]-", "小弁、弁膜", "valvule 小弁、valvular 弁の"],
+  ["vas[i; o]-", "脈管、血管", "vasectomy 精管切除[術]、vasoconstrictor 血管収縮薬"],
+  ["vascul[o]-", "血管", "vascular 血管の、vascular dementia 血管性認知症"],
+  ["vesic[o]-", "膀胱、小胞", "vesical 膀胱の、vesicle 小水疱・小胞"],
+  ["viscer[i; o]-", "内臓", "viscera 内臓、visceral 内臓の"],
+  ["xanth[o]-", "黄", "xanthous 黄色の、xanthoma 黄色腫"],
+  ["xen[o]-", "異種", "xenograft 異種移植片、xenotransplantation 異種移植"],
+];
+const MEDICAL_TERM_SUFFIX_ROWS = [
+  ["-able; -ible", "できる", "curable 治療可能な、edible 食用の"],
+  ["-ac; -al; -an; -ar; -ary", "…の、…に関する", "cardiac 心[臓]の、abdominal 腹部の"],
+  ["-agra", "疼痛発作", "podagra 足部疼痛"],
+  ["-algia", "痛み", "neuralgia 神経痛"],
+  ["-ase", "酵素", "amylase アミラーゼ、lipase リパーゼ"],
+  ["-assay", "検定、測定", "assay [分析]検定、immunoassay 免疫測定"],
+  ["-blast", "胚、芽細胞", "autoblast オートブラスト、neuroblast 神経芽腫"],
+  ["-cele", "腫脹、ヘルニア", "cystocele 膀胱脱、enterocele 腸ヘルニア"],
+  ["-centesis", "穿刺[術]", "amniocentesis 羊水穿刺"],
+  ["-cide", "殺す物質", "insecticide 殺虫剤、germicide 殺菌薬"],
+  ["-cle; -cule", "小...", "vesicle 小水疱・小胞、molecule 分子"],
+  ["-coccus", "球菌", "enterococcus 腸球菌、pneumococcus 肺炎球菌"],
+  ["-cyte", "細胞", "erythrocyte 赤血球、leucocyte 白血球"],
+  ["-derma", "皮膚", "epiderma 表皮、erythroderma 紅皮症"],
+  ["-dermis", "皮膚、線維層", "dermis 真皮、epidermis 表皮"],
+  ["-ectomy", "切除[術]", "appendectomy 虫垂切除、cholecystectomy 胆嚢切除"],
+  ["-emia", "血液", "anemia 貧血、hyperglycemia 高血糖[症]"],
+  ["-esthesia; -aesthesia", "感覚、感受性", "anesthesia 麻酔、paresthesia 感覚[知覚]異常"],
+  ["-gen", "生ずるもの、発生させるもの", "carcinogen 発がん物質、pathogen 病原体"],
+  ["-genesis", "発生、産生、形成", "angiogenesis 新脈管形成・血管新生"],
+  ["-glia", "膠(にかわ)、神経膠", "glia 神経膠、neuroglia 神経膠"],
+  ["-gram", "書[画]いたもの、記録図、造影図", "electrocardiogram 心電図、mammogram 乳房X線撮影図"],
+  ["-graph", "記録する道具・機器・装置", "electrocardiograph 心電計、electroencephalograph 脳波計"],
+  ["-graphy", "記録法、撮影(術)、造影[術]", "electrocardiography 心電図検査、mammography 乳房X線撮影"],
+  ["-hidrosis ⇒ -idrosis", "汗症", "hyperhidrosis 多汗症、polyhidrosis 多汗症"],
+  ["-ia; -iasis", "病的状態", "insomnia 不眠症、urolithiasis 尿路結石"],
+  ["-iatrics; -iatry", "治療、医療", "pediatrics 小児科、psychiatry 精神科"],
+  ["-ician", "…を学んだ人", "pediatrician 小児科医、obstetrician 産科医"],
+  ["-icle; -ole; -ula", "小さい", "particle 粒子、bronchiole 細気管支"],
+  ["-ics", "…学、…術", "obstetrics 産科"],
+  ["-ldrosis", "汗症、特殊な発汗", "hyperhidrosis 多汗症、bromidrosis 臭汗症"],
+  ["-ism", "病的状態", "alcoholism アルコール依存症"],
+  ["-itis", "炎症", "arthritis 関節炎、bronchitis 気管支炎"],
+  ["-kinesia", "運動、動作", "bradykinesia 動作緩慢、dyskinesia 運動異常・運動障害"],
+  ["-kinesis", "動性、運動、活性化", "kinesis 動性、hypokinesis 運動低下"],
+  ["-lepsy", "発作 (seizure)", "epilepsy てんかん、narcolepsy ナルコレプシー"],
+  ["-lith", "結石", "cholelith 胆石、nephrolith 腎結石"],
+  ["-logist", "…学者", "gynecologist 婦人科医、cardiologist 心臓専門医"],
+  ["-logy", "…学、研究", "gynecology 婦人科、pathology 病理学"],
+  ["-lysis", "分解、溶解[現]", "hemolysis 溶血[反応]、hydrolysis 加水分解"],
+  ["-mania", "狂気", "monomania 偏執狂"],
+  ["-megaly; megalia", "肥大、巨大", "acromegaly 先端巨大症、hepatomegaly 肝腫大・肝肥大"],
+  ["-meter", "計器", "thermometer 温度計、spirometer 肺活量計"],
+  ["-metry", "測定[法、学、術]", "thermometry 温度測定"],
+  ["-mnesia", "記憶[状態]", "amnesia 記憶喪失・健忘症、dysmnesia 記憶障害"],
+  ["-old", "類似、様", "rheumatoid リウマチ様の、steroid ステロイド"],
+  ["-oma", "腫[瘍]", "adenoma 腺腫、carcinoma がん腫"],
+  ["-opia", "視力[障害]", "amblyopia 弱視、diplopia 複視"],
+  ["-opsis", "像", "biopsy 生検・生体[組織]検査、autopsy [死体]解剖・剖検"],
+  ["-osis", "病的状態", "tuberculosis 結核、osteoporosis 骨粗鬆症"],
+  ["-pathy", "疾患", "arthropathy 関節疾患、neuropathy 神経障害"],
+  ["-penia", "欠乏、不足", "cytopenia 血液細胞減少症、thrombocytopenia 血小板減少症"],
+  ["-pexy", "固定", "hysteropexy 子宮固定術、colopexy 結腸固定術"],
+  ["-phagia", "食べる", "dysphagia 嚥下困難・嚥下障害"],
+  ["-phasia", "言語不全、言語障害", "aphasia 失語症"],
+  ["-phil; -phile; -philia", "…に対する親和性", "hydrophilic 親水性の、hemophilia 血友病"],
+  ["-phobia", "恐怖[症]、…嫌い", "acrophobia 高所恐怖症、claustrophobia 閉所恐怖症"],
+  ["-plasty", "形成、融合", "arthroplasty 関節形成術、angioplasty 血管形成[術]"],
+  ["-plegia; -plegy", "麻痺", "hemiplegia 片麻痺、paraplegia 対麻痺"],
+  ["-pnea", "息、呼吸", "apnea 無呼吸、dyspnea 呼吸困難"],
+  ["-poiesis", "産出、形成", "autopoiesis 自己生産・オートポイエーシス"],
+  ["-poietin", "ポエチン", "erythropoietin エリスロポエチン・赤血球生成促進因子"],
+  ["-ptosis", "[臓器などの]下垂", "gastroptosis 胃下垂、blepharoptosis 眼瞼下垂"],
+  ["-rrhagia; -rrhage", "過剰漏出", "hemorrhage 出血、menorrhagia 月経過多"],
+  ["-rrhaphy", "縫合", "glossorrhaphy 舌縫合術"],
+  ["-rrhea", "流出", "diarrhea 下痢、amenorrhea 無月経"],
+  ["-rrhexis", "破裂、断裂", "hysterorrhexis 子宮破裂"],
+  ["-scope", "見る(検査する)機械", "microscope 顕微鏡、stethoscope 聴診器"],
+  ["-scopy", "見る(検査する)方法", "endoscopy 内視鏡検査、laparoscopy 腹腔鏡検査"],
+  ["-stasis", "静止、うっ血", "hemostasis 止血"],
+  ["-stenosis", "狭窄", "restenosis 再狭窄"],
+  ["-stomy", "開口術", "rectostomy 直腸造廔術、tracheostomy 気管切開術"],
+  ["-tomy", "切開[術]", "episiotomy 会陰切開"],
+  ["-trophy", "栄養、食物", "atrophy 萎縮、dystrophy ジストロフィー"],
+  ["-ule", "小さなもの", "molecule 分子、granule 顆粒剤"],
+  ["-uria", "尿[症]", "anuria 無尿[症]、hematuria 血尿"],
+];
+const MEDICAL_TERM_INTRO_ROWS = [
+  ...MEDICAL_TERM_PREFIX_ROWS.map(([term, meaning, examples]) => ({
+    section: "接頭辞 / 連結形",
+    term,
+    meaning,
+    examples,
+  })),
+  ...MEDICAL_TERM_SUFFIX_ROWS.map(([term, meaning, examples]) => ({
+    section: "接尾辞 / 連結形",
+    term,
+    meaning,
+    examples,
+  })),
+];
 
 function hasBodyPartAdjective(value) {
   const normalized = String(value || "").trim();
   return normalized && normalized !== "—" && normalized !== "-" && normalized !== "–";
+}
+
+function normalizeMedicalTermExamples(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return [];
+  }
+  return raw
+    .split("、")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 2);
 }
 
 function buildBodyPartStarterCards() {
@@ -275,6 +694,33 @@ function buildBodyPartStarterDeck() {
   };
 }
 
+function buildMedicalTermIntroStarterCards() {
+  return MEDICAL_TERM_INTRO_ROWS.map((row) => {
+    const topic = row.section.includes("接尾辞") ? "接尾辞" : "接頭辞";
+    const examples = normalizeMedicalTermExamples(row.examples);
+    return {
+      front: row.term,
+      back: row.meaning,
+      hint: row.section,
+      topic,
+      tags: ["医療英単語", "構成要素", topic],
+      note: "",
+      example: examples.join("、"),
+      dueOffset: 0,
+      intervalDays: 0,
+    };
+  });
+}
+
+function buildMedicalTermIntroStarterDeck() {
+  return {
+    name: MEDICAL_TERM_INTRO_DECK_NAME,
+    subject: MEDICAL_TERM_INTRO_DECK_SUBJECT,
+    description: MEDICAL_TERM_INTRO_DECK_DESCRIPTION,
+    cards: buildMedicalTermIntroStarterCards(),
+  };
+}
+
 function buildBodyPartDeckState({ deckId = crypto.randomUUID(), now = Date.now() } = {}) {
   const starterDeck = buildBodyPartStarterDeck();
   const cards = starterDeck.cards.map((starterCard, index) =>
@@ -314,6 +760,45 @@ function buildBodyPartDeckState({ deckId = crypto.randomUUID(), now = Date.now()
   };
 }
 
+function buildMedicalTermIntroDeckState({ deckId = crypto.randomUUID(), now = Date.now() } = {}) {
+  const starterDeck = buildMedicalTermIntroStarterDeck();
+  const cards = starterDeck.cards.map((starterCard, index) =>
+    makeCard({
+      id: `medical-term-card-${index + 1}-${Math.abs(now)}`,
+      deckId,
+      front: starterCard.front,
+      back: starterCard.back,
+      hint: starterCard.hint,
+      topic: starterCard.topic,
+      tags: starterCard.tags,
+      note: starterCard.note,
+      example: starterCard.example,
+      createdAt: now - (starterDeck.cards.length - index) * minuteMs,
+      dueAt: now + (starterCard.dueOffset || 0),
+      intervalDays: starterCard.intervalDays || 0,
+    }),
+  );
+
+  return {
+    deck: normalizeDeck({
+      id: deckId,
+      name: starterDeck.name,
+      focus: "medical",
+      subject: starterDeck.subject,
+      description: starterDeck.description,
+      createdAt: now,
+      defaults: {
+        defaultTopic: "接頭辞",
+        defaultTags: "医療英単語, 構成要素",
+        frontPromptTemplate: "英語の構成要素",
+        backPromptTemplate: "対応する意味",
+        preferredCardStyle: "text-first",
+      },
+    }),
+    cards,
+  };
+}
+
 function ensureBodyPartDeckSeed() {
   const hasDeck = state.decks.some((deck) => deck.name === BODY_PART_DECK_NAME);
   if (hasDeck) {
@@ -337,9 +822,33 @@ function ensureBodyPartDeckSeed() {
   return { added: true, cardCount: cards.length };
 }
 
+function ensureMedicalTermIntroDeckSeed() {
+  const hasDeck = state.decks.some((deck) => deck.name === MEDICAL_TERM_INTRO_DECK_NAME);
+  if (hasDeck) {
+    if (!state.settings?.[MEDICAL_TERM_INTRO_DECK_SEEDED_FLAG]) {
+      state.settings[MEDICAL_TERM_INTRO_DECK_SEEDED_FLAG] = true;
+      persist({ skipCloudBackup: true });
+    }
+    return { added: false, cardCount: 0 };
+  }
+
+  if (state.settings?.[MEDICAL_TERM_INTRO_DECK_SEEDED_FLAG]) {
+    return { added: false, cardCount: 0 };
+  }
+
+  const now = Date.now();
+  const { deck, cards } = buildMedicalTermIntroDeckState({ now });
+  state.decks.unshift(deck);
+  state.cards.unshift(...cards);
+  state.settings[MEDICAL_TERM_INTRO_DECK_SEEDED_FLAG] = true;
+  persist();
+  return { added: true, cardCount: cards.length };
+}
+
 const STARTER_PACKS = {
   medical: [
     buildBodyPartStarterDeck(),
+    buildMedicalTermIntroStarterDeck(),
   ],
   english: [],
 };
@@ -1100,13 +1609,20 @@ bootstrap();
 
 function bootstrap() {
   const bodyPartSeedResult = ensureBodyPartDeckSeed();
+  const medicalTermSeedResult = ensureMedicalTermIntroDeckSeed();
   render();
   bindEvents();
   initializeCloud();
   maybeOpenOnboarding();
   registerServiceWorker();
-  if (bodyPartSeedResult.added) {
+  if (bodyPartSeedResult.added && medicalTermSeedResult.added) {
+    showToast(
+      `初期デッキを追加しました（${BODY_PART_DECK_NAME}: ${bodyPartSeedResult.cardCount}枚 / ${MEDICAL_TERM_INTRO_DECK_NAME}: ${medicalTermSeedResult.cardCount}枚）`,
+    );
+  } else if (bodyPartSeedResult.added) {
     showToast(`${BODY_PART_DECK_NAME}デッキを追加しました（${bodyPartSeedResult.cardCount}枚）`);
+  } else if (medicalTermSeedResult.added) {
+    showToast(`${MEDICAL_TERM_INTRO_DECK_NAME}デッキを追加しました（${medicalTermSeedResult.cardCount}枚）`);
   }
 }
 
@@ -2763,15 +3279,15 @@ function focusFeatureTarget(targetId, { select = false } = {}) {
 function renderStats() {
   const stats = buildStats();
   dueCount.textContent = String(stats.dueCount);
-  heroTitle.textContent = state.decks.length ? "身体部位デッキから始める" : "最初の身体部位デッキを作る";
+  heroTitle.textContent = state.decks.length ? "身体部位と医学単語から始める" : "最初の医学デッキを用意する";
   heroText.textContent =
     stats.totalCards > 0
-      ? `身体部位を中心に ${stats.medicalCards}枚を管理しながら、必要なら追加デッキ ${stats.otherCards}枚へもすぐ進めます。`
-      : "まずは身体部位デッキから始めて、必要になった分野だけ後から追加できるようにしています。";
+      ? `身体部位と医学単語を中心に ${stats.medicalCards}枚を管理しながら、必要なら追加デッキ ${stats.otherCards}枚へもすぐ進めます。`
+      : "最初は身体部位の名称と医学単語入門の2デッキから始めて、必要になった分野だけ後から追加できるようにしています。";
   quickSummary.textContent =
     stats.dueCount > 0
-      ? `いまは身体部位 ${stats.medicalDue}枚・追加デッキ ${stats.otherDue}枚が復習待ちです。上から必要なデッキをそのまま開けます。`
-      : "復習待ちがないときは、身体部位デッキを整えるか、必要な分野だけカードや資料を追加して次に備えられます。";
+      ? `いまは初期の医学デッキ ${stats.medicalDue}枚・追加デッキ ${stats.otherDue}枚が復習待ちです。上から必要なデッキをそのまま開けます。`
+      : "復習待ちがないときは、身体部位や医学単語の基礎デッキを整えるか、必要な分野だけカードや資料を追加して次に備えられます。";
 }
 
 function buildStats() {
@@ -3666,16 +4182,16 @@ function buildHomeQuickActions() {
   if (!state.cards.length) {
     if (!hasMedicalDeck) {
       pushAction({
-        title: "身体部位デッキを入れる",
-        text: "最初の復習ルートとして、身体部位の名称デッキをすぐ追加できます。",
-        label: "身体部位デッキを追加",
+        title: "初期の医学デッキを入れる",
+        text: "身体部位の名称と医学単語入門をまとめて追加して、最初の復習ルートをすぐ作れます。",
+        label: "初期デッキを追加",
         action: "install-starter",
         focus: "medical",
       });
     }
     pushAction({
       title: "PDFからまとめて作る",
-      text: "講義資料や配布ノートをそのまま読み込んで、身体部位デッキや追加デッキに候補を一気に作れます。",
+      text: "講義資料や配布ノートをそのまま読み込んで、身体部位や医学単語の基礎デッキに候補を一気に作れます。",
       label: "PDF取り込みへ",
       action: "create-mode",
       mode: "import",
@@ -3719,9 +4235,9 @@ function buildHomeQuickActions() {
 
   if (!hasMedicalDeck) {
     pushAction({
-      title: "身体部位デッキを補う",
-      text: "解剖の基礎がまだ無いときは、身体部位デッキから入れると復習の軸が安定します。",
-      label: "身体部位デッキを追加",
+      title: "初期の医学デッキを補う",
+      text: "解剖の基礎と医療英単語の土台がまだ無いときは、初期の2デッキから入れると復習の軸が安定します。",
+      label: "初期デッキを追加",
       action: "install-starter",
       focus: "medical",
     });
@@ -3816,14 +4332,14 @@ function buildCreateGuideModel() {
     if (!hasDecks) {
       return {
         title: "カードの前にデッキを用意する",
-        summary: "カードは必ずどこかのデッキに入ります。まずは身体部位デッキか、自分で使いたい分野のデッキを1つ作ると進めやすいです。",
+        summary: "カードは必ずどこかのデッキに入ります。まずは身体部位の名称と医学単語入門の2デッキ、または自分で使いたい分野のデッキを1つ作ると進めやすいです。",
         steps: [
           { title: "先にデッキを作る", text: "科目や目的ごとに箱を作ってからカードを入れると、復習範囲が整理されます。" },
           { title: "そのあとカードへ戻る", text: "問題・答え・補足を短く入力して、1枚ずつ増やします。" },
         ],
         actions: [
           { label: "デッキ作成へ", action: "create-mode", mode: "deck" },
-          { label: "身体部位デッキを追加", action: "install-starter", focus: "medical", kind: "ghost" },
+          { label: "初期デッキを追加", action: "install-starter", focus: "medical", kind: "ghost" },
         ],
       };
     }
@@ -3832,7 +4348,7 @@ function buildCreateGuideModel() {
       title: "1枚ずつ丁寧にカードを追加する",
       summary: "重要度が高い内容や、PDFから拾い切れない細かい知識は手入力で補うのが向いています。",
       steps: [
-        { title: "入れるデッキを選ぶ", text: "まず対象デッキを決めて、身体部位なのか別分野なのか文脈を揃えます。" },
+        { title: "入れるデッキを選ぶ", text: "まず対象デッキを決めて、身体部位なのか医学単語なのか、あるいは別分野なのか文脈を揃えます。" },
         { title: "問題と答えを短く分ける", text: "1カード1論点にすると、暗記と復習の効率が上がります。" },
         { title: "補足や例文で定着させる", text: "臨床メモや例文を添えると、覚える場面が頭に残りやすくなります。" },
       ],
@@ -5897,9 +6413,9 @@ function renderDashboard() {
     decks: collections.medical,
     listElement: medicalDeckList,
     countElement: medicalDeckCount,
-    emptyTitle: "身体部位のデッキがまだありません",
-    emptyText: "まずは身体部位の名称デッキから始めると、解剖の復習ルートを作りやすくなります。",
-    emptyButtonLabel: "身体部位デッキを作る",
+    emptyTitle: "初期の医学デッキがまだありません",
+    emptyText: "まずは身体部位の名称と医学単語入門から始めると、解剖と医療英単語の復習ルートを作りやすくなります。",
+    emptyButtonLabel: "初期デッキを入れる",
     emptyFocus: "medical",
   });
 
@@ -10392,7 +10908,7 @@ function installStarterPack(focus) {
   let addedCards = 0;
   let latestDeckId = "";
   const now = Date.now();
-  const starterLabel = focus === "medical" ? "身体部位デッキ" : `${formatDeckFocus(focus)}スターター`;
+  const starterLabel = focus === "medical" ? "初期の医学デッキ" : `${formatDeckFocus(focus)}スターター`;
 
   starterDecks.forEach((starterDeck, deckIndex) => {
     if (state.decks.some((deck) => deck.name === starterDeck.name)) {
@@ -15603,14 +16119,19 @@ function registerServiceWorker() {
 function createDemoState() {
   const now = Date.now();
   const bodyPartDeckId = "deck-medical-body-parts";
+  const medicalTermDeckId = "deck-medical-term-intro";
   const { deck: bodyPartDeck, cards: bodyPartCards } = buildBodyPartDeckState({
     deckId: bodyPartDeckId,
     now: now - 7 * dayMs,
   });
+  const { deck: medicalTermDeck, cards: medicalTermCards } = buildMedicalTermIntroDeckState({
+    deckId: medicalTermDeckId,
+    now: now - 6 * dayMs,
+  });
 
   return {
-    decks: [bodyPartDeck],
-    cards: [...bodyPartCards],
+    decks: [bodyPartDeck, medicalTermDeck],
+    cards: [...bodyPartCards, ...medicalTermCards],
     reviewLog: [],
     assistant: {
       messages: [],
@@ -15620,6 +16141,7 @@ function createDemoState() {
       onboardingCompleted: false,
       autoBackupEnabled: true,
       [BODY_PART_DECK_SEEDED_FLAG]: true,
+      [MEDICAL_TERM_INTRO_DECK_SEEDED_FLAG]: true,
     },
   };
 }
@@ -16016,6 +16538,7 @@ function normalizeSettingsState(settings) {
     onboardingCompleted: Boolean(safeSettings.onboardingCompleted),
     autoBackupEnabled: safeSettings.autoBackupEnabled !== false,
     [BODY_PART_DECK_SEEDED_FLAG]: Boolean(safeSettings[BODY_PART_DECK_SEEDED_FLAG]),
+    [MEDICAL_TERM_INTRO_DECK_SEEDED_FLAG]: Boolean(safeSettings[MEDICAL_TERM_INTRO_DECK_SEEDED_FLAG]),
     quickCapture: {
       lastDeckId: String(safeSettings.quickCapture?.lastDeckId || "").trim(),
       lastTags: String(safeSettings.quickCapture?.lastTags || "").trim(),
