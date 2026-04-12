@@ -340,169 +340,8 @@ function ensureBodyPartDeckSeed() {
 const STARTER_PACKS = {
   medical: [
     buildBodyPartStarterDeck(),
-    {
-      name: "解剖・生理ベーシック",
-      subject: "解剖 / 生理",
-      description: "構造と機能を対で覚える、医学部基礎向けのスターターデッキ。",
-      cards: [
-        {
-          front: "僧帽弁はどの部屋の間にある？",
-          back: "左心房と左心室の間にある。",
-          hint: "房室弁の左右差で整理する。",
-          topic: "循環",
-          tags: ["解剖", "循環", "必修"],
-          note: "右は三尖弁、左は僧帽弁。弁膜症の病態整理にも直結する。",
-          example: "僧帽弁狭窄では左房圧が上がり、肺うっ血につながる。",
-          dueOffset: -40 * minuteMs,
-          intervalDays: 0,
-        },
-        {
-          front: "細胞外液量を規定する主要イオンは？",
-          back: "ナトリウムイオン（Na+）。",
-          hint: "体液区分と主要イオンをセットで覚える。",
-          topic: "体液",
-          tags: ["生理", "腎", "電解質"],
-          note: "Na+は細胞外液、K+は細胞内液の代表。脱水・浮腫の整理で重要。",
-          example: "低Na血症では水分バランス異常の評価が必要になる。",
-          dueOffset: -90 * minuteMs,
-          intervalDays: 1,
-        },
-        {
-          front: "NSAIDsで糸球体濾過量が低下しやすい理由は？",
-          back: "プロスタグランジン産生が抑制され、輸入細動脈が収縮しやすくなるから。",
-          hint: "輸入細動脈と輸出細動脈の作用差を確認。",
-          topic: "腎機能",
-          tags: ["薬理", "腎", "臨床"],
-          note: "脱水や高齢者ではAKIリスクが上がるため、NSAIDsの扱いに注意する。",
-          example: "ACE阻害薬・利尿薬・NSAIDsの併用は腎前性AKIの典型的リスク。",
-          dueOffset: -20 * minuteMs,
-          intervalDays: 0,
-        },
-      ],
-    },
-    {
-      name: "病態・臨床推論",
-      subject: "病態 / 内科",
-      description: "症状から病態をつなぐ、臨床寄りの復習デッキ。",
-      cards: [
-        {
-          front: "ネフローゼ症候群の4徴は？",
-          back: "高度蛋白尿、低アルブミン血症、浮腫、高脂血症。",
-          hint: "低Albから浮腫につながる流れを押さえる。",
-          topic: "腎疾患",
-          tags: ["病理", "腎", "内科"],
-          note: "糸球体障害で蛋白漏出が起こり、膠質浸透圧低下から浮腫が出る。",
-          example: "膜性腎症や微小変化型ネフローゼで典型的にみられる。",
-          dueOffset: -70 * minuteMs,
-          intervalDays: 2,
-        },
-        {
-          front: "呼吸性アシドーシスで一次的に上昇するのは？",
-          back: "PaCO2。",
-          hint: "代謝性か呼吸性かを最初に分ける。",
-          topic: "酸塩基平衡",
-          tags: ["生理", "呼吸", "救急"],
-          note: "慢性化すると腎代償でHCO3-も上がるが、最初に見るのはCO2。",
-          example: "COPD増悪ではPaCO2上昇とアシドーシスが問題になる。",
-          dueOffset: -15 * minuteMs,
-          intervalDays: 0,
-        },
-        {
-          front: "胸痛・冷汗・ST上昇で最優先に疑う病態は？",
-          back: "急性冠症候群、特にST上昇型心筋梗塞（STEMI）。",
-          hint: "症候から緊急度を判断する。",
-          topic: "循環救急",
-          tags: ["循環", "救急", "症候"],
-          note: "発症時刻、誘導部位、再灌流適応を一緒に確認すると臨床像が残りやすい。",
-          example: "冷汗を伴う強い胸痛なら、まずACSを想起して12誘導心電図を急ぐ。",
-          dueOffset: -5 * minuteMs,
-          intervalDays: 0,
-        },
-      ],
-    },
   ],
-  english: [
-    {
-      name: "Medical English Core",
-      subject: "医学英語 / 語彙",
-      description: "医療現場や論文で頻出の表現を回す語彙デッキ。",
-      cards: [
-        {
-          front: "administer",
-          back: "投与する、実施する。",
-          hint: "薬剤や酸素、検査の文脈で頻出。",
-          topic: "医学英語",
-          tags: ["vocabulary", "medical english", "verb"],
-          note: "administer a drug, administer oxygen, administer a test の形が多い。",
-          example: "The nurse administered the medication intravenously.",
-          dueOffset: -55 * minuteMs,
-          intervalDays: 1,
-        },
-        {
-          front: "adverse event",
-          back: "有害事象。",
-          hint: "副作用より広く、介入後に起こる好ましくない出来事を指す。",
-          topic: "医学英語",
-          tags: ["vocabulary", "clinical trial", "noun"],
-          note: "side effect よりも臨床試験では adverse event の方が広い概念。",
-          example: "No serious adverse events were reported during the study.",
-          dueOffset: -18 * minuteMs,
-          intervalDays: 0,
-        },
-        {
-          front: "underlying condition",
-          back: "基礎疾患、背景にある病態。",
-          hint: "患者背景を説明するときの定番表現。",
-          topic: "医学英語",
-          tags: ["vocabulary", "history taking", "noun"],
-          note: "underlying disease と近いが、condition の方が広く使いやすい。",
-          example: "Patients with underlying conditions were excluded from the trial.",
-          dueOffset: -12 * minuteMs,
-          intervalDays: 0,
-        },
-      ],
-    },
-    {
-      name: "English Reading Patterns",
-      subject: "読解 / 構文",
-      description: "英語長文や論文読解に必要な構文を確認するデッキ。",
-      cards: [
-        {
-          front: "be associated with",
-          back: "A is associated with B = AはBと関連している。",
-          hint: "因果関係ではなく関連性を示すことが多い。",
-          topic: "読解",
-          tags: ["reading", "論文", "phrase"],
-          note: "論文では cause より控えめな言い方として頻出する。",
-          example: "Obesity is associated with an increased risk of hypertension.",
-          dueOffset: -28 * minuteMs,
-          intervalDays: 2,
-        },
-        {
-          front: "Although A, B",
-          back: "Aではあるが、B。",
-          hint: "逆接の主張は後半に来る。",
-          topic: "構文",
-          tags: ["reading", "grammar", "contrast"],
-          note: "読解では although 節のあとよりも、主節の内容を優先して把握する。",
-          example: "Although the sample size was small, the trend was consistent.",
-          dueOffset: -8 * minuteMs,
-          intervalDays: 0,
-        },
-        {
-          front: "Patients who were treated early had lower mortality.",
-          back: "早期に治療された患者では死亡率が低かった。",
-          hint: "who were treated early が patients を修飾している。",
-          topic: "読解",
-          tags: ["reading", "relative clause", "medical english"],
-          note: "主語の患者像をまず把握し、その後に述語の評価指標を読むと速い。",
-          example: "Patients who received early antibiotics had shorter hospital stays.",
-          dueOffset: -3 * minuteMs,
-          intervalDays: 0,
-        },
-      ],
-    },
-  ],
+  english: [],
 };
 
 const demoState = createDemoState();
@@ -1193,7 +1032,7 @@ const FEATURE_SEARCH_ITEMS = [
     id: "library-search",
     title: "保存済みカードを検索する",
     sectionLabel: "ライブラリ",
-    description: "医学や英語の知識を保存済みカードだけから探します。",
+    description: "保存済みカードだけから必要な知識を探します。",
     keywords: ["検索", "ライブラリ", "知識", "カード検索", "調べる"],
     action: "section",
     sectionId: "assistant",
@@ -2924,15 +2763,15 @@ function focusFeatureTarget(targetId, { select = false } = {}) {
 function renderStats() {
   const stats = buildStats();
   dueCount.textContent = String(stats.dueCount);
-  heroTitle.textContent = state.decks.length ? "科目別にデッキを管理する" : "最初の科目デッキを作る";
+  heroTitle.textContent = state.decks.length ? "身体部位デッキから始める" : "最初の身体部位デッキを作る";
   heroText.textContent =
     stats.totalCards > 0
-      ? `医学${stats.medicalCards}枚・英語${stats.englishCards}枚を管理しながら、科目ごとにすぐ資料追加や復習へ進めます。`
-      : "医学や英語の科目ごとにデッキを分けておくと、カード追加やPDF整理がかなり楽になります。";
+      ? `身体部位を中心に ${stats.medicalCards}枚を管理しながら、必要なら追加デッキ ${stats.otherCards}枚へもすぐ進めます。`
+      : "まずは身体部位デッキから始めて、必要になった分野だけ後から追加できるようにしています。";
   quickSummary.textContent =
     stats.dueCount > 0
-      ? `いまは医学${stats.medicalDue}枚・英語${stats.englishDue}枚が復習待ちです。上から必要なデッキをそのまま開けます。`
-      : "復習待ちがないときは、科目ごとにカードや資料を追加して次の学習に備えられます。";
+      ? `いまは身体部位 ${stats.medicalDue}枚・追加デッキ ${stats.otherDue}枚が復習待ちです。上から必要なデッキをそのまま開けます。`
+      : "復習待ちがないときは、身体部位デッキを整えるか、必要な分野だけカードや資料を追加して次に備えられます。";
 }
 
 function buildStats() {
@@ -2943,21 +2782,21 @@ function buildStats() {
   const todayReviewed = state.reviewLog.filter((entry) => entry.dateKey === todayKey).length;
   const mastered = state.cards.filter((card) => card.study.mode === "review" && card.study.intervalDays >= 7).length;
   const medicalCards = state.cards.filter((card) => getDeckFocus(card.deckId) === "medical").length;
-  const englishCards = state.cards.filter((card) => getDeckFocus(card.deckId) === "english").length;
   const medicalDue = dueCards.filter((card) => getDeckFocus(card.deckId) === "medical").length;
-  const englishDue = dueCards.filter((card) => getDeckFocus(card.deckId) === "english").length;
+  const otherCards = cards - medicalCards;
+  const otherDue = dueCards.length - medicalDue;
 
   return {
     dueCount: dueCards.length,
     todayReviewed,
     totalCards: cards,
     medicalCards,
-    englishCards,
     medicalDue,
-    englishDue,
+    otherCards,
+    otherDue,
     cards: [
-      { label: "医学カード", value: medicalCards },
-      { label: "英語カード", value: englishCards },
+      { label: "身体部位カード", value: medicalCards },
+      { label: "追加デッキのカード", value: otherCards },
       { label: "今日の回答数", value: todayReviewed },
       { label: "7日以上に伸びた枚数", value: mastered },
     ],
@@ -3814,7 +3653,6 @@ function buildHomeQuickActions() {
   const stats = buildStats();
   const pendingCount = cloudState.pendingRequests.length;
   const hasMedicalDeck = state.decks.some((deck) => deck.focus === "medical");
-  const hasEnglishDeck = state.decks.some((deck) => deck.focus === "english");
   const hasSharedDeck = state.decks.some((deck) => deck.storageMode === "shared");
   const actions = [];
 
@@ -3828,25 +3666,16 @@ function buildHomeQuickActions() {
   if (!state.cards.length) {
     if (!hasMedicalDeck) {
       pushAction({
-        title: "医学スターターを入れる",
-        text: "解剖・生理と病態の土台をすぐに追加して、最初の復習ルートを作れます。",
-        label: "医学スターター追加",
+        title: "身体部位デッキを入れる",
+        text: "最初の復習ルートとして、身体部位の名称デッキをすぐ追加できます。",
+        label: "身体部位デッキを追加",
         action: "install-starter",
         focus: "medical",
       });
     }
-    if (!hasEnglishDeck) {
-      pushAction({
-        title: "英語スターターを入れる",
-        text: "医学英語と長文読解の土台を用意して、英語トラックをすぐ始められます。",
-        label: "英語スターター追加",
-        action: "install-starter",
-        focus: "english",
-      });
-    }
     pushAction({
       title: "PDFからまとめて作る",
-      text: "講義資料や配布ノートをそのまま読み込んで、カード候補を一気に作れます。",
+      text: "講義資料や配布ノートをそのまま読み込んで、身体部位デッキや追加デッキに候補を一気に作れます。",
       label: "PDF取り込みへ",
       action: "create-mode",
       mode: "import",
@@ -3888,21 +3717,11 @@ function buildHomeQuickActions() {
     });
   }
 
-  if (!hasEnglishDeck) {
-    pushAction({
-      title: "英語トラックを補強する",
-      text: "医学英語や読解のデッキがまだ少ないなら、英語スターターを足すと始めやすいです。",
-      label: "英語スターター追加",
-      action: "install-starter",
-      focus: "english",
-    });
-  }
-
   if (!hasMedicalDeck) {
     pushAction({
-      title: "医学トラックを補強する",
-      text: "基礎科目の復習が薄いときは、医学スターターから埋めると全体が安定します。",
-      label: "医学スターター追加",
+      title: "身体部位デッキを補う",
+      text: "解剖の基礎がまだ無いときは、身体部位デッキから入れると復習の軸が安定します。",
+      label: "身体部位デッキを追加",
       action: "install-starter",
       focus: "medical",
     });
@@ -3910,7 +3729,7 @@ function buildHomeQuickActions() {
 
   pushAction({
     title: "PDFから一気に増やす",
-    text: "講義資料や英語本文からカード候補を作って、入力の手間を減らせます。",
+    text: "講義資料やノートからカード候補を作って、入力の手間を減らせます。",
     label: "PDF取り込みへ",
     action: "create-mode",
     mode: "import",
@@ -3997,14 +3816,14 @@ function buildCreateGuideModel() {
     if (!hasDecks) {
       return {
         title: "カードの前にデッキを用意する",
-        summary: "カードは必ずどこかのデッキに入ります。まずは医学か英語のデッキを1つ作ると進めやすいです。",
+        summary: "カードは必ずどこかのデッキに入ります。まずは身体部位デッキか、自分で使いたい分野のデッキを1つ作ると進めやすいです。",
         steps: [
           { title: "先にデッキを作る", text: "科目や目的ごとに箱を作ってからカードを入れると、復習範囲が整理されます。" },
           { title: "そのあとカードへ戻る", text: "問題・答え・補足を短く入力して、1枚ずつ増やします。" },
         ],
         actions: [
           { label: "デッキ作成へ", action: "create-mode", mode: "deck" },
-          { label: "医学スターター追加", action: "install-starter", focus: "medical", kind: "ghost" },
+          { label: "身体部位デッキを追加", action: "install-starter", focus: "medical", kind: "ghost" },
         ],
       };
     }
@@ -4013,7 +3832,7 @@ function buildCreateGuideModel() {
       title: "1枚ずつ丁寧にカードを追加する",
       summary: "重要度が高い内容や、PDFから拾い切れない細かい知識は手入力で補うのが向いています。",
       steps: [
-        { title: "入れるデッキを選ぶ", text: "まず対象デッキを決めて、医学か英語かの文脈を揃えます。" },
+        { title: "入れるデッキを選ぶ", text: "まず対象デッキを決めて、身体部位なのか別分野なのか文脈を揃えます。" },
         { title: "問題と答えを短く分ける", text: "1カード1論点にすると、暗記と復習の効率が上がります。" },
         { title: "補足や例文で定着させる", text: "臨床メモや例文を添えると、覚える場面が頭に残りやすくなります。" },
       ],
@@ -4027,9 +3846,9 @@ function buildCreateGuideModel() {
   if (createMode === "import") {
     return {
       title: "資料からまとめてカード候補を作る",
-      summary: "大量の講義資料や英語本文を扱うときは、まず取り込みで候補を作ってから必要なものだけ残すのが速いです。",
+      summary: "大量の講義資料や配布ノートを扱うときは、まず取り込みで候補を作ってから必要なものだけ残すのが速いです。",
       steps: [
-        { title: "PDFか本文を入れる", text: "講義PDF、配布ノート、英語本文などをそのまま投入できます。" },
+        { title: "PDFか本文を入れる", text: "講義PDFや配布ノートをそのまま投入できます。" },
         { title: "候補を整理する", text: "重複統合、一括タグ付け、不要候補の削除で質を整えます。" },
         { title: "新規または既存デッキへ保存", text: "まとめて新規デッキを作るか、既存デッキに追記できます。" },
       ],
@@ -4080,8 +3899,8 @@ function buildCreateGuideModel() {
     title: "まずは学習の箱を作る",
     summary: "デッキは科目や用途ごとのまとまりです。あとから共有やPDF取り込みを使うときも、デッキ設計が土台になります。",
     steps: [
-      { title: "デッキ名を決める", text: "解剖・生理、病態、医学英語、読解のように用途ごとに分けると管理しやすいです。" },
-      { title: "学習トラックと分野を入れる", text: "医学 / 英語と分野名を入れておくと、検索や絞り込みがしやすくなります。" },
+      { title: "デッキ名を決める", text: "身体部位、症候、病理のように用途ごとに分けると管理しやすいです。" },
+      { title: "分野と初期値を入れる", text: "解剖 / 身体部位のような分野名を入れておくと、検索や絞り込みがしやすくなります。" },
       { title: "次にカードかPDFへ進む", text: "箱を作ったら、手入力のカード追加か、資料からの一括取り込みに進みます。" },
     ],
     actions: [
@@ -5780,8 +5599,8 @@ function renderImportPanel() {
         <h4>まだ自動生成の候補はありません</h4>
         <p class="muted">${
           contextDeck
-            ? `講義PDF、英語の資料、配布ノートを読み込むと、「${escapeHtml(contextDeck.name)}」へ追加する候補がここに並びます。`
-            : "講義PDF、英語の資料、配布ノートを読み込むとここに候補が並びます。あとから保存先デッキを選べます。"
+            ? `講義PDFや配布ノートを読み込むと、「${escapeHtml(contextDeck.name)}」へ追加する候補がここに並びます。`
+            : "講義PDFや配布ノートを読み込むとここに候補が並びます。あとから保存先デッキを選べます。"
         }</p>
       </article>
     `;
@@ -6078,19 +5897,10 @@ function renderDashboard() {
     decks: collections.medical,
     listElement: medicalDeckList,
     countElement: medicalDeckCount,
-    emptyTitle: "医学のデッキがまだありません",
-    emptyText: "解剖、生理、病態など、科目ごとにデッキを分けると管理しやすくなります。",
-    emptyButtonLabel: "医学のデッキを作る",
+    emptyTitle: "身体部位のデッキがまだありません",
+    emptyText: "まずは身体部位の名称デッキから始めると、解剖の復習ルートを作りやすくなります。",
+    emptyButtonLabel: "身体部位デッキを作る",
     emptyFocus: "medical",
-  });
-  renderDashboardDeckSection({
-    decks: collections.english,
-    listElement: englishDeckList,
-    countElement: englishDeckCount,
-    emptyTitle: "英語のデッキがまだありません",
-    emptyText: "医学英語、語彙、長文読解などで分けておくと、後から探しやすくなります。",
-    emptyButtonLabel: "英語のデッキを作る",
-    emptyFocus: "english",
   });
 
   if (generalDeckSection) {
@@ -6100,8 +5910,8 @@ function renderDashboard() {
     decks: collections.general,
     listElement: generalDeckList,
     countElement: generalDeckCount,
-    emptyTitle: "その他のデッキはありません",
-    emptyText: "医学と英語以外の汎用デッキは、ここにまとまります。",
+    emptyTitle: "追加したデッキはありません",
+    emptyText: "身体部位以外の分野を使いたくなったときに、自分で追加したデッキがここに並びます。",
     emptyButtonLabel: "汎用デッキを作る",
     emptyFocus: "general",
   });
@@ -6200,7 +6010,7 @@ function buildDashboardDeckCollections() {
   return {
     medical: sortDashboardDecks(localDecks.filter((deck) => deck.focus === "medical")),
     english: sortDashboardDecks(localDecks.filter((deck) => deck.focus === "english")),
-    general: sortDashboardDecks(localDecks.filter((deck) => deck.focus === "general")),
+    general: sortDashboardDecks(localDecks.filter((deck) => deck.focus !== "medical")),
     ownedShared: sortDashboardDecks(state.decks.filter((deck) => deck.storageMode === "shared" && deck.role === "owner")),
     joinedShared: sortDashboardDecks(
       state.decks.filter((deck) => deck.storageMode === "shared" && ["editor", "viewer"].includes(deck.role)),
@@ -10573,11 +10383,16 @@ function installStarterPack(focus) {
   if (!starterDecks) {
     return;
   }
+  if (!starterDecks.length) {
+    showToast("このスターターは現在表示していません");
+    return;
+  }
 
   let addedDecks = 0;
   let addedCards = 0;
   let latestDeckId = "";
   const now = Date.now();
+  const starterLabel = focus === "medical" ? "身体部位デッキ" : `${formatDeckFocus(focus)}スターター`;
 
   starterDecks.forEach((starterDeck, deckIndex) => {
     if (state.decks.some((deck) => deck.name === starterDeck.name)) {
@@ -10618,7 +10433,7 @@ function installStarterPack(focus) {
   });
 
   if (!addedDecks) {
-    showToast(`${formatDeckFocus(focus)}スターターはすでに追加済みです`);
+    showToast(`${starterLabel}はすでに追加済みです`);
     return;
   }
 
@@ -10632,7 +10447,7 @@ function installStarterPack(focus) {
     applyCardContextPlaceholders();
   }
 
-  showToast(`${formatDeckFocus(focus)}スターターを追加しました（${addedDecks}デッキ / ${addedCards}枚）`);
+  showToast(`${starterLabel}を追加しました（${addedDecks}デッキ / ${addedCards}枚）`);
 }
 
 async function loadImportBundle() {
@@ -15788,110 +15603,14 @@ function registerServiceWorker() {
 function createDemoState() {
   const now = Date.now();
   const bodyPartDeckId = "deck-medical-body-parts";
-  const medicalBasicsDeckId = "deck-medical-basics";
-  const medicalClinicalDeckId = "deck-medical-clinical";
-  const englishMedicalDeckId = "deck-english-medical";
-  const englishReadingDeckId = "deck-english-reading";
   const { deck: bodyPartDeck, cards: bodyPartCards } = buildBodyPartDeckState({
     deckId: bodyPartDeckId,
     now: now - 7 * dayMs,
   });
 
   return {
-    decks: [
-      bodyPartDeck,
-      {
-        id: medicalBasicsDeckId,
-        name: "解剖・生理ベーシック",
-        focus: "medical",
-        subject: "解剖 / 生理",
-        description: "構造と機能を対で覚える医学部基礎デッキ",
-        createdAt: now - 6 * dayMs,
-      },
-      {
-        id: medicalClinicalDeckId,
-        name: "病態・臨床推論",
-        focus: "medical",
-        subject: "病態 / 内科",
-        description: "症状から病態をつなぐ臨床寄りデッキ",
-        createdAt: now - 5 * dayMs,
-      },
-      {
-        id: englishMedicalDeckId,
-        name: "Medical English Core",
-        focus: "english",
-        subject: "医学英語 / 語彙",
-        description: "医療現場や論文で頻出の語彙デッキ",
-        createdAt: now - 4 * dayMs,
-      },
-      {
-        id: englishReadingDeckId,
-        name: "English Reading Patterns",
-        focus: "english",
-        subject: "読解 / 構文",
-        description: "長文読解や論文読解の構文デッキ",
-        createdAt: now - 4 * dayMs,
-      },
-    ],
-    cards: [
-      ...bodyPartCards,
-      makeCard({
-        id: "card-1",
-        deckId: medicalBasicsDeckId,
-        front: "僧帽弁はどの部屋の間にある？",
-        back: "左心房と左心室の間。",
-        hint: "房室弁の左右差で整理する。",
-        topic: "循環",
-        tags: ["解剖", "循環", "必修"],
-        note: "右は三尖弁、左は僧帽弁。弁膜症の整理にもつながる。",
-        example: "僧帽弁狭窄では左房圧上昇から肺うっ血につながる。",
-        createdAt: now - 5 * dayMs,
-        dueAt: now - 2 * hourMs,
-        intervalDays: 0,
-      }),
-      makeCard({
-        id: "card-2",
-        deckId: medicalClinicalDeckId,
-        front: "ネフローゼ症候群の4徴は？",
-        back: "高度蛋白尿、低アルブミン血症、浮腫、高脂血症。",
-        hint: "低Albから浮腫につながる流れを押さえる。",
-        topic: "腎疾患",
-        tags: ["病理", "腎", "内科"],
-        note: "糸球体障害による蛋白漏出と膠質浸透圧低下を一続きで覚える。",
-        example: "膜性腎症や微小変化型ネフローゼで典型的。",
-        createdAt: now - 3 * dayMs,
-        dueAt: now - hourMs,
-        intervalDays: 1,
-      }),
-      makeCard({
-        id: "card-3",
-        deckId: englishMedicalDeckId,
-        front: "administer",
-        back: "投与する、実施する。",
-        hint: "薬剤や酸素、検査の文脈で頻出。",
-        topic: "医学英語",
-        tags: ["vocabulary", "medical english", "verb"],
-        note: "administer a drug, administer oxygen の形をセットで覚える。",
-        example: "The nurse administered the medication intravenously.",
-        createdAt: now - 4 * dayMs,
-        dueAt: now - 30 * 60 * 1000,
-        intervalDays: 0,
-      }),
-      makeCard({
-        id: "card-4",
-        deckId: englishReadingDeckId,
-        front: "Although A, B",
-        back: "Aではあるが、B。",
-        hint: "逆接の主張は後半に来る。",
-        topic: "構文",
-        tags: ["reading", "grammar", "contrast"],
-        note: "読解では although 節のあとよりも主節の内容を優先して把握する。",
-        example: "Although the sample size was small, the trend was consistent.",
-        createdAt: now - 2 * dayMs,
-        dueAt: now + dayMs,
-        intervalDays: 2,
-      }),
-    ],
+    decks: [bodyPartDeck],
+    cards: [...bodyPartCards],
     reviewLog: [],
     assistant: {
       messages: [],

@@ -13,25 +13,25 @@
     <meta name="google-site-verification" content="yB_P683yh1jK0fufhmPcY9-cGy1gdYH9QJHF6ogSue8" />
     <meta
       name="description"
-      content="医学部の学習と英語学習をiPhoneでも進めやすい、暗記カード型のWebアプリです。医学、医学英語、読解、復習履歴をまとめて管理できます。"
+      content="医学部の解剖学習をiPhoneでも進めやすい、暗記カード型のWebアプリです。身体部位デッキを中心に、復習・資料整理・共有をまとめて管理できます。"
     />
     <link rel="canonical" href="https://pulse-recall.vercel.app/" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://pulse-recall.vercel.app/" />
-    <meta property="og:title" content="Pulse Recall | 医学部・英語学習アプリ" />
+    <meta property="og:title" content="Pulse Recall | 医学部学習アプリ" />
     <meta
       property="og:description"
-      content="医学部の学習と英語学習をiPhoneでも進めやすい、暗記カード型のWebアプリです。医学、医学英語、読解、復習履歴をまとめて管理できます。"
+      content="医学部の解剖学習をiPhoneでも進めやすい、暗記カード型のWebアプリです。身体部位デッキを中心に、復習・資料整理・共有をまとめて管理できます。"
     />
     <meta property="og:image" content="https://pulse-recall.vercel.app/assets/icon-512.png" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:url" content="https://pulse-recall.vercel.app/" />
-    <meta name="twitter:title" content="Pulse Recall | 医学部・英語学習アプリ" />
+    <meta name="twitter:title" content="Pulse Recall | 医学部学習アプリ" />
     <meta
       name="twitter:description"
-      content="医学部の学習と英語学習をiPhoneでも進めやすい、暗記カード型のWebアプリです。医学、医学英語、読解、復習履歴をまとめて管理できます。"
+      content="医学部の解剖学習をiPhoneでも進めやすい、暗記カード型のWebアプリです。身体部位デッキを中心に、復習・資料整理・共有をまとめて管理できます。"
     />
-    <title>Pulse Recall | 医学部・英語学習アプリ</title>
+    <title>Pulse Recall | 医学部学習アプリ</title>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
@@ -41,7 +41,7 @@
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">医学部 / 英語 学習サポート</p>
+          <p class="eyebrow">医学部 学習サポート</p>
           <h1>Pulse Recall</h1>
         </div>
         <button class="ghost-button topbar-search-button" id="openFeatureSearchButton" type="button">機能検索</button>
@@ -60,12 +60,12 @@
           <section class="panel board-hero">
             <div>
               <p class="eyebrow">デッキ一覧</p>
-              <h2 id="heroTitle">科目別にデッキを管理する</h2>
+              <h2 id="heroTitle">身体部位デッキから始める</h2>
               <p id="heroText">
-                医学と英語のデッキを、科目ごとにすぐ見つけられる形で並べています。
+                最初は身体部位の名称デッキを中心に、解剖の基礎を迷わず回せる形にしています。
               </p>
               <p class="muted" id="quickSummary">
-                まずは復習待ちを処理し、その後に資料やカードを追加して育てていけます。
+                まずは身体部位を復習し、必要になったときだけ自分で新しいデッキを追加できます。
               </p>
             </div>
             <div class="board-hero-side">
@@ -75,7 +75,7 @@
               </div>
               <div class="button-row board-hero-actions">
                 <button class="primary-button" id="startReviewButton" type="button">今日の復習</button>
-                <button class="ghost-button" id="homeCreateDeckButton" type="button">新しい科目デッキを追加</button>
+                <button class="ghost-button" id="homeCreateDeckButton" type="button">必要なら新しいデッキを追加</button>
               </div>
             </div>
           </section>
@@ -83,30 +83,19 @@
           <section class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">医学</p>
-                <h3>医学のデッキ</h3>
+                <p class="eyebrow">解剖</p>
+                <h3>解剖（身体部位）のデッキ</h3>
               </div>
               <span class="muted" id="medicalDeckCount">0件</span>
             </div>
             <div class="stack-list board-deck-list" id="medicalDeckList"></div>
           </section>
 
-          <section class="panel">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">英語</p>
-                <h3>英語のデッキ</h3>
-              </div>
-              <span class="muted" id="englishDeckCount">0件</span>
-            </div>
-            <div class="stack-list board-deck-list" id="englishDeckList"></div>
-          </section>
-
           <section class="panel" id="generalDeckSection" hidden>
             <div class="section-heading">
               <div>
                 <p class="eyebrow">その他</p>
-                <h3>その他のデッキ</h3>
+                <h3>あとから追加したデッキ</h3>
               </div>
               <span class="muted" id="generalDeckCount">0件</span>
             </div>
@@ -420,8 +409,6 @@
             </div>
             <div class="button-row">
               <button class="ghost-button" data-template="medical-diff" type="button">症候→鑑別</button>
-              <button class="ghost-button" data-template="english-vocab" type="button">英単語→例文</button>
-              <button class="ghost-button" data-template="english-reading" type="button">長文→要点</button>
             </div>
           </section>
 
@@ -492,7 +479,7 @@
               </section>
               <label>
                 <span>タグ</span>
-                <input id="quickCaptureTagsInput" name="quickCaptureTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+                <input id="quickCaptureTagsInput" name="quickCaptureTags" maxlength="120" placeholder="解剖, 身体部位, 必修" />
               </label>
               <div class="form-actions">
                 <button class="primary-button" id="quickCaptureSaveNextButton" data-quick-submit="next" type="submit">保存して次へ</button>
@@ -531,7 +518,7 @@
               </label>
               <label>
                 <span>分野</span>
-                <input id="bulkSubjectInput" name="bulkSubjectInput" maxlength="60" placeholder="解剖 / 生理 / 医学英語 / 読解" />
+                <input id="bulkSubjectInput" name="bulkSubjectInput" maxlength="60" placeholder="解剖 / 身体部位 / 生理" />
               </label>
               <label>
                 <span>貼り付けテキスト</span>
@@ -593,7 +580,7 @@
                 </label>
                 <label>
                   <span>分野</span>
-                  <input id="editDeckSubject" name="editDeckSubject" maxlength="60" placeholder="解剖 / 生理 / 医学英語 / 読解" />
+                  <input id="editDeckSubject" name="editDeckSubject" maxlength="60" placeholder="解剖 / 身体部位 / 生理" />
                 </label>
                 <label>
                   <span>説明</span>
@@ -608,7 +595,7 @@
                   </label>
                   <label>
                     <span>既定タグ</span>
-                    <input id="editDeckDefaultTags" name="editDeckDefaultTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+                    <input id="editDeckDefaultTags" name="editDeckDefaultTags" maxlength="120" placeholder="解剖, 身体部位, 必修" />
                   </label>
                   <label>
                     <span>問題文テンプレ</span>
@@ -704,7 +691,7 @@
                   </label>
                   <label>
                     <span>タグ</span>
-                    <input id="editCardTagsInput" name="editCardTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+                    <input id="editCardTagsInput" name="editCardTags" maxlength="120" placeholder="解剖, 身体部位, 必修" />
                   </label>
                   <label>
                     <span>臨床ポイント / 語法メモ</span>
@@ -743,7 +730,7 @@
               </label>
               <label>
                 <span>分野</span>
-                <input id="deckSubject" name="deckSubject" maxlength="60" placeholder="解剖 / 生理 / 医学英語 / 読解" />
+                <input id="deckSubject" name="deckSubject" maxlength="60" placeholder="解剖 / 身体部位 / 生理" />
               </label>
               <label>
                 <span>説明</span>
@@ -758,7 +745,7 @@
                 </label>
                 <label>
                   <span>既定タグ</span>
-                  <input id="deckDefaultTags" name="deckDefaultTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+                  <input id="deckDefaultTags" name="deckDefaultTags" maxlength="120" placeholder="解剖, 身体部位, 必修" />
                 </label>
                 <label>
                   <span>問題文テンプレ</span>
@@ -841,7 +828,7 @@
               </label>
               <label>
                 <span>タグ</span>
-                <input id="cardTagsInput" name="cardTags" maxlength="120" placeholder="循環, 腎, 医学英語, 必修" />
+                <input id="cardTagsInput" name="cardTags" maxlength="120" placeholder="解剖, 身体部位, 必修" />
               </label>
               <label>
                 <span>臨床ポイント / 語法メモ</span>
@@ -899,7 +886,7 @@
               </label>
               <label>
                 <span>分野</span>
-                <input id="importSubject" name="importSubject" maxlength="60" placeholder="腎 / 循環 / 医学英語 / 読解" />
+                <input id="importSubject" name="importSubject" maxlength="60" placeholder="解剖 / 身体部位 / 症候" />
               </label>
               <label>
                 <span>追加指示</span>
