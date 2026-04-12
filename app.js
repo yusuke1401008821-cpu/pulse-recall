@@ -128,8 +128,218 @@ const TRACKS = [
     recommendation: "語彙と長文を別デッキにすると、英語学習の弱点が見えやすくなります。",
   },
 ];
+const BODY_PART_DECK_NAME = "身体部位の名称";
+const BODY_PART_DECK_DESCRIPTION = "身体部位・臓器・組織の医療英単語を、名詞と形容詞に分けて覚える解剖デッキ。";
+const BODY_PART_DECK_SUBJECT = "解剖 / 身体部位";
+const BODY_PART_DECK_SEEDED_FLAG = "seededBodyPartDeckV1";
+const BODY_PART_VOCAB_ROWS = [
+  { section: "頭部・顔面", japanese: "頭", noun: "head", adjective: "cephalic; cranial" },
+  { section: "頭部・顔面", japanese: "頭蓋[骨]", noun: "skull; cranium", adjective: "cranial" },
+  { section: "頭部・顔面", japanese: "頭皮", noun: "scalp", adjective: "—" },
+  { section: "頭部・顔面", japanese: "脳", noun: "brain; encephalon", adjective: "cerebral" },
+  { section: "頭部・顔面", japanese: "顔", noun: "face", adjective: "facial" },
+  { section: "頭部・顔面", japanese: "眼", noun: "eye", adjective: "visual; optic; optical; ocular; ophthalmic" },
+  { section: "頭部・顔面", japanese: "睫毛（まつげ・しょうもう）", noun: "eyelash; cilium", adjective: "ciliary" },
+  { section: "頭部・顔面", japanese: "眉毛", noun: "eyebrow", adjective: "superciliary" },
+  { section: "頭部・顔面", japanese: "瞼（まぶた）", noun: "eyelid; palpebra", adjective: "palpebral" },
+  { section: "頭部・顔面", japanese: "頬", noun: "cheek", adjective: "buccal; malar" },
+  { section: "頭部・顔面", japanese: "こめかみ", noun: "temple", adjective: "temporal" },
+  { section: "頭部・顔面", japanese: "耳", noun: "ear", adjective: "aural; audial" },
+  { section: "頭部・顔面", japanese: "鼻", noun: "nose", adjective: "nasal" },
+  { section: "頭部・顔面", japanese: "鼻孔", noun: "nostril; naris", adjective: "narial" },
+  { section: "頭部・顔面", japanese: "口", noun: "mouth", adjective: "oral" },
+  { section: "頭部・顔面", japanese: "唇", noun: "lip", adjective: "labial" },
+  { section: "頭部・顔面", japanese: "歯", noun: "tooth", adjective: "dental" },
+  { section: "頭部・顔面", japanese: "歯肉", noun: "gum; gingiva", adjective: "gingival" },
+  { section: "頭部・顔面", japanese: "舌", noun: "tongue", adjective: "glossal; lingual" },
+  { section: "首・体幹・四肢", japanese: "顎", noun: "jaw", adjective: "maxillary; mandibular" },
+  { section: "首・体幹・四肢", japanese: "首", noun: "neck", adjective: "cervical" },
+  { section: "首・体幹・四肢", japanese: "項（うなじ）", noun: "nape; nucha", adjective: "nuchal" },
+  { section: "首・体幹・四肢", japanese: "喉", noun: "throat", adjective: "guttural" },
+  { section: "首・体幹・四肢", japanese: "肩", noun: "shoulder", adjective: "—" },
+  { section: "首・体幹・四肢", japanese: "腋窩・わきの下", noun: "armpit; axilla", adjective: "axillary" },
+  { section: "首・体幹・四肢", japanese: "胸", noun: "chest; thorax", adjective: "thoracic" },
+  { section: "首・体幹・四肢", japanese: "乳房", noun: "breast", adjective: "mammary" },
+  { section: "首・体幹・四肢", japanese: "腹", noun: "belly; abdomen", adjective: "abdominal; ventral" },
+  { section: "首・体幹・四肢", japanese: "臍（へそ）", noun: "belly button; navel; umbilicus", adjective: "umbilical" },
+  { section: "首・体幹・四肢", japanese: "腰", noun: "waist", adjective: "lumbar" },
+  { section: "首・体幹・四肢", japanese: "背", noun: "back; dorsum", adjective: "dorsal" },
+  { section: "首・体幹・四肢", japanese: "鼠蹊部", noun: "groin", adjective: "—" },
+  { section: "首・体幹・四肢", japanese: "臀部", noun: "buttocks", adjective: "gluteal" },
+  { section: "首・体幹・四肢", japanese: "腕", noun: "arm; brachium", adjective: "brachial" },
+  { section: "首・体幹・四肢", japanese: "肘", noun: "elbow", adjective: "anconeus; cubital" },
+  { section: "首・体幹・四肢", japanese: "手首", noun: "wrist", adjective: "—" },
+  { section: "首・体幹・四肢", japanese: "手", noun: "hand", adjective: "manual" },
+  { section: "首・体幹・四肢", japanese: "指", noun: "finger", adjective: "digital" },
+  { section: "首・体幹・四肢", japanese: "爪", noun: "nail", adjective: "—" },
+  { section: "首・体幹・四肢", japanese: "脚", noun: "leg", adjective: "crural" },
+  { section: "首・体幹・四肢", japanese: "大腿", noun: "thigh; femur", adjective: "femoral" },
+  { section: "首・体幹・四肢", japanese: "膝", noun: "knee", adjective: "genicular" },
+  { section: "首・体幹・四肢", japanese: "脛（すね）", noun: "shin", adjective: "cnemial" },
+  { section: "首・体幹・四肢", japanese: "ふくらはぎ・腓腹", noun: "calf", adjective: "sural" },
+  { section: "首・体幹・四肢", japanese: "足首", noun: "ankle", adjective: "—" },
+  { section: "首・体幹・四肢", japanese: "足", noun: "foot", adjective: "pedal" },
+  { section: "首・体幹・四肢", japanese: "足指", noun: "toe", adjective: "—" },
+  { section: "首・体幹・四肢", japanese: "踵", noun: "heel", adjective: "—" },
+  { section: "首・体幹・四肢", japanese: "足底", noun: "sole; planta; pelma", adjective: "plantar" },
+  { section: "首・体幹・四肢", japanese: "骨", noun: "bone", adjective: "osseous; osteal" },
+  { section: "首・体幹・四肢", japanese: "関節", noun: "joint", adjective: "arthral; articular" },
+  { section: "首・体幹・四肢", japanese: "靭帯", noun: "ligament", adjective: "ligamentous" },
+  { section: "首・体幹・四肢", japanese: "腱", noun: "tendon", adjective: "tendinous" },
+  { section: "組織・循環器・呼吸器", japanese: "筋肉", noun: "muscle", adjective: "muscular" },
+  { section: "組織・循環器・呼吸器", japanese: "皮膚", noun: "skin", adjective: "dermal; cutaneous" },
+  { section: "組織・循環器・呼吸器", japanese: "神経", noun: "nerve", adjective: "neural; nervous" },
+  { section: "組織・循環器・呼吸器", japanese: "動脈", noun: "artery", adjective: "arterial" },
+  { section: "組織・循環器・呼吸器", japanese: "静脈", noun: "vein", adjective: "venous" },
+  { section: "組織・循環器・呼吸器", japanese: "胎盤", noun: "placenta", adjective: "placental" },
+  { section: "組織・循環器・呼吸器", japanese: "リンパ", noun: "lymph", adjective: "lymphoid; lymphatic" },
+  { section: "組織・循環器・呼吸器", japanese: "心臓", noun: "heart", adjective: "cardiac" },
+  { section: "組織・循環器・呼吸器", japanese: "喉頭", noun: "voice box; larynx", adjective: "laryngeal" },
+  { section: "組織・循環器・呼吸器", japanese: "気管", noun: "windpipe; trachea", adjective: "tracheal" },
+  { section: "組織・循環器・呼吸器", japanese: "気管支", noun: "bronchus", adjective: "bronchial" },
+  { section: "組織・循環器・呼吸器", japanese: "肺", noun: "lung", adjective: "pulmonary; pneumonic" },
+  { section: "組織・循環器・呼吸器", japanese: "肺胞", noun: "alveolus", adjective: "alveolar" },
+  { section: "組織・循環器・呼吸器", japanese: "横隔膜", noun: "diaphragm", adjective: "diaphragmatic" },
+  { section: "消化器系", japanese: "咽頭", noun: "pharynx", adjective: "pharyngeal" },
+  { section: "消化器系", japanese: "食道", noun: "esophagus", adjective: "esophageal" },
+  { section: "消化器系", japanese: "噴門", noun: "cardia", adjective: "cardiac" },
+  { section: "消化器系", japanese: "胃", noun: "stomach", adjective: "gastric" },
+  { section: "消化器系", japanese: "幽門", noun: "pylorus", adjective: "pyloric" },
+  { section: "消化器系", japanese: "腸", noun: "bowel; gut; intestine", adjective: "intestinal" },
+  { section: "消化器系", japanese: "小腸", noun: "small intestine", adjective: "small intestinal" },
+  { section: "消化器系", japanese: "十二指腸", noun: "duodenum", adjective: "duodenal" },
+  { section: "消化器系", japanese: "空腸", noun: "jejunum", adjective: "jejunal" },
+  { section: "消化器系", japanese: "回腸", noun: "ileum", adjective: "ileac; ileal" },
+  { section: "消化器系", japanese: "大腸", noun: "large intestine", adjective: "large intestinal" },
+  { section: "消化器系", japanese: "盲腸", noun: "cecum", adjective: "cecal" },
+  { section: "消化器系", japanese: "虫垂", noun: "appendix", adjective: "appendiceal; appendicular" },
+  { section: "消化器系", japanese: "結腸", noun: "colon", adjective: "colic; colonic" },
+  { section: "消化器系", japanese: "直腸", noun: "rectum", adjective: "rectal" },
+  { section: "消化器系", japanese: "肛門", noun: "anus", adjective: "anal" },
+  { section: "消化器系", japanese: "肝臓", noun: "liver", adjective: "hepatic" },
+  { section: "消化器系", japanese: "胆嚢", noun: "gallbladder; cholecyst", adjective: "cholecystic; cystic" },
+  { section: "消化器系", japanese: "胆管", noun: "bile duct", adjective: "biliary" },
+  { section: "消化器系", japanese: "膵臓", noun: "pancreas", adjective: "pancreatic" },
+  { section: "泌尿器・生殖器", japanese: "脾臓", noun: "spleen", adjective: "lienal; splenic" },
+  { section: "泌尿器・生殖器", japanese: "腎臓", noun: "kidney", adjective: "renal; nephric" },
+  { section: "泌尿器・生殖器", japanese: "尿管", noun: "ureter", adjective: "ureteral" },
+  { section: "泌尿器・生殖器", japanese: "膀胱", noun: "[urinary] bladder", adjective: "cystic; vesical" },
+  { section: "泌尿器・生殖器", japanese: "尿道", noun: "urethra", adjective: "urethral" },
+  { section: "泌尿器・生殖器", japanese: "精巣", noun: "testis", adjective: "testicular" },
+  { section: "泌尿器・生殖器", japanese: "卵巣", noun: "ovary", adjective: "ovarian" },
+  { section: "泌尿器・生殖器", japanese: "子宮", noun: "womb; uterus", adjective: "uterine" },
+];
+
+function hasBodyPartAdjective(value) {
+  const normalized = String(value || "").trim();
+  return normalized && normalized !== "—" && normalized !== "-" && normalized !== "–";
+}
+
+function buildBodyPartStarterCards() {
+  return BODY_PART_VOCAB_ROWS.flatMap((row) => {
+    const baseTags = ["解剖", "身体部位", row.section];
+    const cards = [
+      {
+        front: `「${row.japanese}」の英語名詞は？`,
+        back: row.noun,
+        hint: row.section,
+        topic: row.section,
+        tags: [...baseTags, "名詞"],
+        note: hasBodyPartAdjective(row.adjective) ? `対応する英語形容詞: ${row.adjective}` : "",
+        dueOffset: 0,
+        intervalDays: 0,
+      },
+    ];
+    if (hasBodyPartAdjective(row.adjective)) {
+      cards.push({
+        front: `「${row.japanese}」に対応する英語形容詞は？`,
+        back: row.adjective,
+        hint: row.section,
+        topic: row.section,
+        tags: [...baseTags, "形容詞"],
+        note: `対応する英語名詞: ${row.noun}`,
+        dueOffset: 0,
+        intervalDays: 0,
+      });
+    }
+    return cards;
+  });
+}
+
+function buildBodyPartStarterDeck() {
+  return {
+    name: BODY_PART_DECK_NAME,
+    subject: BODY_PART_DECK_SUBJECT,
+    description: BODY_PART_DECK_DESCRIPTION,
+    cards: buildBodyPartStarterCards(),
+  };
+}
+
+function buildBodyPartDeckState({ deckId = crypto.randomUUID(), now = Date.now() } = {}) {
+  const starterDeck = buildBodyPartStarterDeck();
+  const cards = starterDeck.cards.map((starterCard, index) =>
+    makeCard({
+      id: `body-part-card-${index + 1}-${Math.abs(now)}`,
+      deckId,
+      front: starterCard.front,
+      back: starterCard.back,
+      hint: starterCard.hint,
+      topic: starterCard.topic,
+      tags: starterCard.tags,
+      note: starterCard.note,
+      example: starterCard.example,
+      createdAt: now - (starterDeck.cards.length - index) * minuteMs,
+      dueAt: now + (starterCard.dueOffset || 0),
+      intervalDays: starterCard.intervalDays || 0,
+    }),
+  );
+
+  return {
+    deck: normalizeDeck({
+      id: deckId,
+      name: starterDeck.name,
+      focus: "medical",
+      subject: starterDeck.subject,
+      description: starterDeck.description,
+      createdAt: now,
+      defaults: {
+        defaultTopic: "身体部位",
+        defaultTags: "解剖, 身体部位",
+        frontPromptTemplate: "○○の英語名詞は？",
+        backPromptTemplate: "英語名詞または形容詞",
+        preferredCardStyle: "text-first",
+      },
+    }),
+    cards,
+  };
+}
+
+function ensureBodyPartDeckSeed() {
+  const hasDeck = state.decks.some((deck) => deck.name === BODY_PART_DECK_NAME);
+  if (hasDeck) {
+    if (!state.settings?.[BODY_PART_DECK_SEEDED_FLAG]) {
+      state.settings[BODY_PART_DECK_SEEDED_FLAG] = true;
+      persist({ skipCloudBackup: true });
+    }
+    return { added: false, cardCount: 0 };
+  }
+
+  if (state.settings?.[BODY_PART_DECK_SEEDED_FLAG]) {
+    return { added: false, cardCount: 0 };
+  }
+
+  const now = Date.now();
+  const { deck, cards } = buildBodyPartDeckState({ now });
+  state.decks.unshift(deck);
+  state.cards.unshift(...cards);
+  state.settings[BODY_PART_DECK_SEEDED_FLAG] = true;
+  persist();
+  return { added: true, cardCount: cards.length };
+}
+
 const STARTER_PACKS = {
   medical: [
+    buildBodyPartStarterDeck(),
     {
       name: "解剖・生理ベーシック",
       subject: "解剖 / 生理",
@@ -1050,11 +1260,15 @@ const FEATURE_SEARCH_ITEMS = [
 bootstrap();
 
 function bootstrap() {
+  const bodyPartSeedResult = ensureBodyPartDeckSeed();
   render();
   bindEvents();
   initializeCloud();
   maybeOpenOnboarding();
   registerServiceWorker();
+  if (bodyPartSeedResult.added) {
+    showToast(`${BODY_PART_DECK_NAME}デッキを追加しました（${bodyPartSeedResult.cardCount}枚）`);
+  }
 }
 
 function bindEvents() {
@@ -15573,13 +15787,19 @@ function registerServiceWorker() {
 
 function createDemoState() {
   const now = Date.now();
+  const bodyPartDeckId = "deck-medical-body-parts";
   const medicalBasicsDeckId = "deck-medical-basics";
   const medicalClinicalDeckId = "deck-medical-clinical";
   const englishMedicalDeckId = "deck-english-medical";
   const englishReadingDeckId = "deck-english-reading";
+  const { deck: bodyPartDeck, cards: bodyPartCards } = buildBodyPartDeckState({
+    deckId: bodyPartDeckId,
+    now: now - 7 * dayMs,
+  });
 
   return {
     decks: [
+      bodyPartDeck,
       {
         id: medicalBasicsDeckId,
         name: "解剖・生理ベーシック",
@@ -15614,6 +15834,7 @@ function createDemoState() {
       },
     ],
     cards: [
+      ...bodyPartCards,
       makeCard({
         id: "card-1",
         deckId: medicalBasicsDeckId,
@@ -15679,6 +15900,7 @@ function createDemoState() {
     settings: {
       onboardingCompleted: false,
       autoBackupEnabled: true,
+      [BODY_PART_DECK_SEEDED_FLAG]: true,
     },
   };
 }
@@ -16074,6 +16296,7 @@ function normalizeSettingsState(settings) {
   return {
     onboardingCompleted: Boolean(safeSettings.onboardingCompleted),
     autoBackupEnabled: safeSettings.autoBackupEnabled !== false,
+    [BODY_PART_DECK_SEEDED_FLAG]: Boolean(safeSettings[BODY_PART_DECK_SEEDED_FLAG]),
     quickCapture: {
       lastDeckId: String(safeSettings.quickCapture?.lastDeckId || "").trim(),
       lastTags: String(safeSettings.quickCapture?.lastTags || "").trim(),
