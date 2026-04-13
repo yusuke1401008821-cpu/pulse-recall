@@ -863,6 +863,11 @@ let studyMode = "understand";
 let studySourceKey = "due";
 let studySessionSize = 8;
 let studySession = null;
+let studyView = "picker";
+let activeStudyDeckId = "";
+let studyPickerFilter = "all";
+let studyPlayerToolsVisible = false;
+let pressedSurfaceElement = null;
 let understandDeckId = "";
 let understandUnitId = "";
 let understandStepIndex = 0;
@@ -996,6 +1001,17 @@ const historyBreakdown = document.getElementById("historyBreakdown");
 const historyCompactList = document.getElementById("historyCompactList");
 const historyDetailsPanel = document.getElementById("historyDetailsPanel");
 const toggleHistoryDetailsButton = document.getElementById("toggleHistoryDetailsButton");
+const studyPickerView = document.getElementById("studyPickerView");
+const studyPlayerView = document.getElementById("studyPlayerView");
+const studyDeckPickerStatus = document.getElementById("studyDeckPickerStatus");
+const studyDeckPickerList = document.getElementById("studyDeckPickerList");
+const studyPickerFilterButtons = [...document.querySelectorAll("[data-study-picker-filter]")];
+const studyPlayerDeckEyebrow = document.getElementById("studyPlayerDeckEyebrow");
+const studyPlayerDeckTitle = document.getElementById("studyPlayerDeckTitle");
+const studyPlayerDeckMeta = document.getElementById("studyPlayerDeckMeta");
+const studyBackToPickerButton = document.getElementById("studyBackToPickerButton");
+const studyToggleToolsButton = document.getElementById("studyToggleToolsButton");
+const studyPlayerToolsPanel = document.getElementById("studyPlayerToolsPanel");
 const studyDeckFilter = document.getElementById("studyDeckFilter");
 const studyQuickCaptureButton = document.getElementById("studyQuickCaptureButton");
 const studyQuickSummary = document.getElementById("studyQuickSummary");
@@ -1661,7 +1677,42 @@ function bootstrap() {
   }
 }
 
+function getPressableSurface(target) {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+  return target.closest("button");
+}
+
+function clearPressedSurface() {
+  if (!pressedSurfaceElement) {
+    return;
+  }
+  pressedSurfaceElement.classList.remove("is-pressed");
+  pressedSurfaceElement = null;
+}
+
+function handlePressablePointerDown(event) {
+  if (event.pointerType === "mouse" && event.button !== 0) {
+    return;
+  }
+  clearPressedSurface();
+  const surface = getPressableSurface(event.target);
+  if (!surface || surface.disabled) {
+    return;
+  }
+  pressedSurfaceElement = surface;
+  pressedSurfaceElement.classList.add("is-pressed");
+}
+
 function bindEvents() {
+  document.addEventListener("pointerdown", handlePressablePointerDown, true);
+  document.addEventListener("pointerup", clearPressedSurface, true);
+  document.addEventListener("pointercancel", clearPressedSurface, true);
+  document.addEventListener("dragstart", clearPressedSurface, true);
+  document.addEventListener("keydown", clearPressedSurface, true);
+  window.addEventListener("blur", clearPressedSurface);
+
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => switchSection(tab.dataset.section));
   });
@@ -1699,13 +1750,32 @@ function bindEvents() {
   toggleAnswerButton.addEventListener("click", toggleAnswer);
   if (startReviewButton) {
     startReviewButton.addEventListener("click", () => {
-      setStudyMode("review");
-      switchSection("study");
+      const deck = pickRecommendedStudyDeck({ mode: "review" });
+      if (deck) {
+        openStudyPlayer(deck.id, { mode: "review", sourceKey: "due" });
+      } else {
+        switchSection("study");
+      }
     });
   }
   if (homeCreateDeckButton) {
     homeCreateDeckButton.addEventListener("click", () => {
       openDeckComposer("medical");
+    });
+  }
+  studyPickerFilterButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      studyPickerFilter = button.dataset.studyPickerFilter || "all";
+      renderStudy();
+    });
+  });
+  if (studyBackToPickerButton) {
+    studyBackToPickerButton.addEventListener("click", returnToStudyPicker);
+  }
+  if (studyToggleToolsButton) {
+    studyToggleToolsButton.addEventListener("click", () => {
+      studyPlayerToolsVisible = !studyPlayerToolsVisible;
+      renderStudy();
     });
   }
   if (openFeatureSearchButton) {
@@ -1855,6 +1925,7 @@ function bindEvents() {
   }
 
   studyDeckFilter.addEventListener("change", () => {
+    activeStudyDeckId = studyDeckFilter.value?.startsWith("focus:") ? "" : studyDeckFilter.value || "";
     clearUnderstandSelectionIfUnavailable();
     syncStudyUnitContextWithFilter();
     resetStudySession();
@@ -1864,7 +1935,7 @@ function bindEvents() {
     renderStudy();
   });
   if (studyQuickCaptureButton) {
-    studyQuickCaptureButton.addEventListener("click", () => openQuickCapture(studyDeckFilter.value?.startsWith("focus:") ? "" : studyDeckFilter.value || ""));
+    studyQuickCaptureButton.addEventListener("click", () => openQuickCapture(activeStudyDeckId || ""));
   }
   studyMinuteButtons.forEach((button) => {
     button.addEventListener("click", () => setStudyQuickMinutes(Number(button.dataset.studyMinutes || 5)));
@@ -2156,6 +2227,9 @@ function bindEvents() {
 
   if (dashboardSection) {
     dashboardSection.addEventListener("click", handleDeckActions);
+  }
+  if (studyDeckPickerList) {
+    studyDeckPickerList.addEventListener("click", handleStudyPickerActions);
   }
   libraryList.addEventListener("click", handleLibraryActions);
   if (publicDeckList) {
@@ -2998,7 +3072,7 @@ async function handleOpenMediaViewerClick(event) {
   );
 }
 
-function switchSection(sectionId) {
+function switchSection(sectionId, options = {}) {
   activeSection = sectionId;
   if (sectionId !== "study") {
     clearStudyAdvanceTimer();
@@ -3013,6 +3087,7 @@ function switchSection(sectionId) {
   });
 
   if (sectionId === "study") {
+    studyView = options.studyView || "picker";
     renderStudy();
   }
 
@@ -3279,10 +3354,13 @@ function executeFeatureSearchItem(itemId) {
   closeFeatureSearchModal();
 
   if (item.action === "study-mode") {
-    switchSection("study");
-    setStudyMode(item.studyMode || "review");
+    const deck = pickRecommendedStudyDeck({ mode: item.studyMode || "review" });
+    if (deck) {
+      openStudyPlayer(deck.id, { mode: item.studyMode || "review", sourceKey: "due" });
+    } else {
+      switchSection("study");
+    }
   } else if (item.action === "quick-study") {
-    switchSection("study");
     setStudyQuickMinutes(item.quickStudyMinutes || state.settings?.studyPreferences?.defaultSessionMinutes || 5);
     startQuickStudy(item.quickStudyKind || "recommended");
   } else if (item.action === "create-mode") {
@@ -3394,7 +3472,9 @@ function renderDeckSelectors() {
   searchCardifyTarget.innerHTML =
     '<option value="new">新規デッキを作る</option>' + deckOptions;
 
-  if (optionExists(studyDeckFilter, previousStudy)) {
+  if (activeStudyDeckId && optionExists(studyDeckFilter, activeStudyDeckId)) {
+    studyDeckFilter.value = activeStudyDeckId;
+  } else if (optionExists(studyDeckFilter, previousStudy)) {
     studyDeckFilter.value = previousStudy;
   }
 
@@ -3868,6 +3948,14 @@ function setStudyMode(mode) {
     return;
   }
 
+  if (studyView !== "player") {
+    const deck = pickRecommendedStudyDeck({ mode });
+    if (deck) {
+      activeStudyDeckId = deck.id;
+      studyView = "player";
+    }
+  }
+
   studyMode = mode;
   resetStudySession();
   clearAiStudyDraft({ silent: true });
@@ -4038,6 +4126,18 @@ function buildReviewStudySession(cards, size, sourceKey) {
 }
 
 function startQuickStudy(kind) {
+  const activeDeck = setActiveStudyDeck(activeStudyDeckId || studyDeckFilter.value || "") || pickRecommendedStudyDeck({ mode: "review" });
+  if (!activeDeck) {
+    showToast("始められるデッキがありません");
+    switchSection("study");
+    return;
+  }
+  studyView = "player";
+  if (optionExists(studyDeckFilter, activeDeck.id)) {
+    studyDeckFilter.value = activeDeck.id;
+  }
+  activeStudyDeckId = activeDeck.id;
+
   const groups = buildStudySourceGroups();
   const plan = buildQuickStudyPlans(groups).find((item) => item.key === kind)
     || buildQuickStudyPlans(groups).find((item) => item.key === state.settings?.studyPreferences?.defaultSpeedMode)
@@ -4060,7 +4160,11 @@ function startQuickStudy(kind) {
     studySession = buildReviewStudySession(plan.cards, size, plan.sourceKey);
     studySessionSize = size;
     studySessionSizeInput.value = String(size);
-    renderStudy();
+    if (activeSection !== "study") {
+      switchSection("study", { studyView: "player" });
+    } else {
+      renderStudy();
+    }
     showToast(`${studyQuickMinutes}分の高速復習を始めます`);
     return;
   }
@@ -4078,7 +4182,11 @@ function startQuickStudy(kind) {
   studySessionSize = size;
   studySessionSizeInput.value = String(size);
   studySession = buildStudySession(plan.mode, availableCards, size, { sourceKey: plan.sourceKey, quickKind: kind });
-  renderStudy();
+  if (activeSection !== "study") {
+    switchSection("study", { studyView: "player" });
+  } else {
+    renderStudy();
+  }
   showToast(`${plan.title} を始めます`);
 }
 
@@ -7784,10 +7892,13 @@ function openUnderstandMode(deckId, unitId = "", options = {}) {
     understandUnitId = "";
     understandStepIndex = 0;
     studyMode = "understand";
+    studyView = "player";
+    activeStudyDeckId = deck.id;
+    studyPlayerToolsVisible = false;
     resetStudySession();
     clearAiStudyDraft({ silent: true });
     if (activeSection !== "study") {
-      switchSection("study");
+      switchSection("study", { studyView: "player" });
     } else {
       renderStudy();
     }
@@ -7819,13 +7930,16 @@ function openUnderstandMode(deckId, unitId = "", options = {}) {
   );
 
   studyMode = "understand";
+  studyView = "player";
+  activeStudyDeckId = deck.id;
+  studyPlayerToolsVisible = false;
   resetStudySession();
   clearAiStudyDraft({ silent: true });
   currentCardId = null;
   isAnswerVisible = false;
 
   if (activeSection !== "study") {
-    switchSection("study");
+    switchSection("study", { studyView: "player" });
   } else {
     renderStudy();
   }
@@ -7896,6 +8010,9 @@ function startUnderstandMemorization(deckId, unitId, mode = "review") {
     cardIds: unit.cardIds,
   };
   studyDeckFilter.value = deck.id;
+  activeStudyDeckId = deck.id;
+  studyView = "player";
+  studyPlayerToolsVisible = false;
   studySourceKey = "unit";
   clearAiStudyDraft({ silent: true });
   resetStudySession();
@@ -7919,7 +8036,7 @@ function startUnderstandMemorization(deckId, unitId, mode = "review") {
   }
 
   if (activeSection !== "study") {
-    switchSection("study");
+    switchSection("study", { studyView: "player" });
   } else {
     renderStudy();
   }
@@ -8305,7 +8422,280 @@ function buildAiSourceLabel(item) {
   return item.sourcePage ? `${label} / p.${item.sourcePage}` : label;
 }
 
+function isPrimaryStudyDeck(deck) {
+  return [BODY_PART_DECK_NAME, MEDICAL_TERM_INTRO_DECK_NAME].includes(String(deck?.name || ""));
+}
+
+function matchesStudyPickerDeckFilter(deck, filter = studyPickerFilter) {
+  if (!deck) {
+    return false;
+  }
+  if (filter === "medical") {
+    return normalizeDeckFocus(deck.focus) === "medical";
+  }
+  if (filter === "shared") {
+    return deck.storageMode === "shared";
+  }
+  return true;
+}
+
+function buildStudyPickerDeckEntries(filter = studyPickerFilter) {
+  return state.decks
+    .filter((deck) => state.cards.some((card) => card.deckId === deck.id))
+    .filter((deck) => matchesStudyPickerDeckFilter(deck, filter))
+    .map((deck) => {
+      const deckCards = state.cards.filter((card) => card.deckId === deck.id);
+      const dueCount = deckCards.filter((card) => card.study.dueAt <= Date.now()).length;
+      const learningCount = deckCards.filter((card) => card.study.mode === "learning" || card.study.mode === "relearning").length;
+      const understandSummary = buildUnderstandDeckSummary(deck.id);
+      return {
+        deck,
+        cardCount: deckCards.length,
+        dueCount,
+        learningCount,
+        understandSummary,
+      };
+    })
+    .sort((left, right) => {
+      const primaryDiff = Number(isPrimaryStudyDeck(right.deck)) - Number(isPrimaryStudyDeck(left.deck));
+      if (primaryDiff !== 0) {
+        return primaryDiff;
+      }
+      if ((right.dueCount || 0) !== (left.dueCount || 0)) {
+        return (right.dueCount || 0) - (left.dueCount || 0);
+      }
+      if ((right.learningCount || 0) !== (left.learningCount || 0)) {
+        return (right.learningCount || 0) - (left.learningCount || 0);
+      }
+      return (right.deck.updatedAt || 0) - (left.deck.updatedAt || 0) || left.deck.name.localeCompare(right.deck.name, "ja");
+    });
+}
+
+function pickRecommendedStudyDeck({ mode = "review" } = {}) {
+  const entries = buildStudyPickerDeckEntries("all");
+  if (!entries.length) {
+    return null;
+  }
+  if (mode === "understand") {
+    return (
+      entries.find((entry) => entry.understandSummary.remainingCount > 0)?.deck ||
+      entries.find((entry) => entry.understandSummary.totalUnits > 0)?.deck ||
+      entries[0].deck
+    );
+  }
+  return entries.find((entry) => entry.dueCount > 0)?.deck || entries[0].deck;
+}
+
+function setActiveStudyDeck(deckId = "") {
+  const deck = getDeckById(deckId);
+  activeStudyDeckId = deck?.id || "";
+  if (deck && optionExists(studyDeckFilter, deck.id)) {
+    studyDeckFilter.value = deck.id;
+  }
+  return deck || null;
+}
+
+function formatStudyModeLabel(mode = studyMode) {
+  if (mode === "understand") {
+    return "理解";
+  }
+  if (mode === "test") {
+    return "小テスト";
+  }
+  if (mode === "choice") {
+    return "4択クイズ";
+  }
+  return "復習";
+}
+
+function renderStudyPicker() {
+  if (!studyDeckPickerStatus || !studyDeckPickerList) {
+    return;
+  }
+
+  studyPickerFilterButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.studyPickerFilter === studyPickerFilter);
+  });
+
+  const entries = buildStudyPickerDeckEntries(studyPickerFilter);
+  if (!entries.length) {
+    studyDeckPickerStatus.textContent = "学習に使えるデッキがまだありません。カードを追加すると、ここに並びます。";
+    studyDeckPickerList.innerHTML = `
+      <article class="library-card">
+        <h4>学習できるデッキがありません</h4>
+        <p class="muted">まずはデッキかカードを追加すると、ここから専用プレイヤーへ入れます。</p>
+      </article>
+    `;
+    return;
+  }
+
+  const dueTotal = entries.reduce((sum, entry) => sum + entry.dueCount, 0);
+  const unreadUnderstand = entries.reduce((sum, entry) => sum + entry.understandSummary.remainingCount, 0);
+  studyDeckPickerStatus.textContent =
+    unreadUnderstand > 0
+      ? `まずは ${unreadUnderstand} ユニットの理解から始められます。復習待ちは合計 ${dueTotal} 枚です。`
+      : `学習したいデッキを選ぶと、専用プレイヤーでカードをすぐ見られます。復習待ちは合計 ${dueTotal} 枚です。`;
+
+  studyDeckPickerList.innerHTML = entries
+    .map(({ deck, cardCount, dueCount, learningCount, understandSummary }) => {
+      const nextUnit = understandSummary.nextUnit;
+      const isCurrentDeck = activeStudyDeckId === deck.id;
+      const isRecommended = !isCurrentDeck && isPrimaryStudyDeck(deck);
+      const recommendedLabel = isCurrentDeck ? "前回の続き" : isRecommended ? "おすすめ" : formatDeckFocus(deck.focus);
+      const resumeCopy = nextUnit
+        ? `次は「${nextUnit.title}」から理解できます。`
+        : dueCount > 0
+          ? `復習待ち ${dueCount} 枚から始められます。`
+          : "このデッキの内容をいつでも見直せます。";
+      return `
+        <article class="library-card study-picker-card ${(isCurrentDeck || isRecommended) ? "is-selected-card" : ""} ${isCurrentDeck ? "is-current-study-card" : ""}">
+          <button
+            class="study-picker-card-main"
+            data-open-study-player="${escapeHtml(deck.id)}"
+            data-study-player-mode="review"
+            type="button"
+          >
+            <div class="card-row-header">
+              <div>
+                <p class="eyebrow">${escapeHtml(recommendedLabel)}</p>
+                <h4>${escapeHtml(deck.name)}</h4>
+              </div>
+              <span class="meta-pill">${escapeHtml(formatDeckStorageLabel(deck))}</span>
+            </div>
+            <p class="muted">${escapeHtml(resumeCopy)}</p>
+            <div class="card-row-meta">
+              <span class="meta-pill">${cardCount}枚</span>
+              <span class="meta-pill">復習待ち ${dueCount}枚</span>
+              ${
+                understandSummary.totalUnits
+                  ? `<span class="meta-pill">理解 ${understandSummary.completedCount}/${understandSummary.totalUnits}</span>`
+                  : ""
+              }
+              ${learningCount ? `<span class="meta-pill">学習中 ${learningCount}枚</span>` : ""}
+            </div>
+          </button>
+          <div class="button-row">
+            <button
+              class="primary-button"
+              data-open-study-player="${escapeHtml(deck.id)}"
+              data-study-player-mode="review"
+              type="button"
+            >
+              学習を再開
+            </button>
+            <button class="ghost-button" data-open-understand-deck="${escapeHtml(deck.id)}" type="button">
+              まず理解する
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderStudyPlayerChrome() {
+  if (!studyPlayerView || !studyPickerView || !studyPlayerDeckTitle || !studyPlayerDeckMeta || !studyPlayerDeckEyebrow) {
+    return;
+  }
+
+  const deck = getDeckById(activeStudyDeckId || studyDeckFilter.value || "");
+  const showPlayer = studyView === "player" && Boolean(deck);
+  studyPickerView.hidden = showPlayer;
+  studyPlayerView.hidden = !showPlayer;
+
+  if (!showPlayer) {
+    return;
+  }
+
+  const deckCards = state.cards.filter((card) => card.deckId === deck.id);
+  const dueCount = deckCards.filter((card) => card.study.dueAt <= Date.now()).length;
+  const understandSummary = buildUnderstandDeckSummary(deck.id);
+  const baseMeta = [`${deckCards.length}枚`, `復習待ち ${dueCount}枚`, `現在: ${formatStudyModeLabel(studyMode)}`];
+  if (studyMode === "understand" && understandSummary.totalUnits) {
+    baseMeta.push(`理解 ${understandSummary.completedCount}/${understandSummary.totalUnits}`);
+  } else if (studySession?.items?.length) {
+    baseMeta.push(`${Math.min(studySession.index + 1, studySession.items.length)}/${studySession.items.length}問`);
+  }
+
+  studyPlayerDeckEyebrow.textContent = `${formatDeckFocus(deck.focus)}${deck.storageMode === "shared" ? " / 共有" : ""}`;
+  studyPlayerDeckTitle.textContent = deck.name;
+  studyPlayerDeckMeta.textContent = baseMeta.join(" · ");
+  if (studyToggleToolsButton) {
+    studyToggleToolsButton.textContent = studyPlayerToolsVisible ? "学習設定を閉じる" : "学習設定を開く";
+  }
+  if (studyPlayerToolsPanel) {
+    studyPlayerToolsPanel.hidden = !studyPlayerToolsVisible;
+  }
+  if (studyQuickCaptureButton) {
+    studyQuickCaptureButton.disabled = !(canAddCardsToDeck(deck) || canUploadMediaForDeck(deck));
+  }
+}
+
+function openStudyPlayer(deckId = "", { mode = "review", sourceKey = "due", resetSession = true, openTools = false } = {}) {
+  const deck = setActiveStudyDeck(deckId) || pickRecommendedStudyDeck({ mode });
+  if (!deck) {
+    switchSection("study");
+    return;
+  }
+
+  activeStudyDeckId = deck.id;
+  if (optionExists(studyDeckFilter, deck.id)) {
+    studyDeckFilter.value = deck.id;
+  }
+  studyView = "player";
+  studyPlayerToolsVisible = Boolean(openTools);
+  if (sourceKey) {
+    studySourceKey = sourceKey;
+  }
+  if (mode) {
+    studyMode = mode;
+  }
+  if (resetSession) {
+    resetStudySession();
+    clearAiStudyDraft({ silent: true });
+    currentCardId = null;
+    isAnswerVisible = false;
+  }
+  if (studyMode === "understand") {
+    primeUnderstandSelectionFromFilter();
+  } else if (studySourceKey === "unit" && studyUnitContext?.deckId !== deck.id) {
+    studySourceKey = "due";
+  }
+
+  if (activeSection !== "study") {
+    switchSection("study", { studyView: "player" });
+  } else {
+    renderStudy();
+  }
+}
+
+function returnToStudyPicker() {
+  studyView = "picker";
+  studyPlayerToolsVisible = false;
+  clearStudyAdvanceTimer();
+  renderStudy();
+}
+
 function renderStudy() {
+  renderStudyPicker();
+  if (studyView !== "player") {
+    renderStudyPlayerChrome();
+    return;
+  }
+
+  const activeDeck = setActiveStudyDeck(activeStudyDeckId || studyDeckFilter.value || "") || pickRecommendedStudyDeck({ mode: studyMode });
+  if (!activeDeck) {
+    studyView = "picker";
+    renderStudyPicker();
+    renderStudyPlayerChrome();
+    return;
+  }
+  activeStudyDeckId = activeDeck.id;
+  if (optionExists(studyDeckFilter, activeDeck.id)) {
+    studyDeckFilter.value = activeDeck.id;
+  }
+  renderStudyPlayerChrome();
+
   syncStudyUnitContextWithFilter();
   if (studyMode === "understand") {
     primeUnderstandSelectionFromFilter();
@@ -8992,6 +9382,22 @@ function handleStudySmartListActions(event) {
   }
 
   setStudySource(sourceButton.dataset.studySource);
+}
+
+function handleStudyPickerActions(event) {
+  const openUnderstandDeckButton = event.target.closest("[data-open-understand-deck]");
+  if (openUnderstandDeckButton) {
+    openUnderstandMode(openUnderstandDeckButton.dataset.openUnderstandDeck);
+    return;
+  }
+
+  const openStudyPlayerButton = event.target.closest("[data-open-study-player]");
+  if (openStudyPlayerButton) {
+    openStudyPlayer(openStudyPlayerButton.dataset.openStudyPlayer, {
+      mode: openStudyPlayerButton.dataset.studyPlayerMode || "review",
+      sourceKey: "due",
+    });
+  }
 }
 
 function renderCardLibrary() {
@@ -10505,9 +10911,12 @@ function handleDeckActions(event) {
 
   const understandHubButton = event.target.closest("[data-open-understand-hub]");
   if (understandHubButton) {
-    studyMode = "understand";
-    primeUnderstandSelectionFromFilter();
-    switchSection("study");
+    const deck = pickRecommendedStudyDeck({ mode: "understand" });
+    if (deck) {
+      openUnderstandMode(deck.id);
+    } else {
+      switchSection("study");
+    }
     return;
   }
 
@@ -10580,11 +10989,7 @@ function handleDeckActions(event) {
 
   const startButton = event.target.closest("[data-start-deck]");
   if (startButton) {
-    studyDeckFilter.value = startButton.dataset.startDeck;
-    studyMode = "review";
-    currentCardId = null;
-    isAnswerVisible = false;
-    switchSection("study");
+    openStudyPlayer(startButton.dataset.startDeck, { mode: "review", sourceKey: "due" });
     return;
   }
 
@@ -10615,10 +11020,7 @@ function handleDeckActions(event) {
 function handleTrackActions(event) {
   const studyButton = event.target.closest("[data-study-focus]");
   if (studyButton) {
-    studyDeckFilter.value = `focus:${studyButton.dataset.studyFocus}`;
-    studyMode = "review";
-    currentCardId = null;
-    isAnswerVisible = false;
+    studyPickerFilter = studyButton.dataset.studyFocus === "medical" ? "medical" : "all";
     switchSection("study");
     return;
   }
@@ -10875,11 +11277,7 @@ function handleDeckDetailActions(event) {
 
   const startButton = event.target.closest("[data-start-deck]");
   if (startButton) {
-    studyDeckFilter.value = startButton.dataset.startDeck;
-    studyMode = "review";
-    currentCardId = null;
-    isAnswerVisible = false;
-    switchSection("study");
+    openStudyPlayer(startButton.dataset.startDeck, { mode: "review", sourceKey: "due" });
     return;
   }
 

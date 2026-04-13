@@ -195,21 +195,62 @@
         </section>
 
         <section class="content" id="study">
-          <div class="panel">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">復習キュー</p>
-                <h3>学習モード</h3>
+          <div id="studyPickerView" class="study-picker-view">
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">学習するデッキを選ぶ</p>
+                  <h3>デッキ一覧</h3>
+                </div>
               </div>
-              <div class="button-row study-header-actions">
+              <p class="muted" id="studyDeckPickerStatus">
+                まず学習したいデッキを選ぶと、専用プレイヤーでカードをすぐ見られます。
+              </p>
+              <div class="button-row" id="studyPickerFilterNav">
+                <button class="chip-button is-active" data-study-picker-filter="all" type="button">すべて</button>
+                <button class="chip-button" data-study-picker-filter="medical" type="button">医学</button>
+                <button class="chip-button" data-study-picker-filter="shared" type="button">共有</button>
+              </div>
+              <div class="stack-list" id="studyDeckPickerList"></div>
+            </section>
+          </div>
+
+          <div id="studyPlayerView" class="study-player-view" hidden>
+            <section class="panel study-player-header-panel">
+              <div class="section-heading">
+                <div class="study-player-title-block">
+                  <p class="eyebrow" id="studyPlayerDeckEyebrow">学習プレイヤー</p>
+                  <h3 id="studyPlayerDeckTitle">デッキを選ぶとここで学習できます</h3>
+                </div>
+                <div class="button-row study-header-actions">
+                  <button class="ghost-button" id="studyBackToPickerButton" type="button">一覧へ戻る</button>
+                  <button class="ghost-button" id="studyQuickCaptureButton" type="button">クイック追加</button>
+                  <button class="ghost-button" id="studyToggleToolsButton" type="button">学習設定を開く</button>
+                </div>
+              </div>
+              <p class="muted" id="studyPlayerDeckMeta">デッキを開くと、ここに現在のモードや進み具合が表示されます。</p>
+              <div class="button-row study-player-mode-nav">
+                <button class="chip-button" data-study-mode="understand" type="button">理解</button>
+                <button class="chip-button is-active" data-study-mode="review" type="button">復習</button>
+                <button class="chip-button" data-study-mode="test" type="button">小テスト</button>
+                <button class="chip-button" data-study-mode="choice" type="button">4択クイズ</button>
+              </div>
+              <div hidden>
                 <label class="inline-select">
                   <span>対象</span>
                   <select id="studyDeckFilter"></select>
                 </label>
-                <button class="ghost-button" id="studyQuickCaptureButton" type="button">クイック追加</button>
               </div>
-            </div>
-            <section class="subpanel study-quick-panel" id="studyQuickPanel">
+            </section>
+
+            <section class="panel" id="studyPlayerToolsPanel" hidden>
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">学習設定</p>
+                  <h3>このデッキでの進め方</h3>
+                </div>
+              </div>
+              <section class="subpanel study-quick-panel" id="studyQuickPanel">
               <div class="section-heading">
                 <div>
                   <p class="eyebrow">高速学習</p>
@@ -287,9 +328,9 @@
               <div id="aiStudyPreview" class="library-list"></div>
             </section>
             <div class="action-grid" id="studySmartListGrid"></div>
-          </div>
+            </section>
 
-          <div class="study-layout">
+            <div class="study-layout">
             <section class="flashcard-panel panel">
               <div id="emptyState" class="empty-state">
                 <p class="eyebrow" id="emptyStateEyebrow">いまは空き時間</p>
@@ -433,6 +474,7 @@
                 <p class="muted" id="choiceQuizScore">まだ回答していません。</p>
               </div>
             </section>
+          </div>
           </div>
         </section>
 

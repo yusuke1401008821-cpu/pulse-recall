@@ -49,6 +49,7 @@ textarea {
 button {
   cursor: pointer;
   border: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 [hidden] {
@@ -89,6 +90,7 @@ button:disabled {
 
 .study-header-actions {
   justify-content: end;
+  flex-wrap: wrap;
 }
 
 .topbar h1,
@@ -304,6 +306,12 @@ button:disabled {
   color: var(--text);
   text-align: left;
   border: 1px solid rgba(24, 49, 83, 0.08);
+  transition:
+    transform 140ms ease,
+    background 160ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .feature-search-result:hover {
@@ -336,16 +344,19 @@ button:disabled {
   background: transparent;
   color: rgba(255, 255, 255, 0.75);
   font-weight: 600;
+  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease, color 140ms ease;
 }
 
 .tab.is-active {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 .chip-button.is-active {
   background: var(--bg-strong);
   color: #fff;
+  box-shadow: 0 12px 24px rgba(24, 49, 83, 0.16);
 }
 
 .content {
@@ -360,20 +371,71 @@ button:disabled {
 .secondary-button,
 .ghost-button,
 .chip-button,
-.rating {
+.rating,
+.board-deck-main,
+.study-picker-card-main,
+.quiz-option,
+.mini-button,
+.media-gallery-button {
   min-height: 48px;
   padding: 12px 16px;
   border-radius: 16px;
   font-weight: 700;
-  transition: transform 160ms ease, opacity 160ms ease, background 160ms ease;
+  transition:
+    transform 140ms ease,
+    opacity 160ms ease,
+    background 160ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .primary-button:hover,
 .secondary-button:hover,
 .ghost-button:hover,
 .chip-button:hover,
-.rating:hover {
+.rating:hover,
+.feature-search-result:hover,
+.board-deck-main:hover,
+.study-picker-card-main:hover,
+.quiz-option:hover,
+.mini-button:hover,
+.media-gallery-button:hover,
+.tab:hover {
   transform: translateY(-1px);
+}
+
+.primary-button:active,
+.secondary-button:active,
+.ghost-button:active,
+.chip-button:active,
+.rating:active,
+.feature-search-result:active,
+.board-deck-main:active,
+.study-picker-card-main:active,
+.quiz-option:active,
+.mini-button:active,
+.media-gallery-button:active,
+.tab:active,
+.primary-button.is-pressed,
+.secondary-button.is-pressed,
+.ghost-button.is-pressed,
+.chip-button.is-pressed,
+.rating.is-pressed,
+.feature-search-result.is-pressed,
+.board-deck-main.is-pressed,
+.study-picker-card-main.is-pressed,
+.quiz-option.is-pressed,
+.mini-button.is-pressed,
+.media-gallery-button.is-pressed,
+.tab.is-pressed {
+  transform: scale(0.985);
+  box-shadow: 0 10px 22px rgba(24, 49, 83, 0.16);
+}
+
+button:focus-visible {
+  outline: 3px solid rgba(24, 49, 83, 0.18);
+  outline-offset: 2px;
 }
 
 .primary-button {
@@ -524,6 +586,64 @@ button:disabled {
 
 .study-understand-panel {
   gap: 14px;
+}
+
+.study-picker-view,
+.study-player-view {
+  display: grid;
+  gap: 16px;
+}
+
+.study-picker-card {
+  gap: 12px;
+}
+
+.study-picker-card-main {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.study-picker-card .button-row {
+  justify-content: flex-start;
+}
+
+.is-current-study-card {
+  border-color: rgba(240, 138, 75, 0.34);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(252, 244, 233, 0.92)),
+    rgba(255, 255, 255, 0.82);
+}
+
+.study-player-header-panel,
+#studyPlayerToolsPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.study-player-header-panel .section-heading {
+  align-items: start;
+}
+
+.study-player-title-block {
+  display: grid;
+  gap: 4px;
+}
+
+.study-player-title-block .eyebrow {
+  margin-bottom: 0;
+}
+
+.study-player-mode-nav {
+  flex-wrap: wrap;
+}
+
+.study-player-mode-nav .chip-button {
+  flex: 1 1 108px;
 }
 
 .study-quick-panel h4,
@@ -1637,8 +1757,14 @@ button:disabled {
   }
 
   .study-quick-action-card .button-row,
-  .compact-form-panel .form-actions {
+  .compact-form-panel .form-actions,
+  .study-picker-card .button-row,
+  .study-player-mode-nav {
     flex-direction: column;
+  }
+
+  .study-player-mode-nav .chip-button {
+    width: 100%;
   }
 
   #libraryModeNav,
