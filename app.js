@@ -859,10 +859,14 @@ let mediaDbPromise = null;
 let activeSection = "dashboard";
 let currentCardId = null;
 let isAnswerVisible = false;
-let studyMode = "review";
+let studyMode = "understand";
 let studySourceKey = "due";
 let studySessionSize = 8;
 let studySession = null;
+let understandDeckId = "";
+let understandUnitId = "";
+let understandStepIndex = 0;
+let studyUnitContext = null;
 let studyQuickMinutes = state.settings?.studyPreferences?.defaultSessionMinutes || 5;
 let homeHistoryExpanded = false;
 let importContextDeckId = "";
@@ -984,6 +988,8 @@ const homeShareNotificationStatus = document.getElementById("homeShareNotificati
 const homeShareNotificationList = document.getElementById("homeShareNotificationList");
 const homeBackupStatus = document.getElementById("homeBackupStatus");
 const homeBackupActions = document.getElementById("homeBackupActions");
+const homeUnderstandStatus = document.getElementById("homeUnderstandStatus");
+const homeUnderstandList = document.getElementById("homeUnderstandList");
 const historyChart = document.getElementById("historyChart");
 const historySummary = document.getElementById("historySummary");
 const historyBreakdown = document.getElementById("historyBreakdown");
@@ -995,6 +1001,8 @@ const studyQuickCaptureButton = document.getElementById("studyQuickCaptureButton
 const studyQuickSummary = document.getElementById("studyQuickSummary");
 const studyMinuteButtons = [...document.querySelectorAll("[data-study-minutes]")];
 const studyQuickActionGrid = document.getElementById("studyQuickActionGrid");
+const studyUnderstandSummary = document.getElementById("studyUnderstandSummary");
+const studyUnderstandUnitList = document.getElementById("studyUnderstandUnitList");
 const studyModeSummary = document.getElementById("studyModeSummary");
 const studySessionSizeInput = document.getElementById("studySessionSizeInput");
 const startStudySessionButton = document.getElementById("startStudySessionButton");
@@ -1026,9 +1034,18 @@ const publicDeckAiOnlyCheckbox = document.getElementById("publicDeckAiOnlyCheckb
 const cardDeckId = document.getElementById("cardDeckId");
 const searchCardifyTarget = document.getElementById("searchCardifyTarget");
 const emptyState = document.getElementById("emptyState");
+const understandCard = document.getElementById("understandCard");
 const flashcard = document.getElementById("flashcard");
 const shortQuizCard = document.getElementById("shortQuizCard");
 const choiceQuizCard = document.getElementById("choiceQuizCard");
+const understandEyebrow = document.getElementById("understandEyebrow");
+const understandTitle = document.getElementById("understandTitle");
+const understandMeta = document.getElementById("understandMeta");
+const understandStepLabel = document.getElementById("understandStepLabel");
+const understandTags = document.getElementById("understandTags");
+const understandFrontMedia = document.getElementById("understandFrontMedia");
+const understandBody = document.getElementById("understandBody");
+const understandBackMedia = document.getElementById("understandBackMedia");
 const cardFront = document.getElementById("cardFront");
 const cardFrontMedia = document.getElementById("cardFrontMedia");
 const cardBack = document.getElementById("cardBack");
@@ -1040,6 +1057,8 @@ const cardTags = document.getElementById("cardTags");
 const cardNote = document.getElementById("cardNote");
 const cardExample = document.getElementById("cardExample");
 const answerArea = document.getElementById("answerArea");
+const understandPrevButton = document.getElementById("understandPrevButton");
+const understandNextButton = document.getElementById("understandNextButton");
 const toggleAnswerButton = document.getElementById("toggleAnswerButton");
 const studyProgress = document.getElementById("studyProgress");
 const emptyStateEyebrow = document.getElementById("emptyStateEyebrow");
@@ -1077,6 +1096,11 @@ const choiceQuizNextButton = document.getElementById("choiceQuizNextButton");
 const choiceQuizFeedbackPanel = document.getElementById("choiceQuizFeedbackPanel");
 const choiceQuizStatus = document.getElementById("choiceQuizStatus");
 const choiceQuizScore = document.getElementById("choiceQuizScore");
+const understandFeedbackPanel = document.getElementById("understandFeedbackPanel");
+const understandPanelTitle = document.getElementById("understandPanelTitle");
+const understandProgress = document.getElementById("understandProgress");
+const understandUnitProgressList = document.getElementById("understandUnitProgressList");
+const understandMemorizeActions = document.getElementById("understandMemorizeActions");
 const reviewFeedbackPanel = document.getElementById("reviewFeedbackPanel");
 const ratingButtons = Object.fromEntries(
   [...document.querySelectorAll("[data-rating]")].map((button) => [button.dataset.rating, button]),
@@ -1347,6 +1371,17 @@ const mediaViewerImage = document.getElementById("mediaViewerImage");
 const closeMediaViewerButton = document.getElementById("closeMediaViewerButton");
 
 const FEATURE_SEARCH_ITEMS = [
+  {
+    id: "understand",
+    title: "まず理解する",
+    sectionLabel: "学習",
+    description: "カードから自動生成したミニ講義を読み、理解してから暗記へ進みます。",
+    keywords: ["理解", "はじめて", "初学者", "講義", "内容理解", "導入"],
+    action: "study-mode",
+    studyMode: "understand",
+    targetId: "studyUnderstandPanel",
+    featured: true,
+  },
   {
     id: "review",
     title: "今日の復習を開く",
@@ -1664,6 +1699,7 @@ function bindEvents() {
   toggleAnswerButton.addEventListener("click", toggleAnswer);
   if (startReviewButton) {
     startReviewButton.addEventListener("click", () => {
+      setStudyMode("review");
       switchSection("study");
     });
   }
@@ -1819,6 +1855,8 @@ function bindEvents() {
   }
 
   studyDeckFilter.addEventListener("change", () => {
+    clearUnderstandSelectionIfUnavailable();
+    syncStudyUnitContextWithFilter();
     resetStudySession();
     clearAiStudyDraft({ silent: true });
     currentCardId = null;
@@ -1834,8 +1872,13 @@ function bindEvents() {
   if (studyQuickActionGrid) {
     studyQuickActionGrid.addEventListener("click", handleStudyQuickActions);
   }
+  if (studyUnderstandUnitList) {
+    studyUnderstandUnitList.addEventListener("click", handleUnderstandPanelActions);
+  }
   studySessionSizeInput.addEventListener("input", () => {
-    studySessionSize = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), 3, 20, 8);
+    const minSize = studySourceKey === "unit" ? 1 : 3;
+    const defaultSize = studySourceKey === "unit" ? Math.max(1, Math.min(8, state.cards.length || 1)) : 8;
+    studySessionSize = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), minSize, 20, defaultSize);
     studySessionSizeInput.value = String(studySessionSize);
     renderStudy();
   });
@@ -1855,6 +1898,15 @@ function bindEvents() {
   shortQuizRevealButton.addEventListener("click", revealShortQuizAnswer);
   shortQuizNextButton.addEventListener("click", advanceStudySession);
   choiceQuizNextButton.addEventListener("click", advanceStudySession);
+  if (understandPrevButton) {
+    understandPrevButton.addEventListener("click", () => moveUnderstandStep(-1));
+  }
+  if (understandNextButton) {
+    understandNextButton.addEventListener("click", () => moveUnderstandStep(1));
+  }
+  if (understandFeedbackPanel) {
+    understandFeedbackPanel.addEventListener("click", handleUnderstandPanelActions);
+  }
   libraryDeckFilter.addEventListener("change", renderLibrary);
   libraryTagFilter.addEventListener("change", renderLibrary);
   librarySubjectFilter.addEventListener("change", renderLibrary);
@@ -3282,12 +3334,12 @@ function renderStats() {
   heroTitle.textContent = state.decks.length ? "身体部位と医学単語から始める" : "最初の医学デッキを用意する";
   heroText.textContent =
     stats.totalCards > 0
-      ? `身体部位と医学単語を中心に ${stats.medicalCards}枚を管理しながら、必要なら追加デッキ ${stats.otherCards}枚へもすぐ進めます。`
-      : "最初は身体部位の名称と医学単語入門の2デッキから始めて、必要になった分野だけ後から追加できるようにしています。";
+      ? `身体部位と医学単語を中心に ${stats.medicalCards}枚を管理しながら、まずは理解モードで内容をつかみ、そのあと暗記へ進めます。`
+      : "最初は身体部位の名称と医学単語入門の2デッキから始めて、理解してから暗記へ進める流れにしています。";
   quickSummary.textContent =
     stats.dueCount > 0
-      ? `いまは初期の医学デッキ ${stats.medicalDue}枚・追加デッキ ${stats.otherDue}枚が復習待ちです。上から必要なデッキをそのまま開けます。`
-      : "復習待ちがないときは、身体部位や医学単語の基礎デッキを整えるか、必要な分野だけカードや資料を追加して次に備えられます。";
+      ? `いまは初期の医学デッキ ${stats.medicalDue}枚・追加デッキ ${stats.otherDue}枚が復習待ちです。初めての内容は理解モードから入り、覚え直したい内容はそのまま復習へ進めます。`
+      : "復習待ちがないときは、まず理解モードで身体部位や医学単語の流れをつかんでから、必要な分野だけカードや資料を追加して次に備えられます。";
 }
 
 function buildStats() {
@@ -3812,7 +3864,7 @@ function toggleHistoryDetails() {
 }
 
 function setStudyMode(mode) {
-  if (!["review", "test", "choice"].includes(String(mode || ""))) {
+  if (!["understand", "review", "test", "choice"].includes(String(mode || ""))) {
     return;
   }
 
@@ -3821,11 +3873,14 @@ function setStudyMode(mode) {
   clearAiStudyDraft({ silent: true });
   currentCardId = null;
   isAnswerVisible = false;
+  if (studyMode === "understand") {
+    primeUnderstandSelectionFromFilter();
+  }
   renderStudy();
 }
 
 function setStudySource(key) {
-  if (!["due", "again", "hard", "weak", "all"].includes(String(key || ""))) {
+  if (!["unit", "due", "again", "hard", "weak", "all"].includes(String(key || ""))) {
     return;
   }
 
@@ -6481,6 +6536,7 @@ function renderDashboard() {
         </article>
       `;
 
+  renderHomeUnderstandPanel();
   renderHomeShareNotificationPanel();
   renderHomeBackupPanel();
   renderHistoryPanel();
@@ -7129,6 +7185,747 @@ function buildTrackSummary(focus) {
   };
 }
 
+function getUnderstandCandidateDecks(filter = studyDeckFilter.value || "all") {
+  const safeFilter = String(filter || "all");
+  const decksWithCards = state.decks.filter((deck) => state.cards.some((card) => card.deckId === deck.id));
+  if (safeFilter === "all") {
+    return sortDashboardDecks(decksWithCards);
+  }
+  if (safeFilter.startsWith("focus:")) {
+    const focus = safeFilter.slice(6);
+    return sortDashboardDecks(decksWithCards.filter((deck) => deck.focus === focus));
+  }
+  const exactDeck = getDeckById(safeFilter);
+  return exactDeck && state.cards.some((card) => card.deckId === exactDeck.id) ? [exactDeck] : [];
+}
+
+function buildUnderstandUnits(deckId) {
+  const deck = getDeckById(deckId);
+  if (!deck) {
+    return [];
+  }
+
+  const cards = state.cards
+    .filter((card) => card.deckId === deckId)
+    .slice()
+    .sort((left, right) => Number(left.createdAt || 0) - Number(right.createdAt || 0) || left.id.localeCompare(right.id));
+
+  if (!cards.length) {
+    return [];
+  }
+
+  const buckets = [];
+  const bucketMap = new Map();
+
+  cards.forEach((card) => {
+    const bucketMeta = getUnderstandBucketMeta(card, deck);
+    if (!bucketMap.has(bucketMeta.key)) {
+      const bucket = {
+        ...bucketMeta,
+        cards: [],
+      };
+      bucketMap.set(bucketMeta.key, bucket);
+      buckets.push(bucket);
+    }
+    bucketMap.get(bucketMeta.key).cards.push(card);
+  });
+
+  return buckets.flatMap((bucket) => {
+    const chunks = splitUnderstandCards(bucket.cards);
+    return chunks.map((chunk, chunkIndex) => buildUnderstandUnit(deck, bucket, chunk, chunkIndex, chunks.length));
+  });
+}
+
+function getUnderstandBucketMeta(card, deck) {
+  const topic = String(card.topic || "").trim();
+  if (topic) {
+    return {
+      key: `topic:${topic}`,
+      title: topic,
+      eyebrow: "テーマ",
+    };
+  }
+
+  const hint = String(card.hint || "").trim();
+  if (hint) {
+    return {
+      key: `hint:${hint}`,
+      title: hint,
+      eyebrow: "補足",
+    };
+  }
+
+  const subject = String(deck?.subject || "").trim();
+  if (subject) {
+    return {
+      key: `subject:${subject}`,
+      title: subject,
+      eyebrow: "分野",
+    };
+  }
+
+  return {
+    key: "chunk:default",
+    title: deck?.name || "このデッキ",
+    eyebrow: "基本",
+  };
+}
+
+function splitUnderstandCards(cards) {
+  if (cards.length <= 8) {
+    return [cards];
+  }
+
+  const chunkCount = Math.ceil(cards.length / 7);
+  const chunkSize = Math.ceil(cards.length / chunkCount);
+  const chunks = [];
+  for (let index = 0; index < cards.length; index += chunkSize) {
+    chunks.push(cards.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+function buildUnderstandUnit(deck, bucket, cards, chunkIndex, chunkCount) {
+  const chunkLabel = chunkCount > 1 ? ` ${chunkIndex + 1}` : "";
+  const imageCount = cards.reduce(
+    (sum, card) => sum + (card.frontMedia || []).length + (card.backMedia || []).length,
+    0,
+  );
+  return {
+    id: `understand-${slugifyUnderstandKey(bucket.key)}-${chunkIndex + 1}`,
+    deckId: deck.id,
+    title: `${bucket.title}${chunkLabel}`,
+    eyebrow: bucket.eyebrow,
+    cards,
+    cardIds: cards.map((card) => card.id),
+    imageCount,
+    description: `${cards.length}枚のカードから、${bucket.title} の基礎をミニ講義のように読み進めます。`,
+    keyTerms: cards
+      .slice(0, 3)
+      .map((card) => buildUnderstandKeyTerm(card))
+      .filter(Boolean),
+  };
+}
+
+function buildUnderstandKeyTerm(card) {
+  const back = String(card.back || "").trim();
+  if (back) {
+    return back.length > 42 ? `${back.slice(0, 42)}…` : back;
+  }
+  const front = String(card.front || "").trim();
+  return front.length > 42 ? `${front.slice(0, 42)}…` : front;
+}
+
+function slugifyUnderstandKey(value) {
+  const slug = String(value || "")
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  if (slug) {
+    return slug;
+  }
+  const hash = [...String(value || "unit")].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 1000000, 7);
+  return `unit-${hash}`;
+}
+
+function buildUnderstandDeckSummary(deckId) {
+  const units = buildUnderstandUnits(deckId);
+  const progressMap = state.learningProgress?.[deckId] || {};
+  const completedCount = units.filter((unit) => progressMap[unit.id]?.completedAt).length;
+  const nextUnit = pickNextUnderstandUnit(units, deckId) || units[0] || null;
+
+  return {
+    units,
+    totalUnits: units.length,
+    completedCount,
+    remainingCount: Math.max(0, units.length - completedCount),
+    nextUnit,
+  };
+}
+
+function pickNextUnderstandUnit(units, deckId) {
+  return units.find((unit) => !getLearningProgressEntry(deckId, unit.id).completedAt) || units[0] || null;
+}
+
+function getLearningProgressEntry(deckId, unitId) {
+  const deckProgress = state.learningProgress?.[deckId] || {};
+  const entry = deckProgress[unitId] || {};
+  return {
+    startedAt: Number.isFinite(entry.startedAt) ? entry.startedAt : 0,
+    completedAt: Number.isFinite(entry.completedAt) ? entry.completedAt : 0,
+    lastViewedStep: Number.isFinite(entry.lastViewedStep) ? entry.lastViewedStep : 0,
+  };
+}
+
+function setLearningProgressEntry(deckId, unitId, patch = {}, { persistState = true } = {}) {
+  if (!deckId || !unitId) {
+    return getLearningProgressEntry(deckId, unitId);
+  }
+
+  if (!state.learningProgress || typeof state.learningProgress !== "object") {
+    state.learningProgress = {};
+  }
+  if (!state.learningProgress[deckId] || typeof state.learningProgress[deckId] !== "object") {
+    state.learningProgress[deckId] = {};
+  }
+
+  const current = getLearningProgressEntry(deckId, unitId);
+  const nextEntry = {
+    startedAt: Number.isFinite(patch.startedAt) ? patch.startedAt : current.startedAt,
+    completedAt: Number.isFinite(patch.completedAt) ? patch.completedAt : current.completedAt,
+    lastViewedStep: Number.isFinite(patch.lastViewedStep) ? patch.lastViewedStep : current.lastViewedStep,
+  };
+  state.learningProgress[deckId][unitId] = nextEntry;
+  if (persistState) {
+    persist();
+  }
+  return nextEntry;
+}
+
+function getUnderstandUnitStepCount(unit) {
+  return unit ? unit.cards.length + 2 : 0;
+}
+
+function getActiveUnderstandDeck() {
+  return getDeckById(understandDeckId);
+}
+
+function getActiveUnderstandUnit() {
+  const deck = getActiveUnderstandDeck();
+  if (!deck) {
+    return null;
+  }
+  return buildUnderstandUnits(deck.id).find((unit) => unit.id === understandUnitId) || null;
+}
+
+function clearUnderstandSelectionIfUnavailable() {
+  const candidateDecks = getUnderstandCandidateDecks();
+  if (!candidateDecks.length) {
+    understandDeckId = "";
+    understandUnitId = "";
+    understandStepIndex = 0;
+    return;
+  }
+
+  if (!candidateDecks.some((deck) => deck.id === understandDeckId)) {
+    understandDeckId = "";
+    understandUnitId = "";
+    understandStepIndex = 0;
+  }
+
+  if (!understandDeckId) {
+    return;
+  }
+
+  const units = buildUnderstandUnits(understandDeckId);
+  if (!units.length) {
+    understandUnitId = "";
+    understandStepIndex = 0;
+    return;
+  }
+
+  if (!units.some((unit) => unit.id === understandUnitId)) {
+    const nextUnit = pickNextUnderstandUnit(units, understandDeckId) || units[0];
+    understandUnitId = nextUnit.id;
+    understandStepIndex = clampNumber(
+      getLearningProgressEntry(understandDeckId, nextUnit.id).lastViewedStep,
+      0,
+      getUnderstandUnitStepCount(nextUnit) - 1,
+      0,
+    );
+  }
+}
+
+function primeUnderstandSelectionFromFilter() {
+  const candidateDecks = getUnderstandCandidateDecks();
+  if (!candidateDecks.length) {
+    understandDeckId = "";
+    understandUnitId = "";
+    understandStepIndex = 0;
+    return;
+  }
+
+  if (!candidateDecks.some((deck) => deck.id === understandDeckId)) {
+    understandDeckId = candidateDecks[0].id;
+  }
+
+  const units = buildUnderstandUnits(understandDeckId);
+  if (!units.length) {
+    understandUnitId = "";
+    understandStepIndex = 0;
+    return;
+  }
+
+  const nextUnit = units.find((unit) => unit.id === understandUnitId) || pickNextUnderstandUnit(units, understandDeckId) || units[0];
+  understandUnitId = nextUnit.id;
+  understandStepIndex = clampNumber(
+    getLearningProgressEntry(understandDeckId, nextUnit.id).lastViewedStep,
+    0,
+    getUnderstandUnitStepCount(nextUnit) - 1,
+    0,
+  );
+}
+
+function syncStudyUnitContextWithFilter() {
+  if (!studyUnitContext) {
+    return;
+  }
+
+  const currentFilter = studyDeckFilter.value || "all";
+  const hasCards = studyUnitContext.cardIds.some((cardId) => getCardById(cardId));
+  const filterMatches = currentFilter === studyUnitContext.deckId;
+
+  if (!hasCards || !filterMatches) {
+    studyUnitContext = null;
+    if (studySourceKey === "unit") {
+      studySourceKey = "due";
+    }
+    if (studySession?.sourceKey === "unit") {
+      resetStudySession();
+    }
+  }
+}
+
+function buildUnderstandPageModel(deck, unit, stepIndex) {
+  const stepCount = getUnderstandUnitStepCount(unit);
+  if (!unit || !deck) {
+    return null;
+  }
+
+  if (stepIndex <= 0) {
+    return {
+      eyebrow: "理解モード",
+      title: unit.title,
+      meta: `${deck.name} · ${unit.cards.length}枚のカード`,
+      stepLabel: `導入 1/${stepCount}`,
+      tags: [...new Set([bucketTagFromEyebrow(unit.eyebrow), ...(deck.subject ? [deck.subject] : [])].filter(Boolean))],
+      frontMedia: [],
+      backMedia: [],
+      bodyHtml: `
+        <section class="understand-section">
+          <p class="eyebrow">${escapeHtml(unit.eyebrow)}</p>
+          <h4>このユニットでつかむこと</h4>
+          <p>${escapeHtml(unit.description)}</p>
+        </section>
+        <section class="understand-section">
+          <p class="eyebrow">最初に見ておく語</p>
+          <ul class="understand-summary-points">
+            ${(unit.keyTerms.length ? unit.keyTerms : ["カードを読みながら内容をつかみます"]).map((term) => `<li>${escapeHtml(term)}</li>`).join("")}
+          </ul>
+        </section>
+      `,
+    };
+  }
+
+  if (stepIndex >= stepCount - 1) {
+    return {
+      eyebrow: "理解のまとめ",
+      title: `${unit.title} をひと通り読みました`,
+      meta: `${deck.name} · ${unit.cards.length}枚`,
+      stepLabel: `まとめ ${stepCount}/${stepCount}`,
+      tags: [...new Set(["まとめ", bucketTagFromEyebrow(unit.eyebrow), ...(deck.subject ? [deck.subject] : [])].filter(Boolean))],
+      frontMedia: [],
+      backMedia: [],
+      bodyHtml: `
+        <section class="understand-section">
+          <p class="eyebrow">要点</p>
+          <h4>このユニットの確認ポイント</h4>
+          <ul class="understand-summary-points">
+            ${unit.cards
+              .slice(0, 5)
+              .map(
+                (card) =>
+                  `<li><strong>${escapeHtml(formatCardFrontLabel(card))}</strong>${card.back ? ` : ${escapeHtml(formatCardBackLabel(card))}` : ""}</li>`,
+              )
+              .join("")}
+          </ul>
+        </section>
+        <section class="understand-section">
+          <p class="eyebrow">次の一歩</p>
+          <p>内容がつかめたら、同じユニットのカードだけで復習・小テスト・4択へ進めます。</p>
+        </section>
+      `,
+    };
+  }
+
+  const card = unit.cards[stepIndex - 1];
+  const combinedTags = [...new Set([...(card.tags || []), bucketTagFromEyebrow(unit.eyebrow)].filter(Boolean))];
+  return {
+    eyebrow: unit.eyebrow,
+    title: formatCardFrontLabel(card),
+    meta: `${deck.name} · ${stepIndex}/${unit.cards.length}枚目`,
+    stepLabel: `理解 ${stepIndex + 1}/${stepCount}`,
+    tags: combinedTags,
+    frontMedia: card.frontMedia || [],
+    backMedia: card.backMedia || [],
+    bodyHtml: `
+      <section class="understand-section">
+        <p class="eyebrow">用語・問い</p>
+        <h4>${escapeHtml(formatCardFrontLabel(card))}</h4>
+      </section>
+      <section class="understand-section">
+        <p class="eyebrow">意味・答え</p>
+        <p>${escapeHtml(formatCardBackLabel(card) || "画像や補足を見て確認します")}</p>
+      </section>
+      ${
+        card.note
+          ? `
+            <section class="understand-section">
+              <p class="eyebrow">補足</p>
+              <p>${escapeHtml(card.note)}</p>
+            </section>
+          `
+          : ""
+      }
+      ${
+        card.example
+          ? `
+            <section class="understand-section">
+              <p class="eyebrow">例</p>
+              <p>${escapeHtml(card.example)}</p>
+            </section>
+          `
+          : ""
+      }
+    `,
+  };
+}
+
+function bucketTagFromEyebrow(eyebrow) {
+  if (eyebrow === "テーマ") {
+    return "テーマ";
+  }
+  if (eyebrow === "補足") {
+    return "補足";
+  }
+  if (eyebrow === "分野") {
+    return "分野";
+  }
+  return "";
+}
+
+function renderStudyUnderstandPanel() {
+  if (!studyUnderstandSummary || !studyUnderstandUnitList) {
+    return;
+  }
+
+  const candidateDecks = getUnderstandCandidateDecks();
+  if (!candidateDecks.length) {
+    studyUnderstandSummary.textContent = "理解モードに使えるデッキがまだありません。デッキを作ると、ここからミニ講義のように読み始められます。";
+    studyUnderstandUnitList.innerHTML = `
+      <article class="library-card">
+        <h4>理解モードに使えるデッキがありません</h4>
+        <p class="muted">まずはデッキを追加すると、内容理解から暗記へ進められます。</p>
+      </article>
+    `;
+    return;
+  }
+
+  const selectedDeck = getDeckById(studyDeckFilter.value || "");
+  if (selectedDeck) {
+    const summary = buildUnderstandDeckSummary(selectedDeck.id);
+    studyUnderstandSummary.textContent = summary.totalUnits
+      ? `${selectedDeck.name} は ${summary.totalUnits} ユニットに分かれています。読了 ${summary.completedCount} / ${summary.totalUnits}。まずは未読ユニットから読み進められます。`
+      : "このデッキには理解モード用にまとめられるカードがまだありません。";
+    studyUnderstandUnitList.innerHTML = summary.totalUnits
+      ? summary.units
+          .map((unit) => {
+            const progress = getLearningProgressEntry(selectedDeck.id, unit.id);
+            const isCurrent = selectedDeck.id === understandDeckId && unit.id === understandUnitId;
+            return `
+              <article class="library-card understand-unit-card ${progress.completedAt ? "understand-complete-card" : isCurrent ? "understand-current-card" : ""}">
+                <div class="card-row-header">
+                  <div>
+                    <p class="eyebrow">${escapeHtml(unit.eyebrow)}</p>
+                    <h4>${escapeHtml(unit.title)}</h4>
+                  </div>
+                  <span class="meta-pill">${unit.cards.length}枚</span>
+                </div>
+                <p class="muted">${escapeHtml(unit.description)}</p>
+                <div class="card-row-meta">
+                  ${unit.imageCount ? `<span class="meta-pill">画像 ${unit.imageCount}枚</span>` : ""}
+                  ${
+                    progress.completedAt
+                      ? `<span class="meta-pill">読了済み</span>`
+                      : progress.startedAt
+                        ? `<span class="meta-pill">途中から再開</span>`
+                        : `<span class="meta-pill">未読</span>`
+                  }
+                  ${unit.keyTerms.map((term) => `<span class="meta-pill">${escapeHtml(term)}</span>`).join("")}
+                </div>
+                <div class="button-row">
+                  <button
+                    class="${isCurrent ? "primary-button" : "ghost-button"}"
+                    data-open-understand-unit="${escapeHtml(unit.id)}"
+                    data-understand-deck="${escapeHtml(selectedDeck.id)}"
+                    type="button"
+                  >
+                    ${progress.startedAt ? "続きから読む" : "読み始める"}
+                  </button>
+                  <button
+                    class="ghost-button"
+                    data-start-understand-memorize="${escapeHtml(unit.id)}"
+                    data-understand-deck="${escapeHtml(selectedDeck.id)}"
+                    data-understand-memorize-mode="review"
+                    type="button"
+                  >
+                    暗記へ
+                  </button>
+                </div>
+              </article>
+            `;
+          })
+          .join("")
+      : `
+          <article class="library-card">
+            <h4>理解ユニットを作れませんでした</h4>
+            <p class="muted">このデッキには読み進めるカードがまだありません。</p>
+          </article>
+        `;
+    return;
+  }
+
+  studyUnderstandSummary.textContent = `まずはデッキを1つ選び、内容をミニ講義のように読み進めます。今は ${candidateDecks.length} デッキが理解モードに対応しています。`;
+  studyUnderstandUnitList.innerHTML = candidateDecks
+    .slice(0, 4)
+    .map((deck) => {
+      const summary = buildUnderstandDeckSummary(deck.id);
+      const nextUnit = summary.nextUnit;
+      return `
+        <article class="library-card understand-deck-card">
+          <div class="card-row-header">
+            <div>
+              <p class="eyebrow">${escapeHtml(formatDeckFocus(deck.focus))}</p>
+              <h4>${escapeHtml(deck.name)}</h4>
+            </div>
+            <span class="meta-pill">${summary.totalUnits}ユニット</span>
+          </div>
+          <p class="muted">${
+            nextUnit
+              ? escapeHtml(`次は「${nextUnit.title}」から始められます。読了 ${summary.completedCount} / ${summary.totalUnits}`)
+              : "まだ理解モードに使えるカードがありません。"
+          }</p>
+          <div class="button-row">
+            <button class="primary-button" data-open-understand-deck="${escapeHtml(deck.id)}" type="button">このデッキを理解する</button>
+            <button class="ghost-button" data-open-deck-detail="${escapeHtml(deck.id)}" type="button">デッキ詳細</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderHomeUnderstandPanel() {
+  if (!homeUnderstandStatus || !homeUnderstandList) {
+    return;
+  }
+
+  const candidateDecks = state.decks.filter((deck) => state.cards.some((card) => card.deckId === deck.id));
+  const summaries = candidateDecks
+    .map((deck) => ({
+      deck,
+      summary: buildUnderstandDeckSummary(deck.id),
+    }))
+    .filter((item) => item.summary.totalUnits > 0)
+    .slice(0, 3);
+
+  if (!summaries.length) {
+    homeUnderstandStatus.textContent = "理解モードに使えるデッキがまだありません。";
+    homeUnderstandList.innerHTML = `
+      <article class="library-card">
+        <h4>まずはカードを用意します</h4>
+        <p class="muted">カードが入ったデッキを作ると、ここから内容理解に入れます。</p>
+      </article>
+    `;
+    return;
+  }
+
+  const remainingTotal = summaries.reduce((sum, item) => sum + item.summary.remainingCount, 0);
+  homeUnderstandStatus.textContent = remainingTotal
+    ? `まだ ${remainingTotal} ユニットが未読です。まず内容を理解してから、暗記へ進められます。`
+    : "すべての理解ユニットを一度読み終えています。必要なところだけ読み返してから暗記へ戻れます。";
+
+  homeUnderstandList.innerHTML = summaries
+    .map(({ deck, summary }) => {
+      const nextUnit = summary.nextUnit;
+      return `
+        <article class="library-card understand-deck-card">
+          <div class="card-row-header">
+            <div>
+              <h4>${escapeHtml(deck.name)}</h4>
+              <p class="muted">${escapeHtml(nextUnit ? `次は「${nextUnit.title}」から進めます。` : "このデッキの理解ユニットはありません。")}</p>
+            </div>
+            <span class="meta-pill">読了 ${summary.completedCount}/${summary.totalUnits}</span>
+          </div>
+          <div class="button-row">
+            <button class="ghost-button" data-open-understand-deck="${escapeHtml(deck.id)}" type="button">
+              ${nextUnit ? "理解を進める" : "デッキを見る"}
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function openUnderstandMode(deckId, unitId = "", options = {}) {
+  const deck = getDeckById(deckId);
+  if (!deck) {
+    showToast("理解したいデッキが見つかりません");
+    return;
+  }
+
+  const units = buildUnderstandUnits(deck.id);
+  studyDeckFilter.value = deck.id;
+  if (!units.length) {
+    understandDeckId = deck.id;
+    understandUnitId = "";
+    understandStepIndex = 0;
+    studyMode = "understand";
+    resetStudySession();
+    clearAiStudyDraft({ silent: true });
+    if (activeSection !== "study") {
+      switchSection("study");
+    } else {
+      renderStudy();
+    }
+    return;
+  }
+
+  const targetUnit = units.find((unit) => unit.id === unitId) || pickNextUnderstandUnit(units, deck.id) || units[0];
+  const progress = getLearningProgressEntry(deck.id, targetUnit.id);
+  const stepCount = getUnderstandUnitStepCount(targetUnit);
+  const nextStep = clampNumber(
+    Number.isFinite(options.stepIndex) ? options.stepIndex : progress.lastViewedStep,
+    0,
+    stepCount - 1,
+    0,
+  );
+
+  understandDeckId = deck.id;
+  understandUnitId = targetUnit.id;
+  understandStepIndex = nextStep;
+  setLearningProgressEntry(
+    deck.id,
+    targetUnit.id,
+    {
+      startedAt: progress.startedAt || Date.now(),
+      lastViewedStep: Math.max(progress.lastViewedStep || 0, nextStep),
+      completedAt: nextStep >= stepCount - 1 ? progress.completedAt || Date.now() : progress.completedAt || 0,
+    },
+    { persistState: true },
+  );
+
+  studyMode = "understand";
+  resetStudySession();
+  clearAiStudyDraft({ silent: true });
+  currentCardId = null;
+  isAnswerVisible = false;
+
+  if (activeSection !== "study") {
+    switchSection("study");
+  } else {
+    renderStudy();
+  }
+}
+
+function moveUnderstandStep(delta) {
+  const deck = getActiveUnderstandDeck();
+  const unit = getActiveUnderstandUnit();
+  if (!deck || !unit) {
+    return;
+  }
+
+  const stepCount = getUnderstandUnitStepCount(unit);
+  const lastStepIndex = stepCount - 1;
+  if (delta < 0) {
+    understandStepIndex = clampNumber(understandStepIndex - 1, 0, lastStepIndex, 0);
+    const progress = getLearningProgressEntry(deck.id, unit.id);
+    setLearningProgressEntry(deck.id, unit.id, {
+      startedAt: progress.startedAt || Date.now(),
+      lastViewedStep: Math.max(progress.lastViewedStep || 0, understandStepIndex),
+    });
+    renderStudy();
+    return;
+  }
+
+  if (understandStepIndex < lastStepIndex) {
+    understandStepIndex = clampNumber(understandStepIndex + 1, 0, lastStepIndex, 0);
+    const progress = getLearningProgressEntry(deck.id, unit.id);
+    setLearningProgressEntry(deck.id, unit.id, {
+      startedAt: progress.startedAt || Date.now(),
+      lastViewedStep: Math.max(progress.lastViewedStep || 0, understandStepIndex),
+      completedAt: understandStepIndex >= lastStepIndex ? progress.completedAt || Date.now() : progress.completedAt || 0,
+    });
+    renderStudy();
+    return;
+  }
+
+  const deckSummary = buildUnderstandDeckSummary(deck.id);
+  const currentIndex = deckSummary.units.findIndex((item) => item.id === unit.id);
+  const nextUnit = currentIndex >= 0 ? deckSummary.units[currentIndex + 1] : null;
+  if (nextUnit) {
+    openUnderstandMode(deck.id, nextUnit.id);
+    return;
+  }
+
+  showToast("このデッキの理解ユニットを一通り読みました");
+  renderStudy();
+}
+
+function startUnderstandMemorization(deckId, unitId, mode = "review") {
+  const deck = getDeckById(deckId);
+  const unit = buildUnderstandUnits(deckId).find((item) => item.id === unitId);
+  if (!deck || !unit) {
+    showToast("暗記へつなぐユニットが見つかりません");
+    return;
+  }
+
+  const unitCards = unit.cardIds.map((cardId) => getCardById(cardId)).filter(Boolean);
+  if (!unitCards.length) {
+    showToast("このユニットには学習できるカードがありません");
+    return;
+  }
+
+  studyUnitContext = {
+    deckId: deck.id,
+    unitId: unit.id,
+    title: `${deck.name} / ${unit.title}`,
+    cardIds: unit.cardIds,
+  };
+  studyDeckFilter.value = deck.id;
+  studySourceKey = "unit";
+  clearAiStudyDraft({ silent: true });
+  resetStudySession();
+  currentCardId = null;
+  isAnswerVisible = false;
+
+  if (mode === "review") {
+    studyMode = "review";
+    studySession = buildReviewStudySession(unitCards, unitCards.length, "unit");
+  } else {
+    const availableCards =
+      mode === "choice" ? unitCards.filter((card) => canBuildChoiceOptions(card, unitCards)) : unitCards;
+    if (!availableCards.length) {
+      showToast(mode === "choice" ? "このユニットでは4択に使えるカードがまだありません" : "このユニットの小テスト材料がありません");
+      return;
+    }
+    studyMode = mode;
+    studySessionSize = Math.max(1, Math.min(20, availableCards.length));
+    studySessionSizeInput.value = String(studySessionSize);
+    studySession = buildStudySession(mode, availableCards, studySessionSize, { sourceKey: "unit", quickKind: "understand" });
+  }
+
+  if (activeSection !== "study") {
+    switchSection("study");
+  } else {
+    renderStudy();
+  }
+  showToast("理解した内容だけで暗記を始めます");
+}
+
 function buildStudySourceGroups() {
   const filter = studyDeckFilter.value || "all";
   const candidateCards = state.cards.filter((card) => matchesCardFilter(card, filter));
@@ -7143,7 +7940,7 @@ function buildStudySourceGroups() {
     .sort((left, right) => right.score - left.score || right.card.updatedAt - left.card.updatedAt)
     .map((item) => item.card);
 
-  return {
+  const groups = {
     due: {
       key: "due",
       title: "復習待ち",
@@ -7195,6 +7992,141 @@ function buildStudySourceGroups() {
       cards: [...candidateCards].sort((left, right) => right.updatedAt - left.updatedAt),
     },
   };
+
+  if (studyUnitContext?.cardIds?.length) {
+    groups.unit = {
+      key: "unit",
+      title: studyUnitContext.title || "理解した内容",
+      description: "理解モードから選んだカードだけを回します。",
+      cards: dedupeById(studyUnitContext.cardIds.map((cardId) => getCardById(cardId)).filter(Boolean)),
+    };
+  }
+
+  return groups;
+}
+
+function renderUnderstandStudy() {
+  primeUnderstandSelectionFromFilter();
+  const deck = getActiveUnderstandDeck();
+  const unit = getActiveUnderstandUnit();
+
+  if (!deck || !unit) {
+    reviewFeedbackPanel.hidden = true;
+    shortQuizFeedbackPanel.hidden = true;
+    choiceQuizFeedbackPanel.hidden = true;
+    understandFeedbackPanel.hidden = false;
+    flashcard.classList.add("is-hidden");
+    shortQuizCard.classList.add("is-hidden");
+    choiceQuizCard.classList.add("is-hidden");
+    understandCard.classList.add("is-hidden");
+    toggleAnswerButton.hidden = true;
+    shortQuizRevealButton.hidden = true;
+    shortQuizNextButton.hidden = true;
+    choiceQuizNextButton.hidden = true;
+    understandPrevButton.hidden = true;
+    understandNextButton.hidden = true;
+    showStudyEmpty({
+      eyebrow: "理解モード",
+      title: "まずは理解したいデッキを選びます",
+      text: "上の「まず内容を理解する」からデッキを選ぶと、カードをミニ講義のように読み進められます。",
+    });
+    if (understandPanelTitle) {
+      understandPanelTitle.textContent = "まず内容をつかむ";
+    }
+    if (understandProgress) {
+      understandProgress.textContent = "対象デッキを選ぶと、未読ユニットから順に読み始められます。";
+    }
+    if (understandUnitProgressList) {
+      understandUnitProgressList.innerHTML = "";
+    }
+    if (understandMemorizeActions) {
+      understandMemorizeActions.hidden = true;
+    }
+    return;
+  }
+
+  const pageModel = buildUnderstandPageModel(deck, unit, understandStepIndex);
+  const deckSummary = buildUnderstandDeckSummary(deck.id);
+  const stepCount = getUnderstandUnitStepCount(unit);
+  const currentUnitIndex = deckSummary.units.findIndex((item) => item.id === unit.id);
+  const hasNextUnit = currentUnitIndex >= 0 && currentUnitIndex < deckSummary.units.length - 1;
+  const isSummaryStep = understandStepIndex >= stepCount - 1;
+
+  reviewFeedbackPanel.hidden = true;
+  shortQuizFeedbackPanel.hidden = true;
+  choiceQuizFeedbackPanel.hidden = true;
+  understandFeedbackPanel.hidden = false;
+  emptyState.classList.add("is-hidden");
+  flashcard.classList.add("is-hidden");
+  shortQuizCard.classList.add("is-hidden");
+  choiceQuizCard.classList.add("is-hidden");
+  understandCard.classList.remove("is-hidden");
+  toggleAnswerButton.hidden = true;
+  shortQuizRevealButton.hidden = true;
+  shortQuizNextButton.hidden = true;
+  choiceQuizNextButton.hidden = true;
+  understandPrevButton.hidden = understandStepIndex <= 0;
+  understandNextButton.hidden = false;
+  understandNextButton.textContent = isSummaryStep ? (hasNextUnit ? "次のユニットへ" : "理解完了") : "次へ";
+
+  setElementCopy(understandEyebrow, pageModel.eyebrow);
+  setElementCopy(understandTitle, pageModel.title);
+  setElementCopy(understandMeta, pageModel.meta);
+  setElementCopy(understandStepLabel, pageModel.stepLabel);
+  understandTags.innerHTML = renderPillRow(pageModel.tags || [], deck.focus || "general");
+  understandTags.hidden = !(pageModel.tags || []).length;
+  renderCardMediaGallery(understandFrontMedia, pageModel.frontMedia || [], "理解画像");
+  renderCardMediaGallery(understandBackMedia, pageModel.backMedia || [], "理解補足画像");
+  understandBody.innerHTML = pageModel.bodyHtml;
+
+  if (understandPanelTitle) {
+    understandPanelTitle.textContent = `${deck.name} を理解する`;
+  }
+  if (understandProgress) {
+    understandProgress.textContent = `読了 ${deckSummary.completedCount}/${deckSummary.totalUnits}。現在は「${unit.title}」の ${Math.min(
+      understandStepIndex + 1,
+      stepCount,
+    )}/${stepCount} ページです。`;
+  }
+  if (understandUnitProgressList) {
+    understandUnitProgressList.innerHTML = deckSummary.units
+      .map((entry) => {
+        const entryProgress = getLearningProgressEntry(deck.id, entry.id);
+        const isCurrent = entry.id === unit.id;
+        return `
+          <article class="library-card understand-unit-card ${entryProgress.completedAt ? "understand-complete-card" : isCurrent ? "understand-current-card" : ""}">
+            <div class="card-row-header">
+              <div>
+                <p class="eyebrow">${escapeHtml(entry.eyebrow)}</p>
+                <h4>${escapeHtml(entry.title)}</h4>
+              </div>
+              <span class="meta-pill">${entry.cards.length}枚</span>
+            </div>
+            <p class="muted">${
+              entryProgress.completedAt
+                ? escapeHtml(`読了済み · ${formatMessageTime(entryProgress.completedAt)}`)
+                : entryProgress.startedAt
+                  ? "途中まで読んでいます"
+                  : "まだ読んでいません"
+            }</p>
+            <div class="button-row">
+              <button
+                class="${isCurrent ? "primary-button" : "ghost-button"}"
+                data-open-understand-unit="${escapeHtml(entry.id)}"
+                data-understand-deck="${escapeHtml(deck.id)}"
+                type="button"
+              >
+                ${entryProgress.startedAt ? "続きを読む" : "読み始める"}
+              </button>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+  }
+  if (understandMemorizeActions) {
+    understandMemorizeActions.hidden = !isSummaryStep;
+  }
 }
 
 function buildStudyReviewStats(cards) {
@@ -7263,7 +8195,7 @@ function renderAiStudyPanel(source, sourceCards, choiceReadyCards) {
     return;
   }
 
-  const canUseAi = studyMode !== "review";
+  const canUseAi = studyMode === "test" || studyMode === "choice";
   aiStudyPanel.hidden = !canUseAi;
   if (!canUseAi) {
     return;
@@ -7374,28 +8306,41 @@ function buildAiSourceLabel(item) {
 }
 
 function renderStudy() {
+  syncStudyUnitContextWithFilter();
+  if (studyMode === "understand") {
+    primeUnderstandSelectionFromFilter();
+  }
   const groups = buildStudySourceGroups();
-  const source = groups[studySourceKey] || groups.due;
+  const source = groups[studySourceKey] || groups.due || groups.all;
   const sourceCards = source.cards;
   const choiceReadyCards = sourceCards.filter((card) => canBuildChoiceOptions(card, sourceCards));
-  const size = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), 3, 20, 8);
+  const sizeMin = studySourceKey === "unit" ? 1 : 3;
+  const sizeDefault = studySourceKey === "unit" ? Math.max(1, Math.min(8, sourceCards.length || 1)) : 8;
+  const size = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), sizeMin, 20, sizeDefault);
   studySessionSize = size;
   studySessionSizeInput.value = String(size);
 
   studyModeButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.studyMode === studyMode);
   });
-  startStudySessionButton.hidden = studyMode === "review";
+  startStudySessionButton.hidden = studyMode === "review" || studyMode === "understand";
   startStudySessionButton.textContent = studyMode === "choice" ? "4択クイズを作る" : "小テストを作る";
   studyModeSummary.textContent =
-    studyMode === "review"
+    studyMode === "understand"
+      ? `${getActiveUnderstandDeck()?.name || "デッキ"} をミニ講義のように読み進めて、理解してから暗記へ進めます。`
+      : studyMode === "review"
       ? `${source.title} を中心に、通常の復習キューとして回します。`
       : `${source.title} から ${Math.min(studySessionSize, studyMode === "choice" ? choiceReadyCards.length : sourceCards.length)} 問を選び、${studyMode === "choice" ? "4択クイズ" : "記述小テスト"}を作ります。`;
   renderStudyQuickPanel(groups);
+  renderStudyUnderstandPanel();
   renderAiStudyPanel(source, sourceCards, choiceReadyCards);
-  studySmartListGrid.innerHTML = ["due", "again", "hard", "weak"]
+  const sourceKeys = groups.unit ? ["unit", "due", "again", "hard", "weak"] : ["due", "again", "hard", "weak"];
+  studySmartListGrid.innerHTML = sourceKeys
     .map((key) => {
       const item = groups[key];
+      if (!item) {
+        return "";
+      }
       return `
         <article class="library-card ${studySourceKey === key ? "is-selected-card" : ""}">
           <div class="card-row-header">
@@ -7414,6 +8359,11 @@ function renderStudy() {
       `;
     })
     .join("");
+
+  if (studyMode === "understand") {
+    renderUnderstandStudy();
+    return;
+  }
 
   if (studyMode === "review") {
     if (studySession && studySession.mode === "review" && studySession.index >= studySession.items.length) {
@@ -7448,13 +8398,17 @@ function renderReviewStudy(queue) {
   const deck = currentCard ? getDeckById(currentCard.deckId) : null;
   flashcard.classList.toggle("image-first-card", getPreferredCardStyle(currentCard, deck) === "image-first");
 
+  understandFeedbackPanel.hidden = true;
   reviewFeedbackPanel.hidden = false;
   shortQuizFeedbackPanel.hidden = true;
   choiceQuizFeedbackPanel.hidden = true;
+  understandPrevButton.hidden = true;
+  understandNextButton.hidden = true;
   toggleAnswerButton.hidden = false;
   shortQuizRevealButton.hidden = true;
   shortQuizNextButton.hidden = true;
   choiceQuizNextButton.hidden = true;
+  understandCard.classList.add("is-hidden");
   flashcard.classList.toggle("is-hidden", !currentCard);
   shortQuizCard.classList.add("is-hidden");
   choiceQuizCard.classList.add("is-hidden");
@@ -7503,12 +8457,16 @@ function renderReviewStudy(queue) {
 function renderStudySessionPending(source, size, choiceReadyCount = 0) {
   const readyCount = studyMode === "choice" ? choiceReadyCount : source.cards.length;
   const sessionCount = Math.min(size, readyCount);
+  understandFeedbackPanel.hidden = true;
   reviewFeedbackPanel.hidden = studyMode !== "review";
   shortQuizFeedbackPanel.hidden = studyMode !== "test";
   choiceQuizFeedbackPanel.hidden = studyMode !== "choice";
+  understandCard.classList.add("is-hidden");
   flashcard.classList.add("is-hidden");
   shortQuizCard.classList.add("is-hidden");
   choiceQuizCard.classList.add("is-hidden");
+  understandPrevButton.hidden = true;
+  understandNextButton.hidden = true;
   toggleAnswerButton.hidden = true;
   shortQuizRevealButton.hidden = true;
   shortQuizNextButton.hidden = true;
@@ -7538,12 +8496,16 @@ function renderStudySessionPending(source, size, choiceReadyCount = 0) {
 
 function renderStudySessionComplete(source) {
   const summary = buildStudySessionSummary(studySession);
+  understandFeedbackPanel.hidden = true;
   reviewFeedbackPanel.hidden = true;
   shortQuizFeedbackPanel.hidden = studyMode !== "test";
   choiceQuizFeedbackPanel.hidden = studyMode !== "choice";
+  understandCard.classList.add("is-hidden");
   flashcard.classList.add("is-hidden");
   shortQuizCard.classList.add("is-hidden");
   choiceQuizCard.classList.add("is-hidden");
+  understandPrevButton.hidden = true;
+  understandNextButton.hidden = true;
   toggleAnswerButton.hidden = true;
   shortQuizRevealButton.hidden = true;
   shortQuizNextButton.hidden = true;
@@ -7578,12 +8540,16 @@ function renderShortQuizStudy(source) {
   const deck = itemData?.deck || null;
   shortQuizCard.classList.toggle("image-first-card", getPreferredCardStyle(card, deck) === "image-first");
 
+  understandFeedbackPanel.hidden = true;
   reviewFeedbackPanel.hidden = true;
   shortQuizFeedbackPanel.hidden = false;
   choiceQuizFeedbackPanel.hidden = true;
+  understandCard.classList.add("is-hidden");
   flashcard.classList.add("is-hidden");
   shortQuizCard.classList.toggle("is-hidden", !itemData);
   choiceQuizCard.classList.add("is-hidden");
+  understandPrevButton.hidden = true;
+  understandNextButton.hidden = true;
   toggleAnswerButton.hidden = true;
   shortQuizRevealButton.hidden = !itemData || item.revealed;
   shortQuizNextButton.hidden = true;
@@ -7628,12 +8594,16 @@ function renderChoiceQuizStudy(source) {
   const deck = itemData?.deck || null;
   choiceQuizCard.classList.toggle("image-first-card", getPreferredCardStyle(card, deck) === "image-first");
 
+  understandFeedbackPanel.hidden = true;
   reviewFeedbackPanel.hidden = true;
   shortQuizFeedbackPanel.hidden = true;
   choiceQuizFeedbackPanel.hidden = false;
+  understandCard.classList.add("is-hidden");
   flashcard.classList.add("is-hidden");
   shortQuizCard.classList.add("is-hidden");
   choiceQuizCard.classList.toggle("is-hidden", !itemData);
+  understandPrevButton.hidden = true;
+  understandNextButton.hidden = true;
   toggleAnswerButton.hidden = true;
   shortQuizRevealButton.hidden = true;
   shortQuizNextButton.hidden = true;
@@ -7729,7 +8699,9 @@ function startStudySession() {
     studyMode === "choice"
       ? source.cards.filter((card) => canBuildChoiceOptions(card, source.cards))
       : source.cards;
-  const size = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), 3, 20, 8);
+  const sizeMin = studySourceKey === "unit" ? 1 : 3;
+  const sizeDefault = studySourceKey === "unit" ? Math.max(1, Math.min(8, cards.length || 1)) : 8;
+  const size = clampNumber(Number.parseInt(studySessionSizeInput.value, 10), sizeMin, 20, sizeDefault);
   studySessionSize = size;
   studySessionSizeInput.value = String(size);
 
@@ -8137,7 +9109,7 @@ function renderDeckDetail() {
     deckDetailContent.innerHTML = `
       <article class="library-card">
         <h4>デッキを選ぶと詳細が見られます</h4>
-        <p class="muted">一覧の「デッキ詳細」から、概要・カード・共有・学習状況を切り替えられます。</p>
+        <p class="muted">一覧の「デッキ詳細」から、概要・理解・カード・共有・学習状況を切り替えられます。</p>
       </article>
     `;
     return;
@@ -8145,6 +9117,59 @@ function renderDeckDetail() {
 
   const deckCards = state.cards.filter((card) => card.deckId === deck.id);
   const dueCount = deckCards.filter((card) => card.study.dueAt <= Date.now()).length;
+
+  if (deckDetailTab === "understand") {
+    const summary = buildUnderstandDeckSummary(deck.id);
+    deckDetailContent.innerHTML = summary.totalUnits
+      ? `
+          <article class="library-card">
+            <h4>${escapeHtml(deck.name)} の理解モード</h4>
+            <p class="muted">読了 ${summary.completedCount} / ${summary.totalUnits}。まず内容を読み、理解してから暗記へ進めます。</p>
+            <div class="card-row-meta">
+              <span class="meta-pill">${summary.totalUnits}ユニット</span>
+              <span class="meta-pill">未読 ${summary.remainingCount}</span>
+            </div>
+            <div class="button-row">
+              <button class="primary-button" data-open-understand-deck="${deck.id}" type="button">このデッキを理解する</button>
+            </div>
+          </article>
+          ${summary.units
+            .map((unit) => {
+              const progress = getLearningProgressEntry(deck.id, unit.id);
+              return `
+                <article class="library-card understand-unit-card ${progress.completedAt ? "understand-complete-card" : ""}">
+                  <div class="card-row-header">
+                    <div>
+                      <p class="eyebrow">${escapeHtml(unit.eyebrow)}</p>
+                      <h4>${escapeHtml(unit.title)}</h4>
+                    </div>
+                    <span class="meta-pill">${unit.cards.length}枚</span>
+                  </div>
+                  <p class="muted">${escapeHtml(unit.description)}</p>
+                  <div class="card-row-meta">
+                    ${unit.imageCount ? `<span class="meta-pill">画像 ${unit.imageCount}枚</span>` : ""}
+                    ${progress.completedAt ? `<span class="meta-pill">読了済み</span>` : progress.startedAt ? `<span class="meta-pill">途中から再開</span>` : `<span class="meta-pill">未読</span>`}
+                    ${unit.keyTerms.map((term) => `<span class="meta-pill">${escapeHtml(term)}</span>`).join("")}
+                  </div>
+                  <div class="button-row">
+                    <button class="ghost-button" data-open-understand-unit="${escapeHtml(unit.id)}" data-understand-deck="${escapeHtml(deck.id)}" type="button">
+                      ${progress.startedAt ? "続きを読む" : "読み始める"}
+                    </button>
+                    <button class="ghost-button" data-start-understand-memorize="${escapeHtml(unit.id)}" data-understand-deck="${escapeHtml(deck.id)}" data-understand-memorize-mode="review" type="button">暗記へ</button>
+                  </div>
+                </article>
+              `;
+            })
+            .join("")}
+        `
+      : `
+          <article class="library-card">
+            <h4>理解モードに使えるカードがまだありません</h4>
+            <p class="muted">このデッキにカードが増えると、ここからミニ講義のように読み進められます。</p>
+          </article>
+        `;
+    return;
+  }
 
   if (deckDetailTab === "cards") {
     deckDetailContent.innerHTML = deckCards.length
@@ -8273,6 +9298,7 @@ function renderDeckDetail() {
     <article class="library-card">
       <h4>このデッキでできること</h4>
       <div class="button-row">
+        <button class="secondary-button" data-open-understand-deck="${deck.id}" type="button">まず理解する</button>
         <button class="primary-button" data-start-deck="${deck.id}" type="button">このデッキを学習</button>
         <button class="ghost-button" data-edit-deck="${deck.id}" type="button" ${canEditDeckContent(deck) ? "" : "disabled"}>編集</button>
       </div>
@@ -9477,6 +10503,39 @@ function handleDeckActions(event) {
     return;
   }
 
+  const understandHubButton = event.target.closest("[data-open-understand-hub]");
+  if (understandHubButton) {
+    studyMode = "understand";
+    primeUnderstandSelectionFromFilter();
+    switchSection("study");
+    return;
+  }
+
+  const openUnderstandDeckButton = event.target.closest("[data-open-understand-deck]");
+  if (openUnderstandDeckButton) {
+    openUnderstandMode(openUnderstandDeckButton.dataset.openUnderstandDeck);
+    return;
+  }
+
+  const openUnderstandUnitButton = event.target.closest("[data-open-understand-unit]");
+  if (openUnderstandUnitButton) {
+    openUnderstandMode(
+      openUnderstandUnitButton.dataset.understandDeck || understandDeckId,
+      openUnderstandUnitButton.dataset.openUnderstandUnit,
+    );
+    return;
+  }
+
+  const startUnderstandMemorizeButton = event.target.closest("[data-start-understand-memorize]");
+  if (startUnderstandMemorizeButton) {
+    startUnderstandMemorization(
+      startUnderstandMemorizeButton.dataset.understandDeck || understandDeckId,
+      startUnderstandMemorizeButton.dataset.startUnderstandMemorize,
+      startUnderstandMemorizeButton.dataset.understandMemorizeMode || "review",
+    );
+    return;
+  }
+
   const accountBackupButton = event.target.closest("[data-open-account-backup]");
   if (accountBackupButton) {
     openAccountBackupSettings();
@@ -9522,6 +10581,7 @@ function handleDeckActions(event) {
   const startButton = event.target.closest("[data-start-deck]");
   if (startButton) {
     studyDeckFilter.value = startButton.dataset.startDeck;
+    studyMode = "review";
     currentCardId = null;
     isAnswerVisible = false;
     switchSection("study");
@@ -9556,6 +10616,7 @@ function handleTrackActions(event) {
   const studyButton = event.target.closest("[data-study-focus]");
   if (studyButton) {
     studyDeckFilter.value = `focus:${studyButton.dataset.studyFocus}`;
+    studyMode = "review";
     currentCardId = null;
     isAnswerVisible = false;
     switchSection("study");
@@ -9590,6 +10651,51 @@ function handleGuideActions(event) {
     focus: actionButton.dataset.uiFocus || "",
     mode: actionButton.dataset.uiMode || "",
   });
+}
+
+function handleUnderstandPanelActions(event) {
+  const detailButton = event.target.closest("[data-open-deck-detail]");
+  if (detailButton) {
+    selectedDeckDetailId = detailButton.dataset.openDeckDetail;
+    deckDetailTab = "overview";
+    switchSection("assistant");
+    return;
+  }
+
+  const openUnderstandDeckButton = event.target.closest("[data-open-understand-deck]");
+  if (openUnderstandDeckButton) {
+    openUnderstandMode(openUnderstandDeckButton.dataset.openUnderstandDeck);
+    return;
+  }
+
+  const openUnderstandUnitButton = event.target.closest("[data-open-understand-unit]");
+  if (openUnderstandUnitButton) {
+    openUnderstandMode(
+      openUnderstandUnitButton.dataset.understandDeck || understandDeckId,
+      openUnderstandUnitButton.dataset.openUnderstandUnit,
+    );
+    return;
+  }
+
+  const startUnderstandMemorizeButton = event.target.closest("[data-start-understand-memorize]");
+  if (startUnderstandMemorizeButton) {
+    startUnderstandMemorization(
+      startUnderstandMemorizeButton.dataset.understandDeck || understandDeckId,
+      startUnderstandMemorizeButton.dataset.startUnderstandMemorize,
+      startUnderstandMemorizeButton.dataset.understandMemorizeMode || "review",
+    );
+    return;
+  }
+
+  const memorizeModeButton = event.target.closest("[data-understand-memorize-mode]");
+  if (memorizeModeButton) {
+    const deck = getActiveUnderstandDeck();
+    const unit = getActiveUnderstandUnit();
+    if (!deck || !unit) {
+      return;
+    }
+    startUnderstandMemorization(deck.id, unit.id, memorizeModeButton.dataset.understandMemorizeMode || "review");
+  }
 }
 
 function handleLibraryActions(event) {
@@ -9742,9 +10848,35 @@ function handleDeckDetailActions(event) {
     return;
   }
 
+  const openUnderstandDeckButton = event.target.closest("[data-open-understand-deck]");
+  if (openUnderstandDeckButton) {
+    openUnderstandMode(openUnderstandDeckButton.dataset.openUnderstandDeck);
+    return;
+  }
+
+  const openUnderstandUnitButton = event.target.closest("[data-open-understand-unit]");
+  if (openUnderstandUnitButton) {
+    openUnderstandMode(
+      openUnderstandUnitButton.dataset.understandDeck || selectedDeckDetailId,
+      openUnderstandUnitButton.dataset.openUnderstandUnit,
+    );
+    return;
+  }
+
+  const startUnderstandMemorizeButton = event.target.closest("[data-start-understand-memorize]");
+  if (startUnderstandMemorizeButton) {
+    startUnderstandMemorization(
+      startUnderstandMemorizeButton.dataset.understandDeck || selectedDeckDetailId,
+      startUnderstandMemorizeButton.dataset.startUnderstandMemorize,
+      startUnderstandMemorizeButton.dataset.understandMemorizeMode || "review",
+    );
+    return;
+  }
+
   const startButton = event.target.closest("[data-start-deck]");
   if (startButton) {
     studyDeckFilter.value = startButton.dataset.startDeck;
+    studyMode = "review";
     currentCardId = null;
     isAnswerVisible = false;
     switchSection("study");
@@ -16133,6 +17265,7 @@ function createDemoState() {
     decks: [bodyPartDeck, medicalTermDeck],
     cards: [...bodyPartCards, ...medicalTermCards],
     reviewLog: [],
+    learningProgress: {},
     assistant: {
       messages: [],
       deckFilter: "all",
@@ -16527,9 +17660,32 @@ function normalizeState(rawState) {
     decks: Array.isArray(rawState.decks) ? rawState.decks.map((deck) => normalizeDeck(deck)) : [],
     cards: Array.isArray(rawState.cards) ? rawState.cards.map((card) => normalizeCard(card)) : [],
     reviewLog: Array.isArray(rawState.reviewLog) ? rawState.reviewLog : [],
+    learningProgress: normalizeLearningProgressState(rawState.learningProgress),
     assistant: normalizeAssistantState(rawState.assistant),
     settings: normalizeSettingsState(rawState.settings),
   };
+}
+
+function normalizeLearningProgressState(progress) {
+  if (!progress || typeof progress !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(progress).map(([deckId, deckProgress]) => [
+      deckId,
+      Object.fromEntries(
+        Object.entries(deckProgress || {}).map(([unitId, entry]) => [
+          unitId,
+          {
+            startedAt: Number.isFinite(entry?.startedAt) ? entry.startedAt : 0,
+            completedAt: Number.isFinite(entry?.completedAt) ? entry.completedAt : 0,
+            lastViewedStep: Number.isFinite(entry?.lastViewedStep) ? entry.lastViewedStep : 0,
+          },
+        ]),
+      ),
+    ]),
+  );
 }
 
 function normalizeSettingsState(settings) {

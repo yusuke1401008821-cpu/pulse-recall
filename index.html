@@ -80,6 +80,20 @@
             </div>
           </section>
 
+          <section class="panel tip-card" id="homeUnderstandPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">はじめての学習</p>
+                <h3>まず理解してから暗記する</h3>
+              </div>
+              <button class="ghost-button" data-open-understand-hub="true" type="button">学習を開く</button>
+            </div>
+            <p class="muted" id="homeUnderstandStatus">
+              最初はミニ講義のように内容を読み進めてから、復習や小テストで暗記へつなげられます。
+            </p>
+            <div class="stack-list" id="homeUnderstandList"></div>
+          </section>
+
           <section class="panel">
             <div class="section-heading">
               <div>
@@ -212,6 +226,18 @@
               </div>
               <div class="action-grid" id="studyQuickActionGrid"></div>
             </section>
+            <section class="subpanel study-understand-panel" id="studyUnderstandPanel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">理解モード</p>
+                  <h4>まず内容を理解する</h4>
+                </div>
+              </div>
+              <p class="muted" id="studyUnderstandSummary">
+                デッキの内容をミニ講義のように読み進めて、理解してから暗記へ進めます。
+              </p>
+              <div class="stack-list" id="studyUnderstandUnitList"></div>
+            </section>
             <section class="subpanel">
               <div class="section-heading">
                 <div>
@@ -223,6 +249,7 @@
                 復習、小テスト、4択クイズを個別に切り替えたいときは、ここから詳細に設定できます。
               </p>
               <div class="button-row" id="studyModeNav">
+                <button class="chip-button" data-study-mode="understand" type="button">理解</button>
                 <button class="chip-button is-active" data-study-mode="review" type="button">復習</button>
                 <button class="chip-button" data-study-mode="test" type="button">小テスト</button>
                 <button class="chip-button" data-study-mode="choice" type="button">4択クイズ</button>
@@ -269,6 +296,19 @@
                 <h3 id="emptyStateTitle">今は復習待ちのカードがありません</h3>
                 <p id="emptyStateText">カードを追加するか、時間を置いてから再度チェックしてください。</p>
               </div>
+
+              <article id="understandCard" class="flashcard understand-card is-hidden" aria-live="polite">
+                <div class="flashcard-side">
+                  <p class="flashcard-label" id="understandEyebrow">理解モード</p>
+                  <h3 id="understandTitle"></h3>
+                  <p class="flashcard-meta" id="understandMeta"></p>
+                  <p class="flashcard-hint" id="understandStepLabel"></p>
+                  <div class="pill-row" id="understandTags"></div>
+                  <div class="media-gallery" id="understandFrontMedia" hidden></div>
+                  <div class="understand-copy" id="understandBody"></div>
+                  <div class="media-gallery" id="understandBackMedia" hidden></div>
+                </div>
+              </article>
 
               <article id="flashcard" class="flashcard is-hidden" aria-live="polite">
                 <div class="flashcard-side">
@@ -342,6 +382,8 @@
               </article>
 
               <div class="study-actions">
+                <button class="secondary-button" id="understandPrevButton" type="button" hidden>前へ</button>
+                <button class="secondary-button" id="understandNextButton" type="button" hidden>次へ</button>
                 <button class="secondary-button" id="toggleAnswerButton" type="button">答えを見る</button>
                 <button class="secondary-button" id="shortQuizRevealButton" type="button" hidden>答えを確認</button>
                 <button class="secondary-button" id="shortQuizNextButton" type="button" hidden>次の問題へ</button>
@@ -350,6 +392,18 @@
             </section>
 
             <section class="panel">
+              <div id="understandFeedbackPanel" hidden>
+                <p class="eyebrow">理解の進み具合</p>
+                <h3 id="understandPanelTitle">まず内容をつかむ</h3>
+                <p class="muted" id="understandProgress">読み進めると、理解したユニットを暗記へつなげられます。</p>
+                <div class="stack-list compact-unit-list" id="understandUnitProgressList"></div>
+                <div class="button-row" id="understandMemorizeActions" hidden>
+                  <button class="primary-button" data-understand-memorize-mode="review" type="button">この内容を復習で回す</button>
+                  <button class="ghost-button" data-understand-memorize-mode="test" type="button">小テストへ</button>
+                  <button class="ghost-button" data-understand-memorize-mode="choice" type="button">4択へ</button>
+                </div>
+              </div>
+
               <div id="reviewFeedbackPanel">
                 <p class="eyebrow">回答</p>
                 <h3>覚え具合を記録</h3>
@@ -1367,6 +1421,7 @@
                 </div>
                 <div class="button-row" id="deckDetailNav">
                   <button class="chip-button is-active" data-deck-detail-tab="overview" type="button">概要</button>
+                  <button class="chip-button" data-deck-detail-tab="understand" type="button">理解</button>
                   <button class="chip-button" data-deck-detail-tab="cards" type="button">カード</button>
                   <button class="chip-button" data-deck-detail-tab="share" type="button">共有</button>
                   <button class="chip-button" data-deck-detail-tab="status" type="button">学習状況</button>
