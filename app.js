@@ -868,6 +868,8 @@ let activeStudyDeckId = "";
 let studyPickerFilter = "all";
 let studyPlayerToolsVisible = false;
 let pressedSurfaceElement = null;
+let currentStudySpeech = { enText: "", jaText: "" };
+let activeSpeechLanguage = "";
 let understandDeckId = "";
 let understandUnitId = "";
 let understandStepIndex = 0;
@@ -1109,6 +1111,10 @@ const choiceQuizHint = document.getElementById("choiceQuizHint");
 const choiceQuizNote = document.getElementById("choiceQuizNote");
 const choiceQuizExample = document.getElementById("choiceQuizExample");
 const choiceQuizNextButton = document.getElementById("choiceQuizNextButton");
+const speakEnglishButton = document.getElementById("speakEnglishButton");
+const speakJapaneseButton = document.getElementById("speakJapaneseButton");
+const stopStudySpeechButton = document.getElementById("stopStudySpeechButton");
+const studySpeechStatus = document.getElementById("studySpeechStatus");
 const choiceQuizFeedbackPanel = document.getElementById("choiceQuizFeedbackPanel");
 const choiceQuizStatus = document.getElementById("choiceQuizStatus");
 const choiceQuizScore = document.getElementById("choiceQuizScore");
@@ -1705,6 +1711,206 @@ function handlePressablePointerDown(event) {
   pressedSurfaceElement.classList.add("is-pressed");
 }
 
+function getSpeechSynthesisApi() {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    return null;
+  }
+  return window.speechSynthesis;
+}
+
+function canUseStudySpeech() {
+  return Boolean(getSpeechSynthesisApi() && typeof SpeechSynthesisUtterance !== "undefined");
+}
+
+function normalizePlainText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function stripHtmlTags(value) {
+  return normalizePlainText(
+    String(value || "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<\/li>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"'),
+  );
+}
+
+function uniqueSpeechParts(parts) {
+  const seen = new Set();
+  return parts.filter((part) => {
+    const normalized = normalizePlainText(part);
+    if (!normalized || seen.has(normalized)) {
+      return false;
+    }
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function extractEnglishSpeechSegments(value) {
+  const text = normalizePlainText(value);
+  if (!text) {
+    return [];
+  }
+  return uniqueSpeechParts(
+    (text.match(/[A-Za-z][A-Za-z0-9'’+\-/]*(?:\s+[A-Za-z0-9'’+\-/]+)*/g) || [])
+      .map((item) => normalizePlainText(item.replace(/^[^A-Za-z]+|[^A-Za-z0-9]+$/g, "")))
+      .filter(Boolean),
+  );
+}
+
+function extractJapaneseSpeechSegments(value) {
+  const text = normalizePlainText(value);
+  if (!/[\u3040-\u30ff\u3400-\u9fff々ー]/.test(text)) {
+    return [];
+  }
+  const japaneseOnly = normalizePlainText(
+    text.replace(/[A-Za-z0-9'’+\-\/.,;:()[\]{}]/g, " "),
+  );
+  return uniqueSpeechParts([japaneseOnly || text]);
+}
+
+function buildStudySpeechPayload(values = []) {
+  const items = Array.isArray(values) ? values : [values];
+  const englishParts = [];
+  const japaneseParts = [];
+
+  items.forEach((value) => {
+    const normalized = normalizePlainText(value);
+    if (!normalized) {
+      return;
+    }
+    englishParts.push(...extractEnglishSpeechSegments(normalized));
+    japaneseParts.push(...extractJapaneseSpeechSegments(normalized));
+  });
+
+  return {
+    enText: uniqueSpeechParts(englishParts).join(". "),
+    jaText: uniqueSpeechParts(japaneseParts).join("。 "),
+  };
+}
+
+function setStudySpeechPayload(payload = {}) {
+  currentStudySpeech = {
+    enText: normalizePlainText(payload.enText || ""),
+    jaText: normalizePlainText(payload.jaText || ""),
+  };
+  renderStudySpeechControls();
+}
+
+function getPreferredSpeechVoice(language) {
+  const speechApi = getSpeechSynthesisApi();
+  const voices = speechApi?.getVoices?.() || [];
+  if (!voices.length) {
+    return null;
+  }
+  const prefix = language === "ja" ? "ja" : "en";
+  return (
+    voices.find((voice) => String(voice.lang || "").toLowerCase().startsWith(prefix) && !voice.localService) ||
+    voices.find((voice) => String(voice.lang || "").toLowerCase().startsWith(prefix)) ||
+    null
+  );
+}
+
+function renderStudySpeechControls() {
+  if (!speakEnglishButton || !speakJapaneseButton || !stopStudySpeechButton || !studySpeechStatus) {
+    return;
+  }
+
+  const supported = canUseStudySpeech();
+  const speechApi = getSpeechSynthesisApi();
+  const isSpeaking = Boolean(speechApi?.speaking);
+
+  speakEnglishButton.hidden = !supported;
+  speakJapaneseButton.hidden = !supported;
+  stopStudySpeechButton.hidden = !supported;
+  studySpeechStatus.hidden = false;
+
+  if (!supported) {
+    speakEnglishButton.disabled = true;
+    speakJapaneseButton.disabled = true;
+    stopStudySpeechButton.disabled = true;
+    studySpeechStatus.textContent = "この端末では読み上げに対応していません。";
+    return;
+  }
+
+  speakEnglishButton.disabled = !currentStudySpeech.enText;
+  speakJapaneseButton.disabled = !currentStudySpeech.jaText;
+  stopStudySpeechButton.disabled = !isSpeaking;
+  speakEnglishButton.textContent = activeSpeechLanguage === "en" && isSpeaking ? "英語を再生中" : "英語を聞く";
+  speakJapaneseButton.textContent = activeSpeechLanguage === "ja" && isSpeaking ? "日本語を再生中" : "日本語を聞く";
+  stopStudySpeechButton.textContent = "音声停止";
+
+  if (isSpeaking) {
+    studySpeechStatus.textContent =
+      activeSpeechLanguage === "en"
+        ? "いま見えている英語を読み上げています。"
+        : "いま見えている日本語を読み上げています。";
+    return;
+  }
+
+  if (currentStudySpeech.enText || currentStudySpeech.jaText) {
+    studySpeechStatus.textContent = "いま見えているカードの英語と日本語を、その場で読み上げできます。";
+  } else {
+    studySpeechStatus.textContent = "この画面で読み上げできる英語や日本語がまだありません。";
+  }
+}
+
+function stopStudySpeech({ silent = false } = {}) {
+  const speechApi = getSpeechSynthesisApi();
+  if (speechApi) {
+    speechApi.cancel();
+  }
+  activeSpeechLanguage = "";
+  renderStudySpeechControls();
+  if (!silent) {
+    showToast("音声を停止しました");
+  }
+}
+
+function playStudySpeech(language) {
+  if (!canUseStudySpeech()) {
+    showToast("この端末では読み上げを使えません");
+    return;
+  }
+
+  const text = language === "en" ? currentStudySpeech.enText : currentStudySpeech.jaText;
+  if (!text) {
+    showToast(language === "en" ? "この画面で読める英語がありません" : "この画面で読める日本語がありません");
+    return;
+  }
+
+  const speechApi = getSpeechSynthesisApi();
+  speechApi.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = language === "en" ? "en-US" : "ja-JP";
+  utterance.rate = language === "en" ? 0.95 : 1;
+  const voice = getPreferredSpeechVoice(language);
+  if (voice) {
+    utterance.voice = voice;
+  }
+
+  activeSpeechLanguage = language;
+  utterance.onend = () => {
+    activeSpeechLanguage = "";
+    renderStudySpeechControls();
+  };
+  utterance.onerror = () => {
+    activeSpeechLanguage = "";
+    renderStudySpeechControls();
+    showToast("音声の再生に失敗しました");
+  };
+  renderStudySpeechControls();
+  speechApi.speak(utterance);
+}
+
 function bindEvents() {
   document.addEventListener("pointerdown", handlePressablePointerDown, true);
   document.addEventListener("pointerup", clearPressedSurface, true);
@@ -1712,6 +1918,9 @@ function bindEvents() {
   document.addEventListener("dragstart", clearPressedSurface, true);
   document.addEventListener("keydown", clearPressedSurface, true);
   window.addEventListener("blur", clearPressedSurface);
+  if (canUseStudySpeech()) {
+    getSpeechSynthesisApi()?.addEventListener?.("voiceschanged", renderStudySpeechControls);
+  }
 
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => switchSection(tab.dataset.section));
@@ -1777,6 +1986,15 @@ function bindEvents() {
       studyPlayerToolsVisible = !studyPlayerToolsVisible;
       renderStudy();
     });
+  }
+  if (speakEnglishButton) {
+    speakEnglishButton.addEventListener("click", () => playStudySpeech("en"));
+  }
+  if (speakJapaneseButton) {
+    speakJapaneseButton.addEventListener("click", () => playStudySpeech("ja"));
+  }
+  if (stopStudySpeechButton) {
+    stopStudySpeechButton.addEventListener("click", () => stopStudySpeech());
   }
   if (openFeatureSearchButton) {
     openFeatureSearchButton.addEventListener("click", () => openFeatureSearchModal());
@@ -3076,6 +3294,7 @@ function switchSection(sectionId, options = {}) {
   activeSection = sectionId;
   if (sectionId !== "study") {
     clearStudyAdvanceTimer();
+    stopStudySpeech({ silent: true });
   }
 
   tabs.forEach((tab) => {
@@ -8159,6 +8378,7 @@ function renderUnderstandStudy() {
     if (understandMemorizeActions) {
       understandMemorizeActions.hidden = true;
     }
+    setStudySpeechPayload({});
     return;
   }
 
@@ -8195,6 +8415,14 @@ function renderUnderstandStudy() {
   renderCardMediaGallery(understandFrontMedia, pageModel.frontMedia || [], "理解画像");
   renderCardMediaGallery(understandBackMedia, pageModel.backMedia || [], "理解補足画像");
   understandBody.innerHTML = pageModel.bodyHtml;
+  setStudySpeechPayload(
+    buildStudySpeechPayload([
+      pageModel.title,
+      pageModel.meta,
+      pageModel.stepLabel,
+      stripHtmlTags(pageModel.bodyHtml),
+    ]),
+  );
 
   if (understandPanelTitle) {
     understandPanelTitle.textContent = `${deck.name} を理解する`;
@@ -8673,10 +8901,12 @@ function returnToStudyPicker() {
   studyView = "picker";
   studyPlayerToolsVisible = false;
   clearStudyAdvanceTimer();
+  stopStudySpeech({ silent: true });
   renderStudy();
 }
 
 function renderStudy() {
+  stopStudySpeech({ silent: true });
   renderStudyPicker();
   if (studyView !== "player") {
     renderStudyPlayerChrome();
@@ -8814,6 +9044,7 @@ function renderReviewStudy(queue) {
     renderCardMediaGallery(cardFrontMedia, [], "問題画像");
     renderCardMediaGallery(cardBackMedia, [], "答え画像");
     renderRatingHints(null);
+    setStudySpeechPayload({});
     return;
   }
 
@@ -8835,6 +9066,15 @@ function renderReviewStudy(queue) {
   setElementCopy(cardNote, currentCard.note);
   setElementCopy(cardExample, currentCard.example ? `例: ${currentCard.example}` : "");
   renderCardMediaGallery(cardBackMedia, currentCard.backMedia || [], "答え画像");
+  setStudySpeechPayload(
+    buildStudySpeechPayload([
+      currentCard.front,
+      isAnswerVisible ? currentCard.back : "",
+      isAnswerVisible ? currentCard.hint : "",
+      isAnswerVisible ? currentCard.note : "",
+      isAnswerVisible ? currentCard.example : "",
+    ]),
+  );
   answerArea.classList.toggle("is-hidden", !isAnswerVisible);
   toggleAnswerButton.textContent = isAnswerVisible ? "答えを隠す" : "答えを見る";
   studyProgress.textContent = `${queue.length}枚の対象カードがあります。現在は${formatStudyMode(currentCard.study)}フェーズです。`;
@@ -8882,6 +9122,7 @@ function renderStudySessionPending(source, size, choiceReadyCount = 0) {
       ? "まだセッションは始まっていません。"
       : "別のデッキを選ぶか、カード数を増やすと始めやすくなります。";
   }
+  setStudySpeechPayload({});
 }
 
 function renderStudySessionComplete(source) {
@@ -8921,6 +9162,7 @@ function renderStudySessionComplete(source) {
     choiceQuizStatus.textContent = "4択クイズを完了しました。";
     choiceQuizScore.textContent = `正解 ${summary.good} / ${summary.total} 問`;
   }
+  setStudySpeechPayload({});
 }
 
 function renderShortQuizStudy(source) {
@@ -8970,6 +9212,15 @@ function renderShortQuizStudy(source) {
   setElementCopy(shortQuizNote, itemData.note);
   setElementCopy(shortQuizExample, itemData.example ? `${itemData.isAi ? "根拠" : "例"}: ${itemData.example}` : "");
   renderCardMediaGallery(shortQuizBackMedia, itemData.backMedia || [], "解答画像");
+  setStudySpeechPayload(
+    buildStudySpeechPayload([
+      itemData.prompt,
+      item.revealed ? itemData.answer : "",
+      item.revealed ? itemData.hint : "",
+      item.revealed ? itemData.note : "",
+      item.revealed ? itemData.example : "",
+    ]),
+  );
 
   const summary = buildStudySessionSummary(studySession);
   shortQuizProgress.textContent = item.revealed
@@ -9043,6 +9294,16 @@ function renderChoiceQuizStudy(source) {
   setElementCopy(choiceQuizNote, itemData.note);
   setElementCopy(choiceQuizExample, itemData.example ? `${itemData.isAi ? "根拠" : "例"}: ${itemData.example}` : "");
   renderCardMediaGallery(choiceQuizBackMedia, itemData.backMedia || [], "解答画像");
+  setStudySpeechPayload(
+    buildStudySpeechPayload([
+      itemData.prompt,
+      ...(item.choiceOptions || []).map((option) => option.label),
+      item.answered ? itemData.answer : "",
+      item.answered ? itemData.hint : "",
+      item.answered ? itemData.note : "",
+      item.answered ? itemData.example : "",
+    ]),
+  );
   const summary = buildStudySessionSummary(studySession);
   choiceQuizStatus.textContent = item.answered
     ? item.choiceOptions.some((option) => option.id === item.selectedOptionId && option.isCorrect)

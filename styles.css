@@ -1228,6 +1228,10 @@ button:focus-visible {
   font-size: clamp(1.25rem, 6vw, 1.85rem);
 }
 
+.study-speech-status {
+  margin: 0;
+}
+
 .understand-card h3 {
   font-size: clamp(1.4rem, 3vw, 2rem);
 }
