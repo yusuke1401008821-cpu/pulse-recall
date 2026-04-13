@@ -370,6 +370,7 @@ button:disabled {
 .primary-button,
 .secondary-button,
 .ghost-button,
+.speech-chip,
 .chip-button,
 .rating,
 .board-deck-main,
@@ -393,6 +394,7 @@ button:disabled {
 .primary-button:hover,
 .secondary-button:hover,
 .ghost-button:hover,
+.speech-chip:hover,
 .chip-button:hover,
 .rating:hover,
 .feature-search-result:hover,
@@ -408,6 +410,7 @@ button:disabled {
 .primary-button:active,
 .secondary-button:active,
 .ghost-button:active,
+.speech-chip:active,
 .chip-button:active,
 .rating:active,
 .feature-search-result:active,
@@ -420,6 +423,7 @@ button:disabled {
 .primary-button.is-pressed,
 .secondary-button.is-pressed,
 .ghost-button.is-pressed,
+.speech-chip.is-pressed,
 .chip-button.is-pressed,
 .rating.is-pressed,
 .feature-search-result.is-pressed,
@@ -918,11 +922,21 @@ button:focus-visible {
   gap: 10px;
 }
 
+.quiz-option-row {
+  display: grid;
+  gap: 8px;
+}
+
 .quiz-option {
   display: grid;
   gap: 6px;
   justify-items: start;
   text-align: left;
+}
+
+.quiz-option-speech {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .quiz-option strong {
@@ -1216,6 +1230,54 @@ button:focus-visible {
   background: rgba(240, 138, 75, 0.12);
 }
 
+.speech-inline-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.speech-inline-copy {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.speech-chip-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.speech-chip-row-below {
+  margin-top: 8px;
+}
+
+.speech-chip {
+  min-height: 32px;
+  min-width: 32px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 49, 83, 0.12);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.speech-chip.is-speaking {
+  border-color: rgba(31, 122, 98, 0.34);
+  background: rgba(31, 122, 98, 0.14);
+  color: var(--success);
+  box-shadow: 0 10px 22px rgba(24, 49, 83, 0.12);
+}
+
+.speech-list-block {
+  display: grid;
+  gap: 6px;
+}
+
 .flashcard.image-first-card .media-gallery {
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
@@ -1226,10 +1288,6 @@ button:focus-visible {
 
 .flashcard.image-first-card h3 {
   font-size: clamp(1.25rem, 6vw, 1.85rem);
-}
-
-.study-speech-status {
-  margin: 0;
 }
 
 .understand-card h3 {

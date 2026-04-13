@@ -868,8 +868,10 @@ let activeStudyDeckId = "";
 let studyPickerFilter = "all";
 let studyPlayerToolsVisible = false;
 let pressedSurfaceElement = null;
-let currentStudySpeech = { enText: "", jaText: "" };
+let currentStudySpeechParts = [];
+let activeSpeechPartId = "";
 let activeSpeechLanguage = "";
+let activeSpeechRequestId = 0;
 let understandDeckId = "";
 let understandUnitId = "";
 let understandStepIndex = 0;
@@ -1111,10 +1113,6 @@ const choiceQuizHint = document.getElementById("choiceQuizHint");
 const choiceQuizNote = document.getElementById("choiceQuizNote");
 const choiceQuizExample = document.getElementById("choiceQuizExample");
 const choiceQuizNextButton = document.getElementById("choiceQuizNextButton");
-const speakEnglishButton = document.getElementById("speakEnglishButton");
-const speakJapaneseButton = document.getElementById("speakJapaneseButton");
-const stopStudySpeechButton = document.getElementById("stopStudySpeechButton");
-const studySpeechStatus = document.getElementById("studySpeechStatus");
 const choiceQuizFeedbackPanel = document.getElementById("choiceQuizFeedbackPanel");
 const choiceQuizStatus = document.getElementById("choiceQuizStatus");
 const choiceQuizScore = document.getElementById("choiceQuizScore");
@@ -1766,42 +1764,84 @@ function extractEnglishSpeechSegments(value) {
 }
 
 function extractJapaneseSpeechSegments(value) {
-  const text = normalizePlainText(value);
+  const text = normalizePlainText(
+    String(value || "")
+      .replace(/\[([^\]]+)\]/g, "$1")
+      .replace(/[()（）【】]/g, " "),
+  );
   if (!/[\u3040-\u30ff\u3400-\u9fff々ー]/.test(text)) {
     return [];
   }
   const japaneseOnly = normalizePlainText(
-    text.replace(/[A-Za-z0-9'’+\-\/.,;:()[\]{}]/g, " "),
+    text
+      .replace(/[A-Za-z0-9'’+\-\/.,;:()[\]{}]/g, " ")
+      .replace(/([\u3040-\u30ff\u3400-\u9fff々ー])\s+(?=[\u3040-\u30ff\u3400-\u9fff々ー])/g, "$1"),
   );
   return uniqueSpeechParts([japaneseOnly || text]);
 }
 
-function buildStudySpeechPayload(values = []) {
-  const items = Array.isArray(values) ? values : [values];
-  const englishParts = [];
-  const japaneseParts = [];
-
-  items.forEach((value) => {
-    const normalized = normalizePlainText(value);
-    if (!normalized) {
-      return;
-    }
-    englishParts.push(...extractEnglishSpeechSegments(normalized));
-    japaneseParts.push(...extractJapaneseSpeechSegments(normalized));
-  });
-
+function buildSpeechTextsForValue(value) {
+  const normalized = stripHtmlTags(value);
+  if (!normalized) {
+    return { enText: "", jaText: "" };
+  }
   return {
-    enText: uniqueSpeechParts(englishParts).join(". "),
-    jaText: uniqueSpeechParts(japaneseParts).join("。 "),
+    enText: uniqueSpeechParts(extractEnglishSpeechSegments(normalized)).join(". "),
+    jaText: uniqueSpeechParts(extractJapaneseSpeechSegments(normalized)).join("。 "),
   };
 }
 
-function setStudySpeechPayload(payload = {}) {
-  currentStudySpeech = {
-    enText: normalizePlainText(payload.enText || ""),
-    jaText: normalizePlainText(payload.jaText || ""),
+function createStudySpeechPart(id, label, value, options = {}) {
+  const rawText = stripHtmlTags(value);
+  if (!rawText) {
+    return null;
+  }
+  const payload = buildSpeechTextsForValue(rawText);
+  const part = {
+    id: String(id || "").trim(),
+    label: normalizePlainText(label || ""),
+    enText: normalizePlainText(options.enText ?? payload.enText ?? ""),
+    jaText: normalizePlainText(options.jaText ?? payload.jaText ?? ""),
+    placementTarget: String(options.placementTarget || "").trim(),
   };
-  renderStudySpeechControls();
+  if (!part.id || (!part.enText && !part.jaText)) {
+    return null;
+  }
+  return part;
+}
+
+function getStudySpeechPart(partId) {
+  const normalizedId = String(partId || "").trim();
+  if (!normalizedId) {
+    return null;
+  }
+  return currentStudySpeechParts.find((part) => part.id === normalizedId) || null;
+}
+
+function updateStudySpeechButtons() {
+  const speechApi = getSpeechSynthesisApi();
+  const isSpeechActive = Boolean(speechApi?.speaking || speechApi?.pending);
+  document.querySelectorAll("[data-speech-part][data-speech-lang]").forEach((button) => {
+    const isSpeaking =
+      activeSpeechPartId === button.dataset.speechPart &&
+      activeSpeechLanguage === button.dataset.speechLang &&
+      isSpeechActive;
+    button.classList.toggle("is-speaking", isSpeaking);
+    button.setAttribute("aria-pressed", isSpeaking ? "true" : "false");
+  });
+}
+
+function setCurrentStudySpeechParts(parts = []) {
+  currentStudySpeechParts = (Array.isArray(parts) ? parts : []).filter(Boolean);
+  const activePart = getStudySpeechPart(activeSpeechPartId);
+  if (
+    activeSpeechPartId &&
+    (!activePart || (activeSpeechLanguage === "en" && !activePart.enText) || (activeSpeechLanguage === "ja" && !activePart.jaText))
+  ) {
+    stopStudySpeech({ silent: true });
+    return;
+  }
+  updateStudySpeechButtons();
 }
 
 function getPreferredSpeechVoice(language) {
@@ -1818,48 +1858,92 @@ function getPreferredSpeechVoice(language) {
   );
 }
 
-function renderStudySpeechControls() {
-  if (!speakEnglishButton || !speakJapaneseButton || !stopStudySpeechButton || !studySpeechStatus) {
+function buildSpeechChipMarkup(part, language) {
+  if (!part || (language === "en" ? !part.enText : !part.jaText)) {
+    return "";
+  }
+  const isSpeaking =
+    activeSpeechPartId === part.id &&
+    activeSpeechLanguage === language &&
+    Boolean(getSpeechSynthesisApi()?.speaking || getSpeechSynthesisApi()?.pending);
+  const label = language === "en" ? "英" : "日";
+  return `
+    <button
+      class="speech-chip ${isSpeaking ? "is-speaking" : ""}"
+      data-speech-part="${escapeHtml(part.id)}"
+      data-speech-lang="${language}"
+      type="button"
+      aria-pressed="${isSpeaking ? "true" : "false"}"
+    >
+      ${label}
+    </button>
+  `;
+}
+
+function renderInlineSpeechControlsForPart(part, options = {}) {
+  if (!canUseStudySpeech() || !part) {
+    return "";
+  }
+  const className = options.className || "speech-chip-row";
+  const controls = [buildSpeechChipMarkup(part, "en"), buildSpeechChipMarkup(part, "ja")].filter(Boolean);
+  if (!controls.length) {
+    return "";
+  }
+  return `<span class="${escapeHtml(className)}" role="group" aria-label="${escapeHtml(part.label || "音声再生")}">${controls.join("")}</span>`;
+}
+
+function setElementCopyWithSpeechPart(element, value, part, options = {}) {
+  if (!element) {
     return;
   }
-
-  const supported = canUseStudySpeech();
-  const speechApi = getSpeechSynthesisApi();
-  const isSpeaking = Boolean(speechApi?.speaking);
-
-  speakEnglishButton.hidden = !supported;
-  speakJapaneseButton.hidden = !supported;
-  stopStudySpeechButton.hidden = !supported;
-  studySpeechStatus.hidden = false;
-
-  if (!supported) {
-    speakEnglishButton.disabled = true;
-    speakJapaneseButton.disabled = true;
-    stopStudySpeechButton.disabled = true;
-    studySpeechStatus.textContent = "この端末では読み上げに対応していません。";
+  const prefix = options.prefix || "";
+  const displayText = normalizePlainText(`${prefix}${value || ""}`);
+  element.classList.remove("speech-inline-field");
+  if (!displayText) {
+    element.textContent = "";
+    element.hidden = true;
     return;
   }
-
-  speakEnglishButton.disabled = !currentStudySpeech.enText;
-  speakJapaneseButton.disabled = !currentStudySpeech.jaText;
-  stopStudySpeechButton.disabled = !isSpeaking;
-  speakEnglishButton.textContent = activeSpeechLanguage === "en" && isSpeaking ? "英語を再生中" : "英語を聞く";
-  speakJapaneseButton.textContent = activeSpeechLanguage === "ja" && isSpeaking ? "日本語を再生中" : "日本語を聞く";
-  stopStudySpeechButton.textContent = "音声停止";
-
-  if (isSpeaking) {
-    studySpeechStatus.textContent =
-      activeSpeechLanguage === "en"
-        ? "いま見えている英語を読み上げています。"
-        : "いま見えている日本語を読み上げています。";
+  element.hidden = false;
+  if (!part || !canUseStudySpeech()) {
+    element.textContent = displayText;
     return;
   }
+  element.classList.add("speech-inline-field");
+  element.innerHTML = `<span class="speech-inline-copy">${escapeHtml(displayText)}</span>${renderInlineSpeechControlsForPart(part)}`;
+}
 
-  if (currentStudySpeech.enText || currentStudySpeech.jaText) {
-    studySpeechStatus.textContent = "いま見えているカードの英語と日本語を、その場で読み上げできます。";
-  } else {
-    studySpeechStatus.textContent = "この画面で読み上げできる英語や日本語がまだありません。";
+function buildSpeechListMarkup(items, part, options = {}) {
+  const listItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!listItems.length) {
+    return "";
   }
+  const className = options.className || "understand-summary-points";
+  const listMarkup = `<ul class="${escapeHtml(className)}">${listItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+  if (!part || !canUseStudySpeech()) {
+    return listMarkup;
+  }
+  return `<div class="speech-list-block">${listMarkup}${renderInlineSpeechControlsForPart(part, { className: "speech-chip-row speech-chip-row-below" })}</div>`;
+}
+
+function buildInlineSpeechMarkup(text, part, options = {}) {
+  const displayText = normalizePlainText(text);
+  if (!displayText) {
+    return "";
+  }
+  const tag = options.tag || "p";
+  const className = [options.className || "", part && canUseStudySpeech() ? "speech-inline-field" : ""]
+    .filter(Boolean)
+    .join(" ");
+  if (!part || !canUseStudySpeech()) {
+    return `<${tag}${className ? ` class="${escapeHtml(className)}"` : ""}>${escapeHtml(displayText)}</${tag}>`;
+  }
+  return `
+    <${tag} class="${escapeHtml(className)}">
+      <span class="speech-inline-copy">${escapeHtml(displayText)}</span>
+      ${renderInlineSpeechControlsForPart(part)}
+    </${tag}>
+  `;
 }
 
 function stopStudySpeech({ silent = false } = {}) {
@@ -1867,28 +1951,41 @@ function stopStudySpeech({ silent = false } = {}) {
   if (speechApi) {
     speechApi.cancel();
   }
+  activeSpeechRequestId += 1;
+  activeSpeechPartId = "";
   activeSpeechLanguage = "";
-  renderStudySpeechControls();
+  updateStudySpeechButtons();
   if (!silent) {
     showToast("音声を停止しました");
   }
 }
 
-function playStudySpeech(language) {
+function playStudySpeechPart(partId, language) {
   if (!canUseStudySpeech()) {
     showToast("この端末では読み上げを使えません");
     return;
   }
 
-  const text = language === "en" ? currentStudySpeech.enText : currentStudySpeech.jaText;
+  const part = getStudySpeechPart(partId);
+  const text = language === "en" ? part?.enText : part?.jaText;
   if (!text) {
-    showToast(language === "en" ? "この画面で読める英語がありません" : "この画面で読める日本語がありません");
+    showToast(language === "en" ? "この項目で読める英語がありません" : "この項目で読める日本語がありません");
     return;
   }
 
   const speechApi = getSpeechSynthesisApi();
+  if (
+    activeSpeechPartId === part.id &&
+    activeSpeechLanguage === language &&
+    Boolean(speechApi?.speaking || speechApi?.pending)
+  ) {
+    stopStudySpeech({ silent: true });
+    return;
+  }
   speechApi.cancel();
 
+  const requestId = activeSpeechRequestId + 1;
+  activeSpeechRequestId = requestId;
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = language === "en" ? "en-US" : "ja-JP";
   utterance.rate = language === "en" ? 0.95 : 1;
@@ -1897,17 +1994,26 @@ function playStudySpeech(language) {
     utterance.voice = voice;
   }
 
+  activeSpeechPartId = part.id;
   activeSpeechLanguage = language;
   utterance.onend = () => {
+    if (activeSpeechRequestId !== requestId) {
+      return;
+    }
+    activeSpeechPartId = "";
     activeSpeechLanguage = "";
-    renderStudySpeechControls();
+    updateStudySpeechButtons();
   };
   utterance.onerror = () => {
+    if (activeSpeechRequestId !== requestId) {
+      return;
+    }
+    activeSpeechPartId = "";
     activeSpeechLanguage = "";
-    renderStudySpeechControls();
+    updateStudySpeechButtons();
     showToast("音声の再生に失敗しました");
   };
-  renderStudySpeechControls();
+  updateStudySpeechButtons();
   speechApi.speak(utterance);
 }
 
@@ -1919,7 +2025,7 @@ function bindEvents() {
   document.addEventListener("keydown", clearPressedSurface, true);
   window.addEventListener("blur", clearPressedSurface);
   if (canUseStudySpeech()) {
-    getSpeechSynthesisApi()?.addEventListener?.("voiceschanged", renderStudySpeechControls);
+    getSpeechSynthesisApi()?.addEventListener?.("voiceschanged", updateStudySpeechButtons);
   }
 
   tabs.forEach((tab) => {
@@ -1981,20 +2087,14 @@ function bindEvents() {
   if (studyBackToPickerButton) {
     studyBackToPickerButton.addEventListener("click", returnToStudyPicker);
   }
+  if (studyPlayerView) {
+    studyPlayerView.addEventListener("click", handleStudySpeechActions);
+  }
   if (studyToggleToolsButton) {
     studyToggleToolsButton.addEventListener("click", () => {
       studyPlayerToolsVisible = !studyPlayerToolsVisible;
       renderStudy();
     });
-  }
-  if (speakEnglishButton) {
-    speakEnglishButton.addEventListener("click", () => playStudySpeech("en"));
-  }
-  if (speakJapaneseButton) {
-    speakJapaneseButton.addEventListener("click", () => playStudySpeech("ja"));
-  }
-  if (stopStudySpeechButton) {
-    stopStudySpeechButton.addEventListener("click", () => stopStudySpeech());
   }
   if (openFeatureSearchButton) {
     openFeatureSearchButton.addEventListener("click", () => openFeatureSearchModal());
@@ -7822,56 +7922,77 @@ function buildUnderstandPageModel(deck, unit, stepIndex) {
   }
 
   if (stepIndex <= 0) {
+    const titlePart = createStudySpeechPart("understand-title", "ユニット名", unit.title, {
+      placementTarget: "understand-title",
+    });
+    const introPart = createStudySpeechPart("understand-intro", "このユニットでつかむこと", unit.description, {
+      placementTarget: "understand-body",
+    });
+    const keyTerms = unit.keyTerms.length ? unit.keyTerms : ["カードを読みながら内容をつかみます"];
+    const keyTermsPart = createStudySpeechPart("understand-keyterms", "最初に見ておく語", keyTerms.join("。 "), {
+      placementTarget: "understand-body",
+    });
+    const speechParts = [titlePart, introPart, keyTermsPart].filter(Boolean);
     return {
       eyebrow: "理解モード",
       title: unit.title,
+      titleSpeechPartId: titlePart?.id || "",
       meta: `${deck.name} · ${unit.cards.length}枚のカード`,
       stepLabel: `導入 1/${stepCount}`,
       tags: [...new Set([bucketTagFromEyebrow(unit.eyebrow), ...(deck.subject ? [deck.subject] : [])].filter(Boolean))],
       frontMedia: [],
       backMedia: [],
+      speechParts,
       bodyHtml: `
         <section class="understand-section">
           <p class="eyebrow">${escapeHtml(unit.eyebrow)}</p>
           <h4>このユニットでつかむこと</h4>
-          <p>${escapeHtml(unit.description)}</p>
+          ${buildInlineSpeechMarkup(unit.description, introPart, { className: "understand-section-copy" })}
         </section>
         <section class="understand-section">
           <p class="eyebrow">最初に見ておく語</p>
-          <ul class="understand-summary-points">
-            ${(unit.keyTerms.length ? unit.keyTerms : ["カードを読みながら内容をつかみます"]).map((term) => `<li>${escapeHtml(term)}</li>`).join("")}
-          </ul>
+          ${buildSpeechListMarkup(keyTerms, keyTermsPart)}
         </section>
       `,
     };
   }
 
   if (stepIndex >= stepCount - 1) {
+    const summaryItems = unit.cards.slice(0, 5).map((card) => {
+      const frontLabel = formatCardFrontLabel(card);
+      const backLabel = formatCardBackLabel(card);
+      return backLabel ? `${frontLabel} : ${backLabel}` : frontLabel;
+    });
+    const titlePart = createStudySpeechPart("understand-title", "ユニットのまとめ", `${unit.title} をひと通り読みました`, {
+      placementTarget: "understand-title",
+    });
+    const summaryPart = createStudySpeechPart("understand-summary", "このユニットの確認ポイント", summaryItems.join("。 "), {
+      placementTarget: "understand-body",
+    });
+    const nextStepText = "内容がつかめたら、同じユニットのカードだけで復習・小テスト・4択へ進めます。";
+    const nextStepPart = createStudySpeechPart("understand-next-step", "次の一歩", nextStepText, {
+      placementTarget: "understand-body",
+    });
+    const speechParts = [titlePart, summaryPart, nextStepPart].filter(Boolean);
     return {
       eyebrow: "理解のまとめ",
       title: `${unit.title} をひと通り読みました`,
+      titleSpeechPartId: titlePart?.id || "",
       meta: `${deck.name} · ${unit.cards.length}枚`,
       stepLabel: `まとめ ${stepCount}/${stepCount}`,
       tags: [...new Set(["まとめ", bucketTagFromEyebrow(unit.eyebrow), ...(deck.subject ? [deck.subject] : [])].filter(Boolean))],
       frontMedia: [],
       backMedia: [],
+      speechParts,
       bodyHtml: `
         <section class="understand-section">
           <p class="eyebrow">要点</p>
           <h4>このユニットの確認ポイント</h4>
-          <ul class="understand-summary-points">
-            ${unit.cards
-              .slice(0, 5)
-              .map(
-                (card) =>
-                  `<li><strong>${escapeHtml(formatCardFrontLabel(card))}</strong>${card.back ? ` : ${escapeHtml(formatCardBackLabel(card))}` : ""}</li>`,
-              )
-              .join("")}
-          </ul>
+          ${buildSpeechListMarkup(summaryItems, summaryPart)}
         </section>
         <section class="understand-section">
           <p class="eyebrow">次の一歩</p>
-          <p>内容がつかめたら、同じユニットのカードだけで復習・小テスト・4択へ進めます。</p>
+          ${buildInlineSpeechMarkup(nextStepText, nextStepPart, { className: "understand-section-copy" })}
         </section>
       `,
     };
@@ -7879,29 +8000,47 @@ function buildUnderstandPageModel(deck, unit, stepIndex) {
 
   const card = unit.cards[stepIndex - 1];
   const combinedTags = [...new Set([...(card.tags || []), bucketTagFromEyebrow(unit.eyebrow)].filter(Boolean))];
+  const titlePart = createStudySpeechPart("understand-title", "用語・問い", formatCardFrontLabel(card), {
+    placementTarget: "understand-title",
+  });
+  const backLabel = formatCardBackLabel(card) || "画像や補足を見て確認します";
+  const meaningPart = formatCardBackLabel(card)
+    ? createStudySpeechPart("understand-meaning", "意味・答え", formatCardBackLabel(card), {
+        placementTarget: "understand-body",
+      })
+    : null;
+  const notePart = createStudySpeechPart("understand-note", "補足", card.note, {
+    placementTarget: "understand-body",
+  });
+  const examplePart = createStudySpeechPart("understand-example", "例", card.example, {
+    placementTarget: "understand-body",
+  });
+  const speechParts = [titlePart, meaningPart, notePart, examplePart].filter(Boolean);
   return {
     eyebrow: unit.eyebrow,
     title: formatCardFrontLabel(card),
+    titleSpeechPartId: titlePart?.id || "",
     meta: `${deck.name} · ${stepIndex}/${unit.cards.length}枚目`,
     stepLabel: `理解 ${stepIndex + 1}/${stepCount}`,
     tags: combinedTags,
     frontMedia: card.frontMedia || [],
     backMedia: card.backMedia || [],
+    speechParts,
     bodyHtml: `
       <section class="understand-section">
         <p class="eyebrow">用語・問い</p>
-        <h4>${escapeHtml(formatCardFrontLabel(card))}</h4>
+        ${buildInlineSpeechMarkup(formatCardFrontLabel(card), titlePart, { tag: "h4", className: "understand-section-heading" })}
       </section>
       <section class="understand-section">
         <p class="eyebrow">意味・答え</p>
-        <p>${escapeHtml(formatCardBackLabel(card) || "画像や補足を見て確認します")}</p>
+        ${buildInlineSpeechMarkup(backLabel, meaningPart, { className: "understand-section-copy" })}
       </section>
       ${
         card.note
           ? `
             <section class="understand-section">
               <p class="eyebrow">補足</p>
-              <p>${escapeHtml(card.note)}</p>
+              ${buildInlineSpeechMarkup(card.note, notePart, { className: "understand-section-copy" })}
             </section>
           `
           : ""
@@ -7911,7 +8050,7 @@ function buildUnderstandPageModel(deck, unit, stepIndex) {
           ? `
             <section class="understand-section">
               <p class="eyebrow">例</p>
-              <p>${escapeHtml(card.example)}</p>
+              ${buildInlineSpeechMarkup(card.example, examplePart, { className: "understand-section-copy" })}
             </section>
           `
           : ""
@@ -8378,7 +8517,7 @@ function renderUnderstandStudy() {
     if (understandMemorizeActions) {
       understandMemorizeActions.hidden = true;
     }
-    setStudySpeechPayload({});
+    setCurrentStudySpeechParts([]);
     return;
   }
 
@@ -8407,7 +8546,11 @@ function renderUnderstandStudy() {
   understandNextButton.textContent = isSummaryStep ? (hasNextUnit ? "次のユニットへ" : "理解完了") : "次へ";
 
   setElementCopy(understandEyebrow, pageModel.eyebrow);
-  setElementCopy(understandTitle, pageModel.title);
+  setElementCopyWithSpeechPart(
+    understandTitle,
+    pageModel.title,
+    (pageModel.speechParts || []).find((part) => part.id === pageModel.titleSpeechPartId) || null,
+  );
   setElementCopy(understandMeta, pageModel.meta);
   setElementCopy(understandStepLabel, pageModel.stepLabel);
   understandTags.innerHTML = renderPillRow(pageModel.tags || [], deck.focus || "general");
@@ -8415,14 +8558,7 @@ function renderUnderstandStudy() {
   renderCardMediaGallery(understandFrontMedia, pageModel.frontMedia || [], "理解画像");
   renderCardMediaGallery(understandBackMedia, pageModel.backMedia || [], "理解補足画像");
   understandBody.innerHTML = pageModel.bodyHtml;
-  setStudySpeechPayload(
-    buildStudySpeechPayload([
-      pageModel.title,
-      pageModel.meta,
-      pageModel.stepLabel,
-      stripHtmlTags(pageModel.bodyHtml),
-    ]),
-  );
+  setCurrentStudySpeechParts(pageModel.speechParts || []);
 
   if (understandPanelTitle) {
     understandPanelTitle.textContent = `${deck.name} を理解する`;
@@ -9044,15 +9180,35 @@ function renderReviewStudy(queue) {
     renderCardMediaGallery(cardFrontMedia, [], "問題画像");
     renderCardMediaGallery(cardBackMedia, [], "答え画像");
     renderRatingHints(null);
-    setStudySpeechPayload({});
+    setCurrentStudySpeechParts([]);
     return;
   }
 
   emptyState.classList.add("is-hidden");
   toggleAnswerButton.disabled = false;
-  cardFront.textContent = currentCard.front || "画像を見て答える";
+  const reviewFrontPart = currentCard.front
+    ? createStudySpeechPart("review-front", "問題", currentCard.front, { placementTarget: "cardFront" })
+    : null;
+  const reviewBackPart =
+    isAnswerVisible && currentCard.back
+      ? createStudySpeechPart("review-back", "答え", currentCard.back, { placementTarget: "cardBack" })
+      : null;
+  const reviewHintPart =
+    isAnswerVisible && currentCard.hint
+      ? createStudySpeechPart("review-hint", "ヒント", currentCard.hint, { placementTarget: "cardHint" })
+      : null;
+  const reviewNotePart =
+    isAnswerVisible && currentCard.note
+      ? createStudySpeechPart("review-note", "補足", currentCard.note, { placementTarget: "cardNote" })
+      : null;
+  const reviewExamplePart =
+    isAnswerVisible && currentCard.example
+      ? createStudySpeechPart("review-example", "例", currentCard.example, { placementTarget: "cardExample" })
+      : null;
+  const reviewSpeechParts = [reviewFrontPart, reviewBackPart, reviewHintPart, reviewNotePart, reviewExamplePart].filter(Boolean);
+  setElementCopyWithSpeechPart(cardFront, currentCard.front || "画像を見て答える", reviewFrontPart);
   renderCardMediaGallery(cardFrontMedia, currentCard.frontMedia || [], "問題画像");
-  cardBack.textContent = currentCard.back || "画像で答えを確認する";
+  setElementCopyWithSpeechPart(cardBack, currentCard.back || "画像で答えを確認する", reviewBackPart);
   setElementCopy(
     cardDeckName,
     [getDeckName(currentCard.deckId), deck?.subject || formatDeckFocus(deck?.focus), formatStudyMode(currentCard.study)]
@@ -9062,19 +9218,11 @@ function renderReviewStudy(queue) {
   setElementCopy(cardTopic, currentCard.topic ? `テーマ: ${currentCard.topic}` : deck?.subject ? `テーマ: ${deck.subject}` : "");
   cardTags.innerHTML = renderPillRow(currentCard.tags || [], deck?.focus || "general");
   cardTags.hidden = !(currentCard.tags || []).length;
-  setElementCopy(cardHint, currentCard.hint);
-  setElementCopy(cardNote, currentCard.note);
-  setElementCopy(cardExample, currentCard.example ? `例: ${currentCard.example}` : "");
+  setElementCopyWithSpeechPart(cardHint, currentCard.hint, reviewHintPart);
+  setElementCopyWithSpeechPart(cardNote, currentCard.note, reviewNotePart);
+  setElementCopyWithSpeechPart(cardExample, currentCard.example ? `例: ${currentCard.example}` : "", reviewExamplePart);
   renderCardMediaGallery(cardBackMedia, currentCard.backMedia || [], "答え画像");
-  setStudySpeechPayload(
-    buildStudySpeechPayload([
-      currentCard.front,
-      isAnswerVisible ? currentCard.back : "",
-      isAnswerVisible ? currentCard.hint : "",
-      isAnswerVisible ? currentCard.note : "",
-      isAnswerVisible ? currentCard.example : "",
-    ]),
-  );
+  setCurrentStudySpeechParts(reviewSpeechParts);
   answerArea.classList.toggle("is-hidden", !isAnswerVisible);
   toggleAnswerButton.textContent = isAnswerVisible ? "答えを隠す" : "答えを見る";
   studyProgress.textContent = `${queue.length}枚の対象カードがあります。現在は${formatStudyMode(currentCard.study)}フェーズです。`;
@@ -9122,7 +9270,7 @@ function renderStudySessionPending(source, size, choiceReadyCount = 0) {
       ? "まだセッションは始まっていません。"
       : "別のデッキを選ぶか、カード数を増やすと始めやすくなります。";
   }
-  setStudySpeechPayload({});
+  setCurrentStudySpeechParts([]);
 }
 
 function renderStudySessionComplete(source) {
@@ -9162,7 +9310,7 @@ function renderStudySessionComplete(source) {
     choiceQuizStatus.textContent = "4択クイズを完了しました。";
     choiceQuizScore.textContent = `正解 ${summary.good} / ${summary.total} 問`;
   }
-  setStudySpeechPayload({});
+  setCurrentStudySpeechParts([]);
 }
 
 function renderShortQuizStudy(source) {
@@ -9193,7 +9341,29 @@ function renderShortQuizStudy(source) {
   }
 
   emptyState.classList.add("is-hidden");
-  shortQuizFront.textContent = itemData.prompt || "画像を見て答える";
+  const shortPromptPart = itemData.prompt
+    ? createStudySpeechPart("short-prompt", "問題", itemData.prompt, { placementTarget: "shortQuizFront" })
+    : null;
+  const shortAnswerPart =
+    item.revealed && itemData.answer
+      ? createStudySpeechPart("short-answer", "模範解答", itemData.answer, { placementTarget: "shortQuizBack" })
+      : null;
+  const shortHintPart =
+    item.revealed && itemData.hint
+      ? createStudySpeechPart("short-hint", "ヒント", itemData.hint, { placementTarget: "shortQuizHint" })
+      : null;
+  const shortNotePart =
+    item.revealed && itemData.note
+      ? createStudySpeechPart("short-note", "補足", itemData.note, { placementTarget: "shortQuizNote" })
+      : null;
+  const shortExamplePart =
+    item.revealed && itemData.example
+      ? createStudySpeechPart("short-example", itemData.isAi ? "根拠" : "例", itemData.example, {
+          placementTarget: "shortQuizExample",
+        })
+      : null;
+  const shortSpeechParts = [shortPromptPart, shortAnswerPart, shortHintPart, shortNotePart, shortExamplePart].filter(Boolean);
+  setElementCopyWithSpeechPart(shortQuizFront, itemData.prompt || "画像を見て答える", shortPromptPart);
   renderCardMediaGallery(shortQuizFrontMedia, itemData.frontMedia || [], "小テスト画像");
   setElementCopy(
     shortQuizMeta,
@@ -9207,20 +9377,16 @@ function renderShortQuizStudy(source) {
   shortQuizAnswerInput.value = item.typedAnswer || "";
   shortQuizAnswerInput.disabled = item.revealed;
   shortQuizAnswerArea.classList.toggle("is-hidden", !item.revealed);
-  shortQuizBack.textContent = itemData.answer || "画像で答えを確認する";
-  setElementCopy(shortQuizHint, itemData.hint);
-  setElementCopy(shortQuizNote, itemData.note);
-  setElementCopy(shortQuizExample, itemData.example ? `${itemData.isAi ? "根拠" : "例"}: ${itemData.example}` : "");
-  renderCardMediaGallery(shortQuizBackMedia, itemData.backMedia || [], "解答画像");
-  setStudySpeechPayload(
-    buildStudySpeechPayload([
-      itemData.prompt,
-      item.revealed ? itemData.answer : "",
-      item.revealed ? itemData.hint : "",
-      item.revealed ? itemData.note : "",
-      item.revealed ? itemData.example : "",
-    ]),
+  setElementCopyWithSpeechPart(shortQuizBack, itemData.answer || "画像で答えを確認する", shortAnswerPart);
+  setElementCopyWithSpeechPart(shortQuizHint, itemData.hint, shortHintPart);
+  setElementCopyWithSpeechPart(shortQuizNote, itemData.note, shortNotePart);
+  setElementCopyWithSpeechPart(
+    shortQuizExample,
+    itemData.example ? `${itemData.isAi ? "根拠" : "例"}: ${itemData.example}` : "",
+    shortExamplePart,
   );
+  renderCardMediaGallery(shortQuizBackMedia, itemData.backMedia || [], "解答画像");
+  setCurrentStudySpeechParts(shortSpeechParts);
 
   const summary = buildStudySessionSummary(studySession);
   shortQuizProgress.textContent = item.revealed
@@ -9256,7 +9422,29 @@ function renderChoiceQuizStudy(source) {
   }
 
   emptyState.classList.add("is-hidden");
-  choiceQuizFront.textContent = itemData.prompt || "画像を見て選ぶ";
+  const choicePromptPart = itemData.prompt
+    ? createStudySpeechPart("choice-prompt", "問題", itemData.prompt, { placementTarget: "choiceQuizFront" })
+    : null;
+  const choiceOptionParts = [];
+  const choiceAnswerPart =
+    item.answered && itemData.answer
+      ? createStudySpeechPart("choice-answer", "答えと解説", itemData.answer, { placementTarget: "choiceQuizBack" })
+      : null;
+  const choiceHintPart =
+    item.answered && itemData.hint
+      ? createStudySpeechPart("choice-hint", "ヒント", itemData.hint, { placementTarget: "choiceQuizHint" })
+      : null;
+  const choiceNotePart =
+    item.answered && itemData.note
+      ? createStudySpeechPart("choice-note", "補足", itemData.note, { placementTarget: "choiceQuizNote" })
+      : null;
+  const choiceExamplePart =
+    item.answered && itemData.example
+      ? createStudySpeechPart("choice-example", itemData.isAi ? "根拠" : "例", itemData.example, {
+          placementTarget: "choiceQuizExample",
+        })
+      : null;
+  setElementCopyWithSpeechPart(choiceQuizFront, itemData.prompt || "画像を見て選ぶ", choicePromptPart);
   renderCardMediaGallery(choiceQuizFrontMedia, itemData.frontMedia || [], "4択画像");
   setElementCopy(
     choiceQuizMeta,
@@ -9273,36 +9461,42 @@ function renderChoiceQuizStudy(source) {
       const isCorrect = item.answered && Boolean(option.isCorrect);
       const isWrong = item.answered && isSelected && !option.isCorrect;
       const className = isCorrect ? "correct" : isWrong ? "wrong" : "";
+      const optionPart = createStudySpeechPart(`choice-option-${index + 1}`, `選択肢 ${index + 1}`, option.label, {
+        placementTarget: "choiceQuizOptions",
+      });
+      if (optionPart) {
+        choiceOptionParts.push(optionPart);
+      }
 
       return `
-        <button
-          class="ghost-button quiz-option ${className}"
-          data-choice-option-id="${option.id}"
-          type="button"
-          ${item.answered ? "disabled" : ""}
-        >
-          <span class="eyebrow">選択肢 ${index + 1}</span>
-          <strong>${escapeHtml(option.label)}</strong>
-        </button>
+        <article class="quiz-option-row">
+          <button
+            class="ghost-button quiz-option ${className}"
+            data-choice-option-id="${option.id}"
+            type="button"
+            ${item.answered ? "disabled" : ""}
+          >
+            <span class="eyebrow">選択肢 ${index + 1}</span>
+            <strong>${escapeHtml(option.label)}</strong>
+          </button>
+          ${optionPart ? `<div class="quiz-option-speech">${renderInlineSpeechControlsForPart(optionPart)}</div>` : ""}
+        </article>
       `;
     })
     .join("");
 
   choiceQuizAnswerArea.classList.toggle("is-hidden", !item.answered);
-  choiceQuizBack.textContent = itemData.answer || "画像で答えを確認する";
-  setElementCopy(choiceQuizHint, itemData.hint);
-  setElementCopy(choiceQuizNote, itemData.note);
-  setElementCopy(choiceQuizExample, itemData.example ? `${itemData.isAi ? "根拠" : "例"}: ${itemData.example}` : "");
+  setElementCopyWithSpeechPart(choiceQuizBack, itemData.answer || "画像で答えを確認する", choiceAnswerPart);
+  setElementCopyWithSpeechPart(choiceQuizHint, itemData.hint, choiceHintPart);
+  setElementCopyWithSpeechPart(choiceQuizNote, itemData.note, choiceNotePart);
+  setElementCopyWithSpeechPart(
+    choiceQuizExample,
+    itemData.example ? `${itemData.isAi ? "根拠" : "例"}: ${itemData.example}` : "",
+    choiceExamplePart,
+  );
   renderCardMediaGallery(choiceQuizBackMedia, itemData.backMedia || [], "解答画像");
-  setStudySpeechPayload(
-    buildStudySpeechPayload([
-      itemData.prompt,
-      ...(item.choiceOptions || []).map((option) => option.label),
-      item.answered ? itemData.answer : "",
-      item.answered ? itemData.hint : "",
-      item.answered ? itemData.note : "",
-      item.answered ? itemData.example : "",
-    ]),
+  setCurrentStudySpeechParts(
+    [choicePromptPart, ...choiceOptionParts, choiceAnswerPart, choiceHintPart, choiceNotePart, choiceExamplePart].filter(Boolean),
   );
   const summary = buildStudySessionSummary(studySession);
   choiceQuizStatus.textContent = item.answered
@@ -9659,6 +9853,16 @@ function handleStudyPickerActions(event) {
       sourceKey: "due",
     });
   }
+}
+
+function handleStudySpeechActions(event) {
+  const speechButton = event.target.closest("[data-speech-part][data-speech-lang]");
+  if (!speechButton) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  playStudySpeechPart(speechButton.dataset.speechPart, speechButton.dataset.speechLang);
 }
 
 function renderCardLibrary() {
