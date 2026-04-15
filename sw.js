@@ -1,7 +1,10 @@
-const CACHE_NAME = "pulse-recall-cache-v23";
+const CACHE_NAME = "pulse-recall-cache-v24";
 const APP_SHELL = [
   "./",
   "./index.html",
+  "./medical-exam-app.html",
+  "./usmle-medical-english.html",
+  "./medical-exam-faq.html",
   "./styles.css",
   "./app.js",
   "./manifest.webmanifest",
