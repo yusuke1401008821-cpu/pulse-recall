@@ -10,28 +10,59 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="application-name" content="Pulse Recall" />
     <meta name="robots" content="index,follow,max-image-preview:large" />
+    <meta name="googlebot" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
     <meta name="google-site-verification" content="yB_P683yh1jK0fufhmPcY9-cGy1gdYH9QJHF6ogSue8" />
     <meta
       name="description"
-      content="医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解モード、暗記カードを一つの流れで扱えるWebアプリです。"
+      content="Pulse Recall は、医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解、暗記、演習を一つの流れで扱えるWebアプリです。"
     />
     <link rel="canonical" href="https://pulse-recall.vercel.app/" />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Pulse Recall" />
+    <meta property="og:locale" content="ja_JP" />
     <meta property="og:url" content="https://pulse-recall.vercel.app/" />
-    <meta property="og:title" content="Pulse Recall | 医学部学習アプリ" />
+    <meta property="og:title" content="Pulse Recall | 医学部試験対策・USMLE 医学英語アプリ" />
     <meta
       property="og:description"
-      content="医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解モード、暗記カードを一つの流れで扱えるWebアプリです。"
+      content="医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解、暗記、演習を一つの流れで扱えるWebアプリです。"
     />
     <meta property="og:image" content="https://pulse-recall.vercel.app/assets/icon-512.png" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:url" content="https://pulse-recall.vercel.app/" />
-    <meta name="twitter:title" content="Pulse Recall | 医学部学習アプリ" />
+    <meta name="twitter:title" content="Pulse Recall | 医学部試験対策・USMLE 医学英語アプリ" />
     <meta
       name="twitter:description"
-      content="医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解モード、暗記カードを一つの流れで扱えるWebアプリです。"
+      content="医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解、暗記、演習を一つの流れで扱えるWebアプリです。"
     />
-    <title>Pulse Recall | 医学部学習アプリ</title>
+    <title>Pulse Recall | 医学部試験対策・USMLE 医学英語アプリ</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "name": "Pulse Recall",
+            "url": "https://pulse-recall.vercel.app/",
+            "inLanguage": "ja-JP",
+            "description": "医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解、暗記、演習を一つの流れで扱えるWebアプリです。"
+          },
+          {
+            "@type": "WebApplication",
+            "name": "Pulse Recall",
+            "url": "https://pulse-recall.vercel.app/",
+            "applicationCategory": "EducationalApplication",
+            "operatingSystem": "Web Browser, iOS, Android",
+            "inLanguage": "ja-JP",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "JPY"
+            },
+            "description": "医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解、暗記、演習を一つの流れで扱えるWebアプリです。"
+          }
+        ]
+      }
+    </script>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
@@ -203,6 +234,45 @@
             <div id="historyDetailsPanel" hidden>
               <div class="history-chart" id="historyChart" aria-label="7日間の学習履歴"></div>
               <div class="history-breakdown" id="historyBreakdown"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Pulse Recall とは</p>
+                <h3>医学部試験対策と USMLE 医学英語に寄せた学習アプリ</h3>
+              </div>
+            </div>
+            <p class="muted">
+              Pulse Recall は、医学部の授業試験、学内の過去問対策、USMLE Step 1 を中心とした医学英語の暗記を、
+              `過去問 → 関連講義 / スライド → 理解 → 暗記 → 演習` の流れで進めるための Web アプリです。
+            </p>
+            <div class="action-grid">
+              <article class="library-card">
+                <h4>医学部の授業試験対策</h4>
+                <p class="muted">
+                  過去問参照、講義 PDF 取り込み、理解モード、暗記モードを同じアプリ内でつなげて、定期試験や CBT 前の復習を組み立てやすくしています。
+                </p>
+              </article>
+              <article class="library-card">
+                <h4>USMLE 医学英語の基礎固め</h4>
+                <p class="muted">
+                  `医学単語入門` や身体部位デッキを起点に、接頭辞・接尾辞、解剖用語、医学英語の基本語彙を理解してから暗記へ進めます。
+                </p>
+              </article>
+              <article class="library-card">
+                <h4>理解してから暗記する流れ</h4>
+                <p class="muted">
+                  初学者向けの理解モードで内容を読み、理解後に暗記と演習へつなげる設計なので、知識ゼロからでも入りやすくしています。
+                </p>
+              </article>
+              <article class="library-card">
+                <h4>医学英語・過去問・画像カード対応</h4>
+                <p class="muted">
+                  医学英単語、講義スライド、過去問 PDF、画像付きカード、4択や記述演習まで一つの学習導線で扱えます。
+                </p>
+              </article>
             </div>
           </section>
         </section>
