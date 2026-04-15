@@ -13,7 +13,7 @@
     <meta name="google-site-verification" content="yB_P683yh1jK0fufhmPcY9-cGy1gdYH9QJHF6ogSue8" />
     <meta
       name="description"
-      content="医学部の解剖学習と医療英単語の導入をiPhoneでも進めやすい、暗記カード型のWebアプリです。身体部位と医学単語の初期デッキから、復習・資料整理・共有をまとめて管理できます。"
+      content="医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解モード、暗記カードを一つの流れで扱えるWebアプリです。"
     />
     <link rel="canonical" href="https://pulse-recall.vercel.app/" />
     <meta property="og:type" content="website" />
@@ -21,7 +21,7 @@
     <meta property="og:title" content="Pulse Recall | 医学部学習アプリ" />
     <meta
       property="og:description"
-      content="医学部の解剖学習と医療英単語の導入をiPhoneでも進めやすい、暗記カード型のWebアプリです。身体部位と医学単語の初期デッキから、復習・資料整理・共有をまとめて管理できます。"
+      content="医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解モード、暗記カードを一つの流れで扱えるWebアプリです。"
     />
     <meta property="og:image" content="https://pulse-recall.vercel.app/assets/icon-512.png" />
     <meta name="twitter:card" content="summary" />
@@ -29,7 +29,7 @@
     <meta name="twitter:title" content="Pulse Recall | 医学部学習アプリ" />
     <meta
       name="twitter:description"
-      content="医学部の解剖学習と医療英単語の導入をiPhoneでも進めやすい、暗記カード型のWebアプリです。身体部位と医学単語の初期デッキから、復習・資料整理・共有をまとめて管理できます。"
+      content="医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解モード、暗記カードを一つの流れで扱えるWebアプリです。"
     />
     <title>Pulse Recall | 医学部学習アプリ</title>
     <link rel="manifest" href="manifest.webmanifest" />
@@ -41,7 +41,7 @@
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">医学部 学習サポート</p>
+          <p class="eyebrow">医学部試験 / USMLE 対策</p>
           <h1>Pulse Recall</h1>
         </div>
         <button class="ghost-button topbar-search-button" id="openFeatureSearchButton" type="button">機能検索</button>
@@ -59,25 +59,38 @@
         <section class="content is-active" id="dashboard">
           <section class="panel board-hero">
             <div>
-              <p class="eyebrow">デッキ一覧</p>
+              <p class="eyebrow">試験対策の入口</p>
               <h2 id="heroTitle">身体部位と医学単語から始める</h2>
               <p id="heroText">
-                最初は身体部位の名称と医学単語入門の2デッキを中心に、解剖と医療英単語の基礎を迷わず回せる形にしています。
+                最初は身体部位の名称と医学単語入門の2デッキから始めて、過去問、講義資料、USMLE 医学英語へ自然に広げられる形にしています。
               </p>
               <p class="muted" id="quickSummary">
-                まずは身体部位と医学単語を復習し、必要になったときだけ自分で新しいデッキを追加できます。
+                主軸は `過去問 → 理解 → 暗記 → 演習` です。必要になった時だけ新しい試験対策デッキを追加できます。
               </p>
             </div>
             <div class="board-hero-side">
               <div class="hero-metric compact">
                 <span id="dueCount">0</span>
-                <small>復習待ち</small>
+                <small>暗記待ち</small>
               </div>
               <div class="button-row board-hero-actions">
-                <button class="primary-button" id="startReviewButton" type="button">今日の復習</button>
+                <button class="primary-button" id="startReviewButton" type="button">今日の暗記</button>
                 <button class="ghost-button" id="homeCreateDeckButton" type="button">必要なら新しいデッキを追加</button>
               </div>
             </div>
+          </section>
+
+          <section class="panel tip-card" id="homeQuickActionsPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">今日やること</p>
+                <h3>次に進むおすすめ</h3>
+              </div>
+            </div>
+            <p class="muted" id="homeQuickActionsStatus">
+              理解の続き、暗記の続き、過去問参照への入口をここにまとめます。
+            </p>
+            <div class="button-row" id="homeQuickActionsList"></div>
           </section>
 
           <section class="panel tip-card" id="homeUnderstandPanel">
@@ -97,8 +110,8 @@
           <section class="panel">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">医学</p>
-                <h3>医学の初期デッキ</h3>
+                <p class="eyebrow">基本デッキ</p>
+                <h3>試験対策の初期2デッキ</h3>
               </div>
               <span class="muted" id="medicalDeckCount">0件</span>
             </div>
@@ -116,7 +129,7 @@
             <div class="stack-list board-deck-list" id="generalDeckList"></div>
           </section>
 
-          <section class="panel">
+          <section class="panel" hidden>
             <div class="section-heading">
               <div>
                 <p class="eyebrow">共有</p>
@@ -127,7 +140,7 @@
             <div class="stack-list board-deck-list" id="ownedSharedDeckList"></div>
           </section>
 
-          <section class="panel">
+          <section class="panel" hidden>
             <div class="section-heading">
               <div>
                 <p class="eyebrow">共有</p>
@@ -138,7 +151,7 @@
             <div class="stack-list board-deck-list" id="joinedSharedDeckList"></div>
           </section>
 
-          <section class="panel">
+          <section class="panel" hidden>
             <div class="section-heading">
               <div>
                 <p class="eyebrow">共有</p>
@@ -149,7 +162,7 @@
             <div class="stack-list" id="pendingShareList"></div>
           </section>
 
-          <section class="panel tip-card" id="homeShareNotificationPanel">
+          <section class="panel tip-card" id="homeShareNotificationPanel" hidden>
             <div class="section-heading">
               <div>
                 <p class="eyebrow">共有通知</p>
@@ -163,7 +176,7 @@
             <div class="stack-list" id="homeShareNotificationList"></div>
           </section>
 
-          <section class="panel tip-card" id="homeBackupPanel">
+          <section class="panel tip-card" id="homeBackupPanel" hidden>
             <div class="section-heading">
               <div>
                 <p class="eyebrow">アカウント保存</p>
@@ -231,9 +244,9 @@
               <p class="muted" id="studyPlayerDeckMeta">デッキを開くと、ここに現在のモードや進み具合が表示されます。</p>
               <div class="button-row study-player-mode-nav">
                 <button class="chip-button" data-study-mode="understand" type="button">理解</button>
-                <button class="chip-button is-active" data-study-mode="review" type="button">復習</button>
-                <button class="chip-button" data-study-mode="test" type="button">小テスト</button>
-                <button class="chip-button" data-study-mode="choice" type="button">4択クイズ</button>
+                <button class="chip-button is-active" data-study-mode="review" type="button">暗記</button>
+                <button class="chip-button" data-study-mode="test" type="button">演習（記述）</button>
+                <button class="chip-button" data-study-mode="choice" type="button">演習（4択）</button>
               </div>
               <div hidden>
                 <label class="inline-select">
@@ -283,17 +296,17 @@
               <div class="section-heading">
                 <div>
                   <p class="eyebrow">詳細モード</p>
-                  <h4>出題形式を細かく選ぶ</h4>
+                  <h4>理解 / 暗記 / 演習を細かく選ぶ</h4>
                 </div>
               </div>
               <p class="muted">
-                復習、小テスト、4択クイズを個別に切り替えたいときは、ここから詳細に設定できます。
+                理解、暗記、記述演習、4択演習を個別に切り替えたいときは、ここから詳細に設定できます。
               </p>
               <div class="button-row" id="studyModeNav">
                 <button class="chip-button" data-study-mode="understand" type="button">理解</button>
-                <button class="chip-button is-active" data-study-mode="review" type="button">復習</button>
-                <button class="chip-button" data-study-mode="test" type="button">小テスト</button>
-                <button class="chip-button" data-study-mode="choice" type="button">4択クイズ</button>
+                <button class="chip-button is-active" data-study-mode="review" type="button">暗記</button>
+                <button class="chip-button" data-study-mode="test" type="button">演習（記述）</button>
+                <button class="chip-button" data-study-mode="choice" type="button">演習（4択）</button>
               </div>
               <div class="filter-grid study-config-grid">
                 <label class="inline-select">
@@ -302,7 +315,7 @@
                 </label>
                 <article class="subpanel">
                   <p class="eyebrow">現在の設定</p>
-                  <p class="muted" id="studyModeSummary">まずは復習モードから始められます。</p>
+                  <p class="muted" id="studyModeSummary">まずは理解した内容を暗記モードから回せます。</p>
                 </article>
                 <div class="button-row align-end">
                   <button class="primary-button" id="startStudySessionButton" type="button" hidden>セッションを作る</button>
@@ -481,17 +494,17 @@
         <section class="content" id="manage">
           <div class="panel section-heading">
             <div>
-              <p class="eyebrow">作成</p>
-              <h3>作成と共有</h3>
+              <p class="eyebrow">試験対策の作成</p>
+              <h3>過去問と講義資料から作る</h3>
             </div>
             <div class="button-row" id="createNav">
+              <button class="chip-button is-active" data-create-mode="locator" type="button">過去問参照</button>
+              <button class="chip-button" data-create-mode="import" type="button">PDF取り込み</button>
               <button class="chip-button" data-create-mode="quick" type="button">クイック追加</button>
               <button class="chip-button" data-create-mode="bulk" type="button">一括入力</button>
               <button class="chip-button" data-create-mode="edit" type="button">編集</button>
-              <button class="chip-button is-active" data-create-mode="deck" type="button">デッキ</button>
+              <button class="chip-button" data-create-mode="deck" type="button">デッキ設定</button>
               <button class="chip-button" data-create-mode="card" type="button">詳細カード</button>
-              <button class="chip-button" data-create-mode="import" type="button">PDF取り込み</button>
-              <button class="chip-button" data-create-mode="locator" type="button">過去問参照</button>
               <button class="chip-button" data-create-mode="share" type="button">共有</button>
             </div>
           </div>
@@ -664,23 +677,39 @@
                 <input id="editDeckIdInput" name="editDeckId" type="hidden" />
                 <label>
                   <span>デッキ名</span>
-                  <input id="editDeckName" name="editDeckName" maxlength="40" placeholder="解剖・生理 / Medical English / 読解" required />
+                  <input id="editDeckName" name="editDeckName" maxlength="40" placeholder="解剖 / 循環 / 感染 / Step 1 語彙" required />
                 </label>
+                <input id="editDeckFocus" name="editDeckFocus" type="hidden" value="medical" />
                 <label>
-                  <span>学習トラック</span>
-                  <select id="editDeckFocus" name="editDeckFocus">
-                    <option value="medical">医学</option>
-                    <option value="english">英語</option>
-                    <option value="general">汎用</option>
+                  <span>試験レーン</span>
+                  <select id="editDeckExamLane" name="editDeckExamLane">
+                    <option value="campus_exam">学内試験</option>
+                    <option value="usmle">USMLE</option>
                   </select>
                 </label>
                 <label>
-                  <span>分野</span>
-                  <input id="editDeckSubject" name="editDeckSubject" maxlength="60" placeholder="解剖 / 身体部位 / 生理" />
+                  <span>系統 / 科目</span>
+                  <input id="editDeckSystemOrCourse" name="editDeckSystemOrCourse" maxlength="60" placeholder="解剖 / 循環 / 腎 / 感染 / 薬理" />
+                </label>
+                <label>
+                  <span>資料種別</span>
+                  <select id="editDeckSourceKind" name="editDeckSourceKind">
+                    <option value="lecture">講義</option>
+                    <option value="past_exam">過去問</option>
+                    <option value="vocab">単語</option>
+                  </select>
+                </label>
+                <label>
+                  <span>学期 / 年度 / Step</span>
+                  <input id="editDeckTermOrYear" name="editDeckTermOrYear" maxlength="40" placeholder="2年前期 / 2025年度 / Step 1" />
+                </label>
+                <label>
+                  <span>補助ラベル</span>
+                  <input id="editDeckSubject" name="editDeckSubject" maxlength="60" placeholder="身体部位 / 循環器総論 / Prefix" />
                 </label>
                 <label>
                   <span>説明</span>
-                  <textarea id="editDeckDescription" name="editDeckDescription" rows="3" maxlength="120" placeholder="用途やテーマを短く書く"></textarea>
+                  <textarea id="editDeckDescription" name="editDeckDescription" rows="3" maxlength="120" placeholder="授業試験や USMLE で何を対策するデッキかを短く書く"></textarea>
                 </label>
                 <section class="subpanel compact-form-panel">
                   <p class="eyebrow">作成デフォルト</p>
@@ -807,30 +836,46 @@
             </section>
           </section>
 
-          <section class="panel create-panel is-active" id="createDeckPanel">
+          <section class="panel create-panel" id="createDeckPanel">
             <p class="eyebrow">デッキ作成</p>
             <h3 id="deckFormTitle">デッキを作る</h3>
             <form id="deckForm" class="stack-form">
               <input id="deckIdInput" name="deckId" type="hidden" />
               <label>
                 <span>デッキ名</span>
-                <input id="deckName" name="deckName" maxlength="40" placeholder="解剖・生理 / Medical English / 読解" required />
+                <input id="deckName" name="deckName" maxlength="40" placeholder="解剖 / 循環 / 感染 / Step 1 語彙" required />
               </label>
+              <input id="deckFocus" name="deckFocus" type="hidden" value="medical" />
               <label>
-                <span>学習トラック</span>
-                <select id="deckFocus" name="deckFocus">
-                  <option value="medical">医学</option>
-                  <option value="english">英語</option>
-                  <option value="general">汎用</option>
+                <span>試験レーン</span>
+                <select id="deckExamLane" name="deckExamLane">
+                  <option value="campus_exam">学内試験</option>
+                  <option value="usmle">USMLE</option>
                 </select>
               </label>
               <label>
-                <span>分野</span>
-                <input id="deckSubject" name="deckSubject" maxlength="60" placeholder="解剖 / 身体部位 / 生理" />
+                <span>系統 / 科目</span>
+                <input id="deckSystemOrCourse" name="deckSystemOrCourse" maxlength="60" placeholder="解剖 / 循環 / 腎 / 感染 / 薬理" />
+              </label>
+              <label>
+                <span>資料種別</span>
+                <select id="deckSourceKind" name="deckSourceKind">
+                  <option value="lecture">講義</option>
+                  <option value="past_exam">過去問</option>
+                  <option value="vocab">単語</option>
+                </select>
+              </label>
+              <label>
+                <span>学期 / 年度 / Step</span>
+                <input id="deckTermOrYear" name="deckTermOrYear" maxlength="40" placeholder="2年前期 / 2025年度 / Step 1" />
+              </label>
+              <label>
+                <span>補助ラベル</span>
+                <input id="deckSubject" name="deckSubject" maxlength="60" placeholder="身体部位 / 循環器総論 / Prefix" />
               </label>
               <label>
                 <span>説明</span>
-                <textarea id="deckDescription" name="deckDescription" rows="3" maxlength="120" placeholder="用途やテーマを短く書く"></textarea>
+                <textarea id="deckDescription" name="deckDescription" rows="3" maxlength="120" placeholder="授業試験や USMLE で何を対策するデッキかを短く書く"></textarea>
               </label>
               <section class="subpanel compact-form-panel">
                 <p class="eyebrow">作成デフォルト</p>
@@ -1023,7 +1068,7 @@
             <div id="importPreview" class="library-list"></div>
           </section>
 
-          <section class="panel import-panel create-panel" id="createLocatorPanel">
+          <section class="panel import-panel create-panel is-active" id="createLocatorPanel">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">過去問参照</p>
@@ -1699,23 +1744,19 @@
     <div class="modal-shell" id="onboardingModal" hidden>
       <div class="modal-card">
         <p class="eyebrow">ようこそ</p>
-        <h3>はじめての 4 ステップ</h3>
+        <h3>はじめての 3 ステップ</h3>
         <div class="onboarding-steps">
           <article>
-            <strong>1. デッキを作る</strong>
-            <p>「作成」タブで、医学用・英語用にデッキを分けると使いやすくなります。</p>
+            <strong>1. 身体部位から始める</strong>
+            <p>まずは `身体部位の名称` で、解剖の基本語を理解モードから読み進めると入りやすくなります。</p>
           </article>
           <article>
-            <strong>2. アカウント保存を有効にする</strong>
-            <p>「設定」タブで Google かメールで続けると、自分のアカウントへ自動バックアップできます。あとからでも大丈夫です。</p>
+            <strong>2. 医学単語を理解する</strong>
+            <p>`医学単語入門` で接頭辞・接尾辞を理解しておくと、授業試験と USMLE の語彙を広げやすくなります。</p>
           </article>
           <article>
-            <strong>3. カードを追加する</strong>
-            <p>手入力でも PDF 取り込みでもOKです。まずは10枚前後から始めるのが楽です。</p>
-          </article>
-          <article>
-            <strong>4. 学習で回す</strong>
-            <p>「学習」タブで期限が来たカードを回すと、復習間隔が自動で整います。</p>
+            <strong>3. 過去問から広げる</strong>
+            <p>`過去問参照` と `PDF取り込み` を使うと、授業試験や USMLE 向けの理解と暗記を同じ流れで広げられます。</p>
           </article>
         </div>
         <div class="form-actions">

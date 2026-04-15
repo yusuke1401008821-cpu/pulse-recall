@@ -131,10 +131,12 @@ const TRACKS = [
 const BODY_PART_DECK_NAME = "身体部位の名称";
 const BODY_PART_DECK_DESCRIPTION = "身体部位・臓器・組織の医療英単語を、名詞と形容詞に分けて覚える解剖デッキ。";
 const BODY_PART_DECK_SUBJECT = "解剖 / 身体部位";
+const BODY_PART_DECK_SYSTEM = "解剖";
 const BODY_PART_DECK_SEEDED_FLAG = "seededBodyPartDeckV1";
 const MEDICAL_TERM_INTRO_DECK_NAME = "医学単語入門";
 const MEDICAL_TERM_INTRO_DECK_DESCRIPTION = "接頭辞・接尾辞の意味と単語例をまとめて覚える、医療英単語の入門デッキ。";
 const MEDICAL_TERM_INTRO_DECK_SUBJECT = "医学英単語 / 構成要素";
+const MEDICAL_TERM_INTRO_DECK_SYSTEM = "医学英語";
 const MEDICAL_TERM_INTRO_DECK_SEEDED_FLAG = "seededMedicalTermIntroDeckV1";
 const BODY_PART_VOCAB_ROWS = [
   { section: "頭部・顔面", japanese: "頭", noun: "head", adjective: "cephalic; cranial" },
@@ -746,6 +748,10 @@ function buildBodyPartDeckState({ deckId = crypto.randomUUID(), now = Date.now()
       name: starterDeck.name,
       focus: "medical",
       subject: starterDeck.subject,
+      examLane: "campus_exam",
+      systemOrCourse: BODY_PART_DECK_SYSTEM,
+      sourceKind: "vocab",
+      termOrYear: "",
       description: starterDeck.description,
       createdAt: now,
       defaults: {
@@ -785,6 +791,10 @@ function buildMedicalTermIntroDeckState({ deckId = crypto.randomUUID(), now = Da
       name: starterDeck.name,
       focus: "medical",
       subject: starterDeck.subject,
+      examLane: "usmle",
+      systemOrCourse: MEDICAL_TERM_INTRO_DECK_SYSTEM,
+      sourceKind: "vocab",
+      termOrYear: "Step 1",
       description: starterDeck.description,
       createdAt: now,
       defaults: {
@@ -892,7 +902,7 @@ let pdfjsModulePromise = null;
 let isImportLoading = false;
 let isAssistantLoading = false;
 let assistantErrorMessage = "";
-let createMode = "deck";
+let createMode = "locator";
 let selectedDeckDetailId = "";
 let deckDetailTab = "overview";
 let shareLinkCache = "";
@@ -980,6 +990,8 @@ const heroTitle = document.getElementById("heroTitle");
 const heroText = document.getElementById("heroText");
 const quickSummary = document.getElementById("quickSummary");
 const homeCreateDeckButton = document.getElementById("homeCreateDeckButton");
+const homeQuickActionsStatus = document.getElementById("homeQuickActionsStatus");
+const homeQuickActionsList = document.getElementById("homeQuickActionsList");
 const medicalDeckList = document.getElementById("medicalDeckList");
 const medicalDeckCount = document.getElementById("medicalDeckCount");
 const englishDeckList = document.getElementById("englishDeckList");
@@ -1146,6 +1158,10 @@ const deckIdInput = document.getElementById("deckIdInput");
 const cardIdInput = document.getElementById("cardIdInput");
 const deckNameInput = document.getElementById("deckName");
 const deckFocusInput = document.getElementById("deckFocus");
+const deckExamLaneInput = document.getElementById("deckExamLane");
+const deckSystemOrCourseInput = document.getElementById("deckSystemOrCourse");
+const deckSourceKindInput = document.getElementById("deckSourceKind");
+const deckTermOrYearInput = document.getElementById("deckTermOrYear");
 const deckSubjectInput = document.getElementById("deckSubject");
 const deckDescriptionInput = document.getElementById("deckDescription");
 const deckDefaultTopicInput = document.getElementById("deckDefaultTopic");
@@ -1251,6 +1267,10 @@ const editDeckForm = document.getElementById("editDeckForm");
 const editDeckIdInput = document.getElementById("editDeckIdInput");
 const editDeckNameInput = document.getElementById("editDeckName");
 const editDeckFocusInput = document.getElementById("editDeckFocus");
+const editDeckExamLaneInput = document.getElementById("editDeckExamLane");
+const editDeckSystemOrCourseInput = document.getElementById("editDeckSystemOrCourse");
+const editDeckSourceKindInput = document.getElementById("editDeckSourceKind");
+const editDeckTermOrYearInput = document.getElementById("editDeckTermOrYear");
 const editDeckSubjectInput = document.getElementById("editDeckSubject");
 const editDeckDescriptionInput = document.getElementById("editDeckDescription");
 const editDeckDefaultTopicInput = document.getElementById("editDeckDefaultTopic");
@@ -1759,7 +1779,7 @@ function extractEnglishSpeechSegments(value) {
   return uniqueSpeechParts(
     (text.match(/[A-Za-z][A-Za-z0-9'’+\-/]*(?:\s+[A-Za-z0-9'’+\-/]+)*/g) || [])
       .map((item) => normalizePlainText(item.replace(/^[^A-Za-z]+|[^A-Za-z0-9]+$/g, "")))
-      .filter(Boolean),
+      .filter(Boolean)
   );
 }
 
@@ -3728,15 +3748,15 @@ function focusFeatureTarget(targetId, { select = false } = {}) {
 function renderStats() {
   const stats = buildStats();
   dueCount.textContent = String(stats.dueCount);
-  heroTitle.textContent = state.decks.length ? "身体部位と医学単語から始める" : "最初の医学デッキを用意する";
+  heroTitle.textContent = state.decks.length ? "医学部試験と USMLE の土台を整える" : "最初の試験対策デッキを用意する";
   heroText.textContent =
     stats.totalCards > 0
-      ? `身体部位と医学単語を中心に ${stats.medicalCards}枚を管理しながら、まずは理解モードで内容をつかみ、そのあと暗記へ進めます。`
-      : "最初は身体部位の名称と医学単語入門の2デッキから始めて、理解してから暗記へ進める流れにしています。";
+      ? `身体部位と医学単語を中心に ${stats.medicalCards}枚を管理しながら、過去問 → 理解 → 暗記 → 演習 の流れで試験対策を組めます。`
+      : "最初は身体部位の名称と医学単語入門の2デッキから始めて、理解してから暗記へ進める試験対策の流れにしています。";
   quickSummary.textContent =
     stats.dueCount > 0
-      ? `いまは初期の医学デッキ ${stats.medicalDue}枚・追加デッキ ${stats.otherDue}枚が復習待ちです。初めての内容は理解モードから入り、覚え直したい内容はそのまま復習へ進めます。`
-      : "復習待ちがないときは、まず理解モードで身体部位や医学単語の流れをつかんでから、必要な分野だけカードや資料を追加して次に備えられます。";
+      ? `いまは初期デッキ ${stats.medicalDue}枚・追加の試験対策デッキ ${stats.otherDue}枚が復習待ちです。理解を終えた単元から暗記に進めると、知識が崩れにくくなります。`
+      : "復習待ちがないときは、身体部位や医学単語の理解を先に進めてから、必要な講義資料や過去問を追加して広げられます。";
 }
 
 function buildStats() {
@@ -3761,7 +3781,7 @@ function buildStats() {
     otherDue,
     cards: [
       { label: "身体部位カード", value: medicalCards },
-      { label: "追加デッキのカード", value: otherCards },
+      { label: "追加の試験対策カード", value: otherCards },
       { label: "今日の回答数", value: todayReviewed },
       { label: "7日以上に伸びた枚数", value: mastered },
     ],
@@ -4625,6 +4645,7 @@ function renderShortcutButtons(items) {
           data-ui-action="${escapeHtml(item.action)}"
           data-ui-focus="${escapeHtml(item.focus || "")}"
           data-ui-mode="${escapeHtml(item.mode || "")}"
+          data-ui-deck-id="${escapeHtml(item.deckId || "")}"
           type="button"
         >
           ${escapeHtml(item.label)}
@@ -4649,98 +4670,129 @@ function renderGuideSteps(items) {
 
 function buildHomeQuickActions() {
   const stats = buildStats();
-  const pendingCount = cloudState.pendingRequests.length;
-  const hasMedicalDeck = state.decks.some((deck) => deck.focus === "medical");
-  const hasSharedDeck = state.decks.some((deck) => deck.storageMode === "shared");
+  const primaryDecks = state.decks.filter((deck) => isPrimaryStudyDeck(deck));
+  const nextUnderstandDeck = pickRecommendedStudyDeck({ mode: "understand" });
+  const nextReviewDeck = pickRecommendedStudyDeck({ mode: "review" });
   const actions = [];
 
   const pushAction = (item) => {
-    const key = `${item.action}:${item.focus || ""}:${item.mode || ""}`;
-    if (!actions.some((entry) => `${entry.action}:${entry.focus || ""}:${entry.mode || ""}` === key)) {
+    const key = `${item.action}:${item.focus || ""}:${item.mode || ""}:${item.deckId || ""}`;
+    if (!actions.some((entry) => `${entry.action}:${entry.focus || ""}:${entry.mode || ""}:${entry.deckId || ""}` === key)) {
       actions.push(item);
     }
   };
 
   if (!state.cards.length) {
-    if (!hasMedicalDeck) {
-      pushAction({
-        title: "初期の医学デッキを入れる",
-        text: "身体部位の名称と医学単語入門をまとめて追加して、最初の復習ルートをすぐ作れます。",
-        label: "初期デッキを追加",
-        action: "install-starter",
-        focus: "medical",
-      });
-    }
     pushAction({
-      title: "PDFからまとめて作る",
-      text: "講義資料や配布ノートをそのまま読み込んで、身体部位や医学単語の基礎デッキに候補を一気に作れます。",
-      label: "PDF取り込みへ",
-      action: "create-mode",
-      mode: "import",
+      title: "身体部位から始める",
+      text: "最初は解剖の身体部位デッキを読んで、用語の位置関係と基本語彙をつかむのが一番進めやすいです。",
+      label: "理解から始める",
+      action: "open-understand",
+      deckId: primaryDecks.find((deck) => deck.name === BODY_PART_DECK_NAME)?.id || "",
     });
     pushAction({
-      title: "使い方を先に見る",
-      text: "3ステップのガイドを開いて、最初にどこを触るか確認できます。",
-      label: "使い方を見る",
-      action: "onboarding",
+      title: "医学単語を理解する",
+      text: "接頭辞・接尾辞の意味を先に理解すると、授業資料や USMLE の初見単語も推測しやすくなります。",
+      label: "医学単語を開く",
+      action: "open-understand",
+      deckId: primaryDecks.find((deck) => deck.name === MEDICAL_TERM_INTRO_DECK_NAME)?.id || "",
+    });
+    pushAction({
+      title: "過去問から広げる",
+      text: "授業試験対策を始めるなら、過去問とスライドを対応づける流れを先に作ると復習が早くなります。",
+      label: "過去問参照へ",
+      action: "create-mode",
+      mode: "locator",
       kind: "ghost",
     });
     return actions.slice(0, 3);
   }
 
-  if (stats.dueCount > 0) {
+  if (nextUnderstandDeck) {
+    const nextUnit = buildUnderstandDeckSummary(nextUnderstandDeck.id).nextUnit;
     pushAction({
-      title: `${stats.dueCount}枚の復習を進める`,
-      text: "まずは期限が来たカードから片づけると、学習サイクルが崩れにくくなります。",
-      label: "学習へ",
-      action: "study",
+      title: nextUnit ? "前回の理解の続き" : "まず理解から進める",
+      text: nextUnit
+        ? `「${nextUnderstandDeck.name}」の「${nextUnit.title}」から読み進めると、暗記前の理解をそのまま続けられます。`
+        : `「${nextUnderstandDeck.name}」で未読の理解ユニットを進められます。`,
+      label: "理解を再開",
+      action: "open-understand",
+      deckId: nextUnderstandDeck.id,
     });
   }
 
-  if (pendingCount > 0) {
+  if (stats.dueCount > 0 && nextReviewDeck) {
     pushAction({
-      title: "共有申請を確認する",
-      text: `${pendingCount}件の参加申請があります。owner なら共有タブで承認やロール選択ができます。`,
-      label: "共有を見る",
-      action: "share",
-    });
-  }
-
-  if (!hasSharedDeck) {
-    pushAction({
-      title: "デッキを仲間と共有する",
-      text: "まずは複製リンク、必要なら共同編集へと段階的に共有を始められます。",
-      label: "共有へ",
-      action: "share",
-    });
-  }
-
-  if (!hasMedicalDeck) {
-    pushAction({
-      title: "初期の医学デッキを補う",
-      text: "解剖の基礎と医療英単語の土台がまだ無いときは、初期の2デッキから入れると復習の軸が安定します。",
-      label: "初期デッキを追加",
-      action: "install-starter",
-      focus: "medical",
+      title: `${stats.dueCount}枚の暗記を進める`,
+      text: `今日は「${nextReviewDeck.name}」の復習待ちから回すと、試験前の定着を崩しにくくできます。`,
+      label: "暗記を再開",
+      action: "open-study-player",
+      deckId: nextReviewDeck.id,
+      mode: "review",
     });
   }
 
   pushAction({
-    title: "PDFから一気に増やす",
-    text: "講義資料やノートからカード候補を作って、入力の手間を減らせます。",
+    title: "過去問から広げる",
+    text: "授業試験の主導線として、過去問と講義スライドを先に対応づけてから理解と暗記へつなげられます。",
+    label: "過去問参照へ",
+    action: "create-mode",
+    mode: "locator",
+  });
+  pushAction({
+    title: "講義資料からカード化する",
+    text: "講義PDFや配布ノートを取り込んで、理解と暗記に回すカード候補をまとめて作れます。",
     label: "PDF取り込みへ",
     action: "create-mode",
     mode: "import",
-  });
-  pushAction({
-    title: "保存済みカードを検索する",
-    text: "今あるカードだけで要点を引きたいときは、ライブラリ内検索が早いです。",
-    label: "ライブラリへ",
-    action: "library",
     kind: "ghost",
   });
 
-  return actions.slice(0, 3);
+  return actions.slice(0, 4);
+}
+
+function renderHomeQuickActionsPanel() {
+  if (!homeQuickActionsStatus || !homeQuickActionsList) {
+    return;
+  }
+
+  const actions = buildHomeQuickActions();
+  homeQuickActionsStatus.textContent = actions.length
+    ? "今日やることを上から進めると、理解 → 暗記 → 演習 の流れを作りやすくなります。"
+    : "まずは初期デッキか講義資料を用意すると、ここに次の一歩が出ます。";
+  homeQuickActionsList.innerHTML = actions.length
+    ? actions
+        .map(
+          (item) => `
+            <article class="library-card">
+              <div class="card-row-header">
+                <div>
+                  <h4>${escapeHtml(item.title)}</h4>
+                  <p class="muted">${escapeHtml(item.text)}</p>
+                </div>
+              </div>
+              <div class="button-row">
+                <button
+                  class="${escapeHtml(item.kind === "ghost" ? "ghost-button" : "primary-button")}"
+                  data-ui-action="${escapeHtml(item.action)}"
+                  data-ui-focus="${escapeHtml(item.focus || "")}"
+                  data-ui-mode="${escapeHtml(item.mode || "")}"
+                  data-ui-deck-id="${escapeHtml(item.deckId || "")}"
+                  type="button"
+                >
+                  ${escapeHtml(item.label)}
+                </button>
+              </div>
+            </article>
+          `,
+        )
+        .join("")
+    : `
+        <article class="library-card">
+          <h4>次の一歩を準備中です</h4>
+          <p class="muted">身体部位と医学単語の初期デッキ、または講義資料を入れると、ここにおすすめの進め方が出ます。</p>
+        </article>
+      `;
 }
 
 function buildCreateGuideModel() {
@@ -4828,7 +4880,7 @@ function buildCreateGuideModel() {
 
     return {
       title: "1枚ずつ丁寧にカードを追加する",
-      summary: "重要度が高い内容や、PDFから拾い切れない細かい知識は手入力で補うのが向いています。",
+      summary: "授業試験や USMLE で落としたくない重要項目は、手入力で短く補っておくと後の暗記効率が上がります。",
       steps: [
         { title: "入れるデッキを選ぶ", text: "まず対象デッキを決めて、身体部位なのか医学単語なのか、あるいは別分野なのか文脈を揃えます。" },
         { title: "問題と答えを短く分ける", text: "1カード1論点にすると、暗記と復習の効率が上がります。" },
@@ -4843,8 +4895,8 @@ function buildCreateGuideModel() {
 
   if (createMode === "import") {
     return {
-      title: "資料からまとめてカード候補を作る",
-      summary: "大量の講義資料や配布ノートを扱うときは、まず取り込みで候補を作ってから必要なものだけ残すのが速いです。",
+      title: "講義資料から試験対策カードを作る",
+      summary: "講義PDFや配布ノートをまとめて取り込み、授業試験や USMLE に必要なカード候補だけを残す流れが最短です。",
       steps: [
         { title: "PDFか本文を入れる", text: "講義PDFや配布ノートをそのまま投入できます。" },
         { title: "候補を整理する", text: "重複統合、一括タグ付け、不要候補の削除で質を整えます。" },
@@ -4859,8 +4911,8 @@ function buildCreateGuideModel() {
 
   if (createMode === "locator") {
     return {
-      title: "過去問とスライドの対応表を作る",
-      summary: "過去問PDFと講義スライドPDFを同時に読むと、各設問がどのスライドに近いかを候補で確認できます。",
+      title: "過去問から理解と暗記を広げる",
+      summary: "過去問PDFと講義スライドPDFを同時に読むと、各設問がどのスライドに近いかを候補で確認でき、理解ユニットや暗記カードの起点にできます。",
       steps: [
         { title: "過去問を入れる", text: "番号付きの設問を自動で区切り、設問文と選択肢を検索キーとして使います。" },
         { title: "スライドを入れる", text: "講義PDFをページ単位で解析して、各ページから近い本文箇所を抜き出します。" },
@@ -4875,14 +4927,14 @@ function buildCreateGuideModel() {
 
   if (createMode === "share") {
     return {
-      title: hasSharedDeck ? "共有の運用を整える" : "共有は2段階で使い分ける",
+      title: hasSharedDeck ? "共有の運用を整える" : "共有は必要になった時だけ使う",
       summary: hasSharedDeck
         ? "すでに共有中のデッキがあります。承認待ち、ロール変更、リンク再発行、共有終了をここでまとめて管理できます。"
         : hasClientConfig
-          ? "まずはローカル複製リンクで試し、必要になったらログインして共同編集へ進めるのが一番わかりやすい流れです。"
-          : "Supabase 未設定でもローカル複製共有は使えます。共同編集が必要になった時だけ Supabase を接続すれば十分です。",
+          ? "まずは自分の試験対策デッキを仕上げ、必要になった時だけローカル複製や共同編集へ進めるのが一番わかりやすい流れです。"
+          : "共有は後から追加できます。まずは授業試験や USMLE 向けのデッキ作りを優先できます。",
       steps: [
-        { title: "まずは共有したいデッキを選ぶ", text: "学習中のデッキから1つ選んで、共有リンクを作ります。" },
+        { title: "まずは共有したいデッキを選ぶ", text: "授業試験対策で一緒に育てたいデッキを選んで、共有リンクを作ります。" },
         { title: "軽い共有ならローカル複製", text: "相手は自分の端末へそのまま追加でき、ログインも不要です。" },
         { title: "共同編集ならクラウド共有", text: "Google / メールでログインすると、viewer / editor を分けて運用できます。" },
       ],
@@ -4894,15 +4946,15 @@ function buildCreateGuideModel() {
   }
 
   return {
-    title: "まずは学習の箱を作る",
-    summary: "デッキは科目や用途ごとのまとまりです。あとから共有やPDF取り込みを使うときも、デッキ設計が土台になります。",
+    title: "まずは試験対策の箱を作る",
+    summary: "デッキは授業試験や USMLE の単元ごとのまとまりです。過去問参照や PDF 取り込みを使う時も、デッキ設計が土台になります。",
     steps: [
-      { title: "デッキ名を決める", text: "身体部位、症候、病理のように用途ごとに分けると管理しやすいです。" },
-      { title: "分野と初期値を入れる", text: "解剖 / 身体部位のような分野名を入れておくと、検索や絞り込みがしやすくなります。" },
-      { title: "次にカードかPDFへ進む", text: "箱を作ったら、手入力のカード追加か、資料からの一括取り込みに進みます。" },
+      { title: "試験レーンを決める", text: "学内試験なのか USMLE なのかを最初に分けると、あとで整理しやすくなります。" },
+      { title: "系統と資料種別を入れる", text: "解剖、循環、感染、薬理のような系統と、講義・過去問・単語の区別を入れておくと見返しやすくなります。" },
+      { title: "次に過去問かPDFへ進む", text: "箱を作ったら、過去問参照か講義資料の取り込みへ進むと試験対策の流れに乗せやすくなります。" },
     ],
     actions: [
-      { label: "カード作成へ", action: "create-mode", mode: "card" },
+      { label: "過去問参照へ", action: "create-mode", mode: "locator" },
       { label: "PDF取り込みへ", action: "create-mode", mode: "import", kind: "ghost" },
     ],
   };
@@ -6155,6 +6207,18 @@ function syncDeckForm() {
   deckIdInput.value = deck?.id || "";
   deckNameInput.value = deck?.name || "";
   deckFocusInput.value = deck?.focus || "medical";
+  if (deckExamLaneInput) {
+    deckExamLaneInput.value = deck?.examLane || "campus_exam";
+  }
+  if (deckSystemOrCourseInput) {
+    deckSystemOrCourseInput.value = deck?.systemOrCourse || deriveSystemOrCourse(deck?.subject || "") || "";
+  }
+  if (deckSourceKindInput) {
+    deckSourceKindInput.value = deck?.sourceKind || "lecture";
+  }
+  if (deckTermOrYearInput) {
+    deckTermOrYearInput.value = deck?.termOrYear || "";
+  }
   deckSubjectInput.value = deck?.subject || "";
   deckDescriptionInput.value = deck?.description || "";
   if (deckDefaultTopicInput) {
@@ -6370,7 +6434,9 @@ function renderEditWorkspace() {
   }
   editWorkspaceSummary.innerHTML = [
     { label: "デッキ名", value: deck.name },
-    { label: "分野", value: deck.subject || "未設定" },
+    { label: "試験レーン", value: formatExamLane(deck.examLane) },
+    { label: "系統 / 科目", value: deck.systemOrCourse || deck.subject || "未設定" },
+    { label: "資料種別", value: formatSourceKind(deck.sourceKind) },
     { label: "カード枚数", value: `${deckCards.length}枚` },
     {
       label: "保存先",
@@ -6394,6 +6460,18 @@ function renderEditWorkspace() {
   editDeckIdInput.value = deck.id;
   editDeckNameInput.value = deck.name;
   editDeckFocusInput.value = deck.focus || "medical";
+  if (editDeckExamLaneInput) {
+    editDeckExamLaneInput.value = deck.examLane || "campus_exam";
+  }
+  if (editDeckSystemOrCourseInput) {
+    editDeckSystemOrCourseInput.value = deck.systemOrCourse || "";
+  }
+  if (editDeckSourceKindInput) {
+    editDeckSourceKindInput.value = deck.sourceKind || "lecture";
+  }
+  if (editDeckTermOrYearInput) {
+    editDeckTermOrYearInput.value = deck.termOrYear || "";
+  }
   editDeckSubjectInput.value = deck.subject || "";
   editDeckDescriptionInput.value = deck.description || "";
   if (editDeckDefaultTopicInput) {
@@ -6414,6 +6492,18 @@ function renderEditWorkspace() {
   const canSubmitDeckChanges = canEditDeckMeta(deck) && !deckLockedByOther;
   editDeckNameInput.disabled = !canSubmitDeckChanges;
   editDeckFocusInput.disabled = !canSubmitDeckChanges;
+  if (editDeckExamLaneInput) {
+    editDeckExamLaneInput.disabled = !canSubmitDeckChanges;
+  }
+  if (editDeckSystemOrCourseInput) {
+    editDeckSystemOrCourseInput.disabled = !canSubmitDeckChanges;
+  }
+  if (editDeckSourceKindInput) {
+    editDeckSourceKindInput.disabled = !canSubmitDeckChanges;
+  }
+  if (editDeckTermOrYearInput) {
+    editDeckTermOrYearInput.disabled = !canSubmitDeckChanges;
+  }
   editDeckSubjectInput.disabled = !canSubmitDeckChanges;
   editDeckDescriptionInput.disabled = !canSubmitDeckChanges;
   if (editDeckDefaultTopicInput) {
@@ -6889,14 +6979,13 @@ function renderAssistant() {
 
 function renderDashboard() {
   const collections = buildDashboardDeckCollections();
-  const pendingCount = cloudState.pendingRequests.length;
 
   renderDashboardDeckSection({
     decks: collections.medical,
     listElement: medicalDeckList,
     countElement: medicalDeckCount,
     emptyTitle: "初期の医学デッキがまだありません",
-    emptyText: "まずは身体部位の名称と医学単語入門から始めると、解剖と医療英単語の復習ルートを作りやすくなります。",
+    emptyText: "まずは身体部位の名称と医学単語入門から始めると、授業試験と USMLE の両方で使う基礎語彙の軸を作れます。",
     emptyButtonLabel: "初期デッキを入れる",
     emptyFocus: "medical",
   });
@@ -6909,63 +6998,13 @@ function renderDashboard() {
     listElement: generalDeckList,
     countElement: generalDeckCount,
     emptyTitle: "追加したデッキはありません",
-    emptyText: "身体部位以外の分野を使いたくなったときに、自分で追加したデッキがここに並びます。",
-    emptyButtonLabel: "汎用デッキを作る",
+    emptyText: "循環、腎、感染、薬理、USMLE Step 別など、自分で広げた試験対策デッキがここに並びます。",
+    emptyButtonLabel: "試験対策デッキを作る",
     emptyFocus: "general",
   });
 
-  renderDashboardDeckSection({
-    decks: collections.ownedShared,
-    listElement: ownedSharedDeckList,
-    countElement: ownedSharedDeckCount,
-    emptyTitle: "まだ共有しているデッキはありません",
-    emptyText: "グループで使うデッキを作ると、ここから owner として管理できます。",
-    emptyButtonLabel: "共有を開く",
-    emptyFocus: "",
-    emptyAction: "share",
-  });
-  renderDashboardDeckSection({
-    decks: collections.joinedShared,
-    listElement: joinedSharedDeckList,
-    countElement: joinedSharedDeckCount,
-    emptyTitle: "受け取った共有デッキはまだありません",
-    emptyText: "共有リンクや招待されたデッキは、ここに並びます。",
-    emptyButtonLabel: "共有を開く",
-    emptyFocus: "",
-    emptyAction: "share",
-  });
-
-  pendingShareLabel.textContent = pendingCount ? `${pendingCount}件` : "共有なし";
-  pendingShareList.innerHTML = pendingCount
-    ? cloudState.pendingRequests
-        .slice(0, 4)
-        .map(
-          (request) => `
-            <article class="library-card">
-              <div class="card-row-header">
-                <div>
-                  <h4>${escapeHtml(request.deckName || "共有デッキ")}</h4>
-                  <p class="muted">${escapeHtml(request.requesterEmail || "参加申請")} / 承認待ち</p>
-                </div>
-                <button class="ghost-button" data-open-share-panel="true" type="button">共有を開く</button>
-              </div>
-            </article>
-          `,
-        )
-        .join("")
-    : `
-        <article class="library-card">
-          <h4>いま承認待ちはありません</h4>
-          <p class="muted">共有デッキを作ると、ここに参加申請が表示されます。</p>
-          <div class="button-row">
-            <button class="ghost-button" data-open-share-panel="true" type="button">共有を開く</button>
-          </div>
-        </article>
-      `;
-
+  renderHomeQuickActionsPanel();
   renderHomeUnderstandPanel();
-  renderHomeShareNotificationPanel();
-  renderHomeBackupPanel();
   renderHistoryPanel();
 }
 
@@ -7008,12 +7047,10 @@ function buildDashboardDeckCollections() {
   const localDecks = state.decks.filter((deck) => deck.storageMode !== "shared");
   return {
     medical: sortDashboardDecks(localDecks.filter((deck) => deck.focus === "medical")),
-    english: sortDashboardDecks(localDecks.filter((deck) => deck.focus === "english")),
-    general: sortDashboardDecks(localDecks.filter((deck) => deck.focus !== "medical")),
-    ownedShared: sortDashboardDecks(state.decks.filter((deck) => deck.storageMode === "shared" && deck.role === "owner")),
-    joinedShared: sortDashboardDecks(
-      state.decks.filter((deck) => deck.storageMode === "shared" && ["editor", "viewer"].includes(deck.role)),
-    ),
+    english: [],
+    general: sortDashboardDecks(localDecks.filter((deck) => !isPrimaryStudyDeck(deck))),
+    ownedShared: [],
+    joinedShared: [],
   };
 }
 
@@ -7069,8 +7106,8 @@ function renderDashboardDeckSection({
 
 function buildDashboardDeckRow(deck) {
   const metrics = buildDashboardDeckMetrics(deck);
-  const primaryLabel = deck.subject || deck.name;
-  const supportingLine = [deck.subject ? deck.name : "", deck.description || ""].filter(Boolean).join(" / ");
+  const primaryLabel = deck.systemOrCourse || deck.subject || deck.name;
+  const supportingLine = [deck.name, deck.description || ""].filter(Boolean).join(" / ");
   const canEdit = canEditDeckContent(deck);
   const canAddContent = canAddCardsToDeck(deck) || canUploadMediaForDeck(deck);
   const mediaCount = state.cards
@@ -7086,7 +7123,10 @@ function buildDashboardDeckRow(deck) {
           <span class="muted">${escapeHtml(supportingLine || "説明はまだありません")}</span>
           <span class="board-meta-row">
             <span class="meta-pill">${metrics.cardCount}枚</span>
-            <span class="meta-pill">復習待ち ${metrics.dueCount}枚</span>
+            <span class="meta-pill">暗記待ち ${metrics.dueCount}枚</span>
+            <span class="meta-pill">${escapeHtml(formatExamLane(deck.examLane))}</span>
+            <span class="meta-pill">${escapeHtml(formatSourceKind(deck.sourceKind))}</span>
+            ${deck.termOrYear ? `<span class="meta-pill">${escapeHtml(deck.termOrYear)}</span>` : ""}
             ${mediaCount ? `<span class="meta-pill">画像 ${mediaCount}枚</span>` : ""}
             ${
               metrics.learningCount
@@ -7247,8 +7287,8 @@ function renderLibraryModeControls() {
   if (libraryModeSummary) {
     libraryModeSummary.textContent =
       libraryMode === "public"
-        ? "公開デッキの一覧、更新状況、品質シグナルを見ながら、フォローか複製かを選べます。"
-        : "登録済みカードを検索しながら、デッキ詳細や学習状態を確認できます。";
+        ? "公開デッキは必要な時だけ参考にできます。まずは自分の試験対策デッキを中心に進め、足りない分野だけ公開デッキを取り込めます。"
+        : "自分の授業試験・USMLE 対策デッキを中心に、内容検索、学習状態確認、詳細確認を行えます。";
   }
 }
 
@@ -8864,12 +8904,12 @@ function formatStudyModeLabel(mode = studyMode) {
     return "理解";
   }
   if (mode === "test") {
-    return "小テスト";
+    return "演習（記述）";
   }
   if (mode === "choice") {
-    return "4択クイズ";
+    return "演習（4択）";
   }
-  return "復習";
+  return "暗記";
 }
 
 function renderStudyPicker() {
@@ -8897,19 +8937,19 @@ function renderStudyPicker() {
   const unreadUnderstand = entries.reduce((sum, entry) => sum + entry.understandSummary.remainingCount, 0);
   studyDeckPickerStatus.textContent =
     unreadUnderstand > 0
-      ? `まずは ${unreadUnderstand} ユニットの理解から始められます。復習待ちは合計 ${dueTotal} 枚です。`
-      : `学習したいデッキを選ぶと、専用プレイヤーでカードをすぐ見られます。復習待ちは合計 ${dueTotal} 枚です。`;
+      ? `まずは ${unreadUnderstand} ユニットの理解から始められます。暗記待ちは合計 ${dueTotal} 枚です。`
+      : `学習したいデッキを選ぶと、専用プレイヤーでカードをすぐ見られます。暗記待ちは合計 ${dueTotal} 枚です。`;
 
   studyDeckPickerList.innerHTML = entries
     .map(({ deck, cardCount, dueCount, learningCount, understandSummary }) => {
       const nextUnit = understandSummary.nextUnit;
       const isCurrentDeck = activeStudyDeckId === deck.id;
       const isRecommended = !isCurrentDeck && isPrimaryStudyDeck(deck);
-      const recommendedLabel = isCurrentDeck ? "前回の続き" : isRecommended ? "おすすめ" : formatDeckFocus(deck.focus);
+      const recommendedLabel = isCurrentDeck ? "前回の続き" : isRecommended ? "おすすめ" : formatExamLane(deck.examLane);
       const resumeCopy = nextUnit
         ? `次は「${nextUnit.title}」から理解できます。`
         : dueCount > 0
-          ? `復習待ち ${dueCount} 枚から始められます。`
+          ? `暗記待ち ${dueCount} 枚から始められます。`
           : "このデッキの内容をいつでも見直せます。";
       return `
         <article class="library-card study-picker-card ${(isCurrentDeck || isRecommended) ? "is-selected-card" : ""} ${isCurrentDeck ? "is-current-study-card" : ""}">
@@ -8929,7 +8969,7 @@ function renderStudyPicker() {
             <p class="muted">${escapeHtml(resumeCopy)}</p>
             <div class="card-row-meta">
               <span class="meta-pill">${cardCount}枚</span>
-              <span class="meta-pill">復習待ち ${dueCount}枚</span>
+              <span class="meta-pill">暗記待ち ${dueCount}枚</span>
               ${
                 understandSummary.totalUnits
                   ? `<span class="meta-pill">理解 ${understandSummary.completedCount}/${understandSummary.totalUnits}</span>`
@@ -8945,7 +8985,7 @@ function renderStudyPicker() {
               data-study-player-mode="review"
               type="button"
             >
-              学習を再開
+              暗記を再開
             </button>
             <button class="ghost-button" data-open-understand-deck="${escapeHtml(deck.id)}" type="button">
               まず理解する
@@ -8974,14 +9014,14 @@ function renderStudyPlayerChrome() {
   const deckCards = state.cards.filter((card) => card.deckId === deck.id);
   const dueCount = deckCards.filter((card) => card.study.dueAt <= Date.now()).length;
   const understandSummary = buildUnderstandDeckSummary(deck.id);
-  const baseMeta = [`${deckCards.length}枚`, `復習待ち ${dueCount}枚`, `現在: ${formatStudyModeLabel(studyMode)}`];
+  const baseMeta = [`${deckCards.length}枚`, `暗記待ち ${dueCount}枚`, `現在: ${formatStudyModeLabel(studyMode)}`];
   if (studyMode === "understand" && understandSummary.totalUnits) {
     baseMeta.push(`理解 ${understandSummary.completedCount}/${understandSummary.totalUnits}`);
   } else if (studySession?.items?.length) {
     baseMeta.push(`${Math.min(studySession.index + 1, studySession.items.length)}/${studySession.items.length}問`);
   }
 
-  studyPlayerDeckEyebrow.textContent = `${formatDeckFocus(deck.focus)}${deck.storageMode === "shared" ? " / 共有" : ""}`;
+  studyPlayerDeckEyebrow.textContent = `${formatExamLane(deck.examLane)}${deck.systemOrCourse ? ` / ${deck.systemOrCourse}` : ""}${deck.storageMode === "shared" ? " / 共有" : ""}`;
   studyPlayerDeckTitle.textContent = deck.name;
   studyPlayerDeckMeta.textContent = baseMeta.join(" · ");
   if (studyToggleToolsButton) {
@@ -10147,7 +10187,7 @@ function renderDeckDetail() {
         <h4>学習状況</h4>
         <div class="card-row-meta">
           <span class="meta-pill">${deckCards.length}枚</span>
-          <span class="meta-pill">復習待ち ${dueCount}枚</span>
+          <span class="meta-pill">暗記待ち ${dueCount}枚</span>
           <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
         </div>
         <p class="muted">共有デッキでも、学習進捗はユーザーごとに分離して保持します。</p>
@@ -10161,7 +10201,10 @@ function renderDeckDetail() {
       <h4>${escapeHtml(deck.name)}</h4>
       <p class="muted">${escapeHtml(deck.description || "説明はまだありません")}</p>
       <div class="card-row-meta">
-        <span class="meta-pill ${escapeHtml(deck.focus)}">${escapeHtml(formatDeckFocus(deck.focus))}</span>
+        <span class="meta-pill">${escapeHtml(formatExamLane(deck.examLane))}</span>
+        <span class="meta-pill">${escapeHtml(formatSourceKind(deck.sourceKind))}</span>
+        ${deck.systemOrCourse ? `<span class="meta-pill">${escapeHtml(deck.systemOrCourse)}</span>` : ""}
+        ${deck.termOrYear ? `<span class="meta-pill">${escapeHtml(deck.termOrYear)}</span>` : ""}
         ${deck.subject ? `<span class="meta-pill">${escapeHtml(deck.subject)}</span>` : ""}
         <span class="meta-pill">${escapeHtml(formatStorageMode(deck.storageMode))}</span>
       </div>
@@ -10177,11 +10220,15 @@ function renderDeckDetail() {
   `;
 }
 
-function saveDeckRecord({ deckId, name, focus, subject, description, defaults = {} }) {
+function saveDeckRecord({ deckId, name, focus, subject, description, examLane, systemOrCourse, sourceKind, termOrYear, defaults = {} }) {
   const safeName = String(name || "").trim();
   if (!safeName) {
     throw new Error("デッキ名を入力してください");
   }
+  const normalizedExamLane = normalizeExamLane(examLane || inferExamLaneFromDeckContext({ name: safeName, subject, description, focus }));
+  const normalizedSystemOrCourse = String(systemOrCourse || deriveSystemOrCourse(subject) || "").trim();
+  const normalizedSourceKind = normalizeSourceKind(sourceKind || inferSourceKindFromDeckContext({ name: safeName, subject, description }));
+  const normalizedTermOrYear = String(termOrYear || "").trim();
   const normalizedDefaults = normalizeDeckDefaults(defaults, normalizeDeckFocus(focus));
 
   const now = Date.now();
@@ -10198,6 +10245,10 @@ function saveDeckRecord({ deckId, name, focus, subject, description, defaults = 
     deck.name = safeName;
     deck.focus = normalizeDeckFocus(focus);
     deck.subject = String(subject || "").trim();
+    deck.examLane = normalizedExamLane;
+    deck.systemOrCourse = normalizedSystemOrCourse;
+    deck.sourceKind = normalizedSourceKind;
+    deck.termOrYear = normalizedTermOrYear;
     deck.description = String(description || "").trim();
     deck.defaults = normalizedDefaults;
     deck.updatedAt = now;
@@ -10210,6 +10261,10 @@ function saveDeckRecord({ deckId, name, focus, subject, description, defaults = 
     name: safeName,
     focus,
     subject,
+    examLane: normalizedExamLane,
+    systemOrCourse: normalizedSystemOrCourse,
+    sourceKind: normalizedSourceKind,
+    termOrYear: normalizedTermOrYear,
     description,
     createdAt: now,
     updatedAt: now,
@@ -10322,6 +10377,10 @@ function handleDeckSubmit(event) {
   const deckId = String(formData.get("deckId") || "").trim();
   const name = String(formData.get("deckName") || "").trim();
   const focus = String(formData.get("deckFocus") || "medical").trim();
+  const examLane = String(formData.get("deckExamLane") || "campus_exam").trim();
+  const systemOrCourse = String(formData.get("deckSystemOrCourse") || "").trim();
+  const sourceKind = String(formData.get("deckSourceKind") || "lecture").trim();
+  const termOrYear = String(formData.get("deckTermOrYear") || "").trim();
   const subject = String(formData.get("deckSubject") || "").trim();
   const description = String(formData.get("deckDescription") || "").trim();
   const defaults = {
@@ -10334,7 +10393,18 @@ function handleDeckSubmit(event) {
 
   (async () => {
     try {
-    const { deck, isNew } = saveDeckRecord({ deckId, name, focus, subject, description, defaults });
+    const { deck, isNew } = saveDeckRecord({
+      deckId,
+      name,
+      focus,
+      subject,
+      description,
+      examLane,
+      systemOrCourse,
+      sourceKind,
+      termOrYear,
+      defaults,
+    });
     clearDeckEditing();
     persist();
     render();
@@ -10438,6 +10508,10 @@ async function handleEditDeckSubmit(event) {
       deckId: String(formData.get("editDeckId") || "").trim(),
       name: String(formData.get("editDeckName") || "").trim(),
       focus: String(formData.get("editDeckFocus") || "medical").trim(),
+      examLane: String(formData.get("editDeckExamLane") || "campus_exam").trim(),
+      systemOrCourse: String(formData.get("editDeckSystemOrCourse") || "").trim(),
+      sourceKind: String(formData.get("editDeckSourceKind") || "lecture").trim(),
+      termOrYear: String(formData.get("editDeckTermOrYear") || "").trim(),
       subject: String(formData.get("editDeckSubject") || "").trim(),
       description: String(formData.get("editDeckDescription") || "").trim(),
       defaults: {
@@ -11497,6 +11571,20 @@ function handleTrackActions(event) {
 }
 
 function handleHomeQuickActions(event) {
+  const understandButton = event.target.closest("[data-ui-action='open-understand']");
+  if (understandButton) {
+    openUnderstandMode(understandButton.dataset.uiDeckId || "");
+    return;
+  }
+
+  const studyButton = event.target.closest("[data-ui-action='open-study-player']");
+  if (studyButton) {
+    openStudyPlayer(studyButton.dataset.uiDeckId || "", {
+      mode: studyButton.dataset.uiMode || "review",
+    });
+    return;
+  }
+
   const actionButton = event.target.closest("[data-ui-action]");
   if (!actionButton) {
     return;
@@ -12007,6 +12095,24 @@ function saveImportDraftAsDeck() {
   const deckId = targetDeck?.id || crypto.randomUUID();
   const deckName = targetDeck ? targetDeck.name : createUniqueDeckName(importDraft.deckName);
   const descriptionBase = importDraft.sourceName ? `${importDraft.sourceName} から自動生成` : "資料から自動生成";
+  const inferredExamLane = normalizeExamLane(
+    importDraft.examLane
+      || inferExamLaneFromDeckContext({
+        name: deckName,
+        subject: importDraft.subject,
+        description: importDraft.instructions,
+        focus: importDraft.focus,
+      }),
+  );
+  const inferredSystemOrCourse = String(importDraft.systemOrCourse || deriveSystemOrCourse(importDraft.subject || "") || "").trim();
+  const inferredSourceKind = normalizeSourceKind(
+    importDraft.sourceKind
+      || inferSourceKindFromDeckContext({
+        name: deckName,
+        subject: importDraft.subject,
+        description: importDraft.instructions,
+      }),
+  );
 
   if (targetDeck && !canEditDeckContent(targetDeck)) {
     showToast("この共有デッキにはカードを追加できません");
@@ -12016,21 +12122,28 @@ function saveImportDraftAsDeck() {
   if (!targetDeck) {
     state.decks.unshift(
       normalizeDeck({
-      id: deckId,
-      name: deckName,
-      focus: importDraft.focus,
-      subject: importDraft.subject,
-      description: importDraft.instructions ? `${descriptionBase} / ${importDraft.instructions}` : descriptionBase,
-      createdAt: now,
-      updatedAt: now,
-      storageMode: "local",
-      role: "owner",
-      syncState: "local-only",
+        id: deckId,
+        name: deckName,
+        focus: importDraft.focus,
+        subject: importDraft.subject,
+        examLane: inferredExamLane,
+        systemOrCourse: inferredSystemOrCourse,
+        sourceKind: inferredSourceKind,
+        termOrYear: importDraft.termOrYear || "",
+        description: importDraft.instructions ? `${descriptionBase} / ${importDraft.instructions}` : descriptionBase,
+        createdAt: now,
+        updatedAt: now,
+        storageMode: "local",
+        role: "owner",
+        syncState: "local-only",
       }),
     );
   } else {
     targetDeck.updatedAt = now;
     targetDeck.subject = targetDeck.subject || importDraft.subject;
+    targetDeck.examLane = targetDeck.examLane || inferredExamLane;
+    targetDeck.systemOrCourse = targetDeck.systemOrCourse || inferredSystemOrCourse;
+    targetDeck.sourceKind = targetDeck.sourceKind || inferredSourceKind;
     if (!targetDeck.description) {
       targetDeck.description = importDraft.instructions ? `${descriptionBase} / ${importDraft.instructions}` : descriptionBase;
     }
@@ -14896,6 +15009,19 @@ function mergeCloudDecks(sharedDecks, sharedCards, sharedCardMedia, progressRows
       name: sharedDeck.name,
       focus: sharedDeck.focus,
       subject: sharedDeck.subject,
+      examLane: sharedDeck.exam_lane || existingDeck?.examLane || inferExamLaneFromDeckContext({
+        name: sharedDeck.name,
+        subject: sharedDeck.subject,
+        description: sharedDeck.description,
+        focus: sharedDeck.focus,
+      }),
+      systemOrCourse: sharedDeck.system_or_course || existingDeck?.systemOrCourse || deriveSystemOrCourse(sharedDeck.subject || ""),
+      sourceKind: sharedDeck.source_kind || existingDeck?.sourceKind || inferSourceKindFromDeckContext({
+        name: sharedDeck.name,
+        subject: sharedDeck.subject,
+        description: sharedDeck.description,
+      }),
+      termOrYear: sharedDeck.term_or_year || existingDeck?.termOrYear || "",
       description: sharedDeck.description,
       createdAt: existingDeck?.createdAt || parseCloudTimestamp(sharedDeck.created_at),
       updatedAt: parseCloudTimestamp(sharedDeck.updated_at) || Date.now(),
@@ -14997,6 +15123,19 @@ function normalizePublicDeckRow(row = {}) {
     name: String(row.name || "公開デッキ").trim(),
     focus: normalizeDeckFocus(row.focus),
     subject: String(row.subject || "").trim(),
+    examLane: normalizeExamLane(row.exam_lane || inferExamLaneFromDeckContext({
+      name: row.name,
+      subject: row.subject,
+      description: row.description,
+      focus: row.focus,
+    })),
+    systemOrCourse: String(row.system_or_course || deriveSystemOrCourse(row.subject || "") || "").trim(),
+    sourceKind: normalizeSourceKind(row.source_kind || inferSourceKindFromDeckContext({
+      name: row.name,
+      subject: row.subject,
+      description: row.description,
+    })),
+    termOrYear: String(row.term_or_year || "").trim(),
     description: String(row.description || "").trim(),
     shareToken: String(row.share_token || "").trim(),
     createdAt: parseCloudTimestamp(row.created_at),
@@ -15155,6 +15294,10 @@ async function createOrUpdateLocalDeckFromPublicSource(sourceDeck, sourceCards =
     name: existingDeck?.name || (follow ? `${sourceDeck.publicTitle || sourceDeck.name}` : createUniqueDeckName(`${sourceDeck.publicTitle || sourceDeck.name} 自分用`)),
     focus: sourceDeck.focus,
     subject: sourceDeck.subject,
+    examLane: sourceDeck.examLane,
+    systemOrCourse: sourceDeck.systemOrCourse,
+    sourceKind: sourceDeck.sourceKind,
+    termOrYear: sourceDeck.termOrYear,
     description: [
       sourceDeck.publicDescription || sourceDeck.description,
       follow ? "公開デッキをフォロー中" : "公開デッキから複製",
@@ -17312,6 +17455,10 @@ function duplicateSelectedDeck() {
     name: createUniqueDeckName(`${sourceDeck.name} 自分用`),
     focus: sourceDeck.focus,
     subject: sourceDeck.subject,
+    examLane: sourceDeck.examLane,
+    systemOrCourse: sourceDeck.systemOrCourse,
+    sourceKind: sourceDeck.sourceKind,
+    termOrYear: sourceDeck.termOrYear,
     description: sourceDeck.description || "共有デッキから複製",
     createdAt: now,
     updatedAt: now,
@@ -18669,6 +18816,19 @@ function normalizeDeck(deck) {
     name: String(safeDeck.name || "無題デッキ"),
     focus,
     subject: String(safeDeck.subject || "").trim(),
+    examLane: normalizeExamLane(safeDeck.examLane || inferExamLaneFromDeckContext({
+      name: safeDeck.name,
+      subject: safeDeck.subject,
+      description: safeDeck.description,
+      focus,
+    })),
+    systemOrCourse: String(safeDeck.systemOrCourse || deriveSystemOrCourse(safeDeck.subject || "") || "").trim(),
+    sourceKind: normalizeSourceKind(safeDeck.sourceKind || inferSourceKindFromDeckContext({
+      name: safeDeck.name,
+      subject: safeDeck.subject,
+      description: safeDeck.description,
+    })),
+    termOrYear: String(safeDeck.termOrYear || "").trim(),
     description: String(safeDeck.description || "").trim(),
     createdAt: Number.isFinite(safeDeck.createdAt) ? safeDeck.createdAt : Date.now(),
     updatedAt: Number.isFinite(safeDeck.updatedAt) ? safeDeck.updatedAt : Number.isFinite(safeDeck.createdAt) ? safeDeck.createdAt : Date.now(),
@@ -19003,6 +19163,57 @@ function normalizeDeckFocus(value) {
   }
 
   return "general";
+}
+
+function normalizeExamLane(value) {
+  const lane = String(value || "").trim();
+  return lane === "usmle" ? "usmle" : "campus_exam";
+}
+
+function formatExamLane(value) {
+  return normalizeExamLane(value) === "usmle" ? "USMLE" : "学内試験";
+}
+
+function normalizeSourceKind(value) {
+  const sourceKind = String(value || "").trim();
+  if (sourceKind === "past_exam" || sourceKind === "vocab") {
+    return sourceKind;
+  }
+  return "lecture";
+}
+
+function formatSourceKind(value) {
+  const sourceKind = normalizeSourceKind(value);
+  if (sourceKind === "past_exam") {
+    return "過去問";
+  }
+  if (sourceKind === "vocab") {
+    return "単語";
+  }
+  return "講義";
+}
+
+function deriveSystemOrCourse(subject) {
+  return splitSubjectTags(subject)[0] || "";
+}
+
+function inferExamLaneFromDeckContext({ name = "", subject = "", description = "", focus = "medical" } = {}) {
+  const haystack = [name, subject, description, focus].join(" ").toLowerCase();
+  if (/usmle|step ?1|step ?2|step ?3/.test(haystack)) {
+    return "usmle";
+  }
+  return "campus_exam";
+}
+
+function inferSourceKindFromDeckContext({ name = "", subject = "", description = "" } = {}) {
+  const haystack = [name, subject, description].join(" ").toLowerCase();
+  if (/過去問|year|年度|qb|question bank|exam/.test(haystack)) {
+    return "past_exam";
+  }
+  if (/単語|vocab|vocabulary|prefix|suffix|語彙|英単語/.test(haystack)) {
+    return "vocab";
+  }
+  return "lecture";
 }
 
 function formatDeckFocus(focus) {
