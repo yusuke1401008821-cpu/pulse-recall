@@ -1,7 +1,7 @@
 {
   "name": "Pulse Recall",
   "short_name": "Pulse",
-  "description": "暗記カードを短く回して復習間隔を伸ばす、モバイル向けの暗記サポートアプリです。",
+  "description": "医学部の授業試験対策と USMLE 医学英語に向けて、過去問、講義資料、理解、暗記、演習を一つの流れで扱えるアプリです。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
